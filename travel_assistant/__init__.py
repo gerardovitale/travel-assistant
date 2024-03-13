@@ -4,6 +4,13 @@ from pyspark.sql import SparkSession
 
 CET_TIMEZONE = pytz.timezone("Europe/Madrid")
 
+TABLE_PATH = "../data/spain-fuel-price"
+PARTITION_COLS = ["date", "hour"]
+
+FUEL_PRICE_URL = (
+    "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
+)
+
 
 def get_spark_session() -> SparkSession:
     builder = (

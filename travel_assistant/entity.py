@@ -1,3 +1,4 @@
+from datetime import date
 from datetime import datetime
 from typing import Optional
 
@@ -5,7 +6,9 @@ from pydantic import BaseModel
 
 
 class SpainFuelPrice(BaseModel):
-    date: datetime
+    dt: datetime
+    date: date
+    hour: int
     zip_code: int
     municipality_id: int
     province_id: int

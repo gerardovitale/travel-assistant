@@ -9,7 +9,10 @@ from pyspark.sql import DataFrame
 from pyspark.sql import Row
 
 from travel_assistant import CET_TIMEZONE
+from travel_assistant import FUEL_PRICE_URL
 from travel_assistant import get_spark_session
+from travel_assistant import PARTITION_COLS
+from travel_assistant import TABLE_PATH
 from travel_assistant.entity import SpainFuelPrice
 from travel_assistant.schema import SPAIN_FUEL_PRICES_SCHEMA
 
@@ -20,13 +23,12 @@ def update_spain_fuel_price_table() -> None:
     response_data = get_spain_fuel_price_raw_data()
     spain_fuel_data = map_spain_fuel_data(response_data)
     spain_fuel_df = create_spain_fuel_dataframe(spain_fuel_data)
-    spain_fuel_df.write.format("delta").mode("append").save("../data/spain-fuel-price")
+    spain_fuel_df.write.format("delta").mode("append").partitionBy(PARTITION_COLS).save(TABLE_PATH)
 
 
 def get_spain_fuel_price_raw_data() -> dict:
-    logger.info("Getting data from the Ministry")
-    url = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
-    response = requests.get(url)
+    logger.info("Getting fuel price data")
+    response = requests.get(FUEL_PRICE_URL)
     data = response.json()
     return data
 
@@ -43,6 +45,7 @@ def map_spain_fuel_data(spain_fuel_data):
 def create_spain_fuel_dataframe(spain_fuel_price_list: Iterable[SpainFuelPrice]) -> DataFrame:
     def _map_spark_rows(spain_fuel_price: SpainFuelPrice) -> Row:
         spain_fuel_price_dict = spain_fuel_price.dict()
+        spain_fuel_price_dict["dt"] = spain_fuel_price_dict["dt"].isoformat()
         spain_fuel_price_dict["date"] = spain_fuel_price_dict["date"].isoformat()
         return Row(**spain_fuel_price_dict)
 
@@ -64,32 +67,32 @@ def map_spain_fuel_price(record, sting_datetime) -> SpainFuelPrice:
     datetime_obj = datetime.strptime(sting_datetime, "%d/%m/%Y %H:%M:%S")
     utc_datetime_obj = CET_TIMEZONE.localize(datetime_obj).astimezone(timezone.utc)
     return SpainFuelPrice(
-        **{
-            "date": utc_datetime_obj,
-            "zip_code": _format_string(record.get("C.P.", "")),
-            "municipality_id": _format_string(record.get("IDMunicipio", "")),
-            "province_id": _format_string(record.get("IDProvincia", "")),
-            "sale_type": _format_string(record.get("Tipo Venta", "")),
-            "label": _format_string(record.get("Rótulo", "")),
-            "address": _format_string(record.get("Dirección", "")),
-            "municipality": _format_string(record.get("Municipio", "")),
-            "province": _format_string(record.get("Provincia", "")),
-            "locality": _format_string(record.get("Localidad", "")),
-            "latitude": _format_float(record.get("Latitud", "")),
-            "longitude": _format_float(record.get("Longitud (WGS84)", "")),
-            "biodiesel_price": _format_float(record.get("Precio Biodiesel", "")),
-            "bioethanol_price": _format_float(record.get("Precio Bioetanol", "")),
-            "compressed_natural_gas_price": _format_float(record.get("Precio Gas Natural Comprimido", "")),
-            "liquefied_natural_gas_price": _format_float(record.get("Precio Gas Natural Licuado", "")),
-            "liquefied_petroleum_gases_price": _format_float(record.get("Precio Gases licuados del petróleo", "")),
-            "diesel_a_price": _format_float(record.get("Precio Gasoleo A", "")),
-            "diesel_b_price": _format_float(record.get("Precio Gasoleo B", "")),
-            "diesel_premium_price": _format_float(record.get("Precio Gasoleo Premium", "")),
-            "gasoline_95_e10_price": _format_float(record.get("Precio Gasolina 95 E10", "")),
-            "gasoline_95_e5_price": _format_float(record.get("Precio Gasolina 95 E5", "")),
-            "gasoline_95_e5_premium_price": _format_float(record.get("Precio Gasolina 95 E5 Premium", "")),
-            "gasoline_98_e10_price": _format_float(record.get("Precio Gasolina 98 E10", "")),
-            "gasoline_98_e5_price": _format_float(record.get("Precio Gasolina 98 E5", "")),
-            "hydrogen_price": _format_float(record.get("Precio Hidrogeno", "")),
-        }
+        dt=utc_datetime_obj,
+        date=utc_datetime_obj.date(),
+        hour=utc_datetime_obj.hour,
+        zip_code=_format_string(record.get("C.P.", "")),
+        municipality_id=_format_string(record.get("IDMunicipio", "")),
+        province_id=_format_string(record.get("IDProvincia", "")),
+        sale_type=_format_string(record.get("Tipo Venta", "")),
+        label=_format_string(record.get("Rótulo", "")),
+        address=_format_string(record.get("Dirección", "")),
+        municipality=_format_string(record.get("Municipio", "")),
+        province=_format_string(record.get("Provincia", "")),
+        locality=_format_string(record.get("Localidad", "")),
+        latitude=_format_float(record.get("Latitud", "")),
+        longitude=_format_float(record.get("Longitud (WGS84)", "")),
+        biodiesel_price=_format_float(record.get("Precio Biodiesel", "")),
+        bioethanol_price=_format_float(record.get("Precio Bioetanol", "")),
+        compressed_natural_gas_price=_format_float(record.get("Precio Gas Natural Comprimido", "")),
+        liquefied_natural_gas_price=_format_float(record.get("Precio Gas Natural Licuado", "")),
+        liquefied_petroleum_gases_price=_format_float(record.get("Precio Gases licuados del petróleo", "")),
+        diesel_a_price=_format_float(record.get("Precio Gasoleo A", "")),
+        diesel_b_price=_format_float(record.get("Precio Gasoleo B", "")),
+        diesel_premium_price=_format_float(record.get("Precio Gasoleo Premium", "")),
+        gasoline_95_e10_price=_format_float(record.get("Precio Gasolina 95 E10", "")),
+        gasoline_95_e5_price=_format_float(record.get("Precio Gasolina 95 E5", "")),
+        gasoline_95_e5_premium_price=_format_float(record.get("Precio Gasolina 95 E5 Premium", "")),
+        gasoline_98_e10_price=_format_float(record.get("Precio Gasolina 98 E10", "")),
+        gasoline_98_e5_price=_format_float(record.get("Precio Gasolina 98 E5", "")),
+        hydrogen_price=_format_float(record.get("Precio Hidrogeno", "")),
     )
