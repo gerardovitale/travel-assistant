@@ -126,7 +126,7 @@ class TestFuelPrice(TestCase):
             hydrogen_price=None,
         )
         actual_fuel_price = map_spain_fuel_price(test_data, test_date)
-        assert actual_fuel_price.dict() == expected_fuel_price.dict()
+        assert actual_fuel_price.model_dump() == expected_fuel_price.model_dump()
 
     def test_map_spain_fuel_data(self):
         test_data = {
