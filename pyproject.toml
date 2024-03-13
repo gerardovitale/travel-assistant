@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "travelassistant"
+version = "0.1.0"
+description = ""
+authors = ["Gerardo Vitale <gerardo.vitale.errico@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+requests = "^2.31.0"
+pyspark = "^3.5.1"
+delta-spark = "^3.1.0"
+pydantic = "^2.6.4"
+pandas = "^2.2.1"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.1"
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
