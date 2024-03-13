@@ -11,8 +11,6 @@ requests = "^2.31.0"
 pyspark = "^3.5.1"
 delta-spark = "^3.1.0"
 pydantic = "^2.6.4"
-pandas = "^2.2.1"
-
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
