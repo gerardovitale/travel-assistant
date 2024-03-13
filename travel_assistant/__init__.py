@@ -3,8 +3,8 @@ from delta import configure_spark_with_delta_pip
 from pyspark.sql import SparkSession
 
 CET_TIMEZONE = pytz.timezone("Europe/Madrid")
-
-TABLE_PATH = "../data/spain-fuel-price"
+SPAIN_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
+TABLE_PATH = "data/spain-fuel-price"
 PARTITION_COLS = ["date", "hour"]
 
 FUEL_PRICE_URL = (

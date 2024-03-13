@@ -66,7 +66,7 @@ class TestFuelPrice(TestCase):
         self.mock_requests.get().json.assert_called_once()
 
     def test_map_spain_fuel_price(self):
-        test_date = "12/03/2024 19:48:04"
+        test_date = datetime(2024, 3, 12, 18, 48, 4, tzinfo=timezone.utc)
         test_data = {
             "C.P.": "23400",
             "IDMunicipio": "3583",

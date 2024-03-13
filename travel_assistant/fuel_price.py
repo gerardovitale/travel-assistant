@@ -12,6 +12,7 @@ from travel_assistant import CET_TIMEZONE
 from travel_assistant import FUEL_PRICE_URL
 from travel_assistant import get_spark_session
 from travel_assistant import PARTITION_COLS
+from travel_assistant import SPAIN_DATETIME_FORMAT
 from travel_assistant import TABLE_PATH
 from travel_assistant.entity import SpainFuelPrice
 from travel_assistant.schema import SPAIN_FUEL_PRICES_SCHEMA
@@ -23,21 +24,37 @@ def update_spain_fuel_price_table() -> None:
     response_data = get_spain_fuel_price_raw_data()
     spain_fuel_data = map_spain_fuel_data(response_data)
     spain_fuel_df = create_spain_fuel_dataframe(spain_fuel_data)
-    spain_fuel_df.write.format("delta").mode("append").partitionBy(PARTITION_COLS).save(TABLE_PATH)
+    logger.info("Appending Spain Fuel Table to: {0}".format(TABLE_PATH))
+    (
+        spain_fuel_df.write.format("delta")
+        .mode("append")
+        .partitionBy(PARTITION_COLS)
+        .option("mergeSchema", "true")
+        .save(TABLE_PATH)
+    )
 
 
 def get_spain_fuel_price_raw_data() -> dict:
     logger.info("Getting fuel price data")
     response = requests.get(FUEL_PRICE_URL)
     data = response.json()
+    logger.info("Status = {0}".format(data.get("ResultadoConsulta")))
     return data
 
 
 def map_spain_fuel_data(spain_fuel_data):
     def _map_spain_fuel_price_wrapped_func(record):
-        return map_spain_fuel_price(record, spain_fuel_data.get("Fecha"))
+        return map_spain_fuel_price(record, utc_datetime_obj)
 
     logger.info("Mapping Spain fuel data")
+    sting_datetime = spain_fuel_data.get("Fecha")
+    datetime_obj = datetime.strptime(sting_datetime, SPAIN_DATETIME_FORMAT)
+    utc_datetime_obj = CET_TIMEZONE.localize(datetime_obj).astimezone(timezone.utc)
+    logger.info(
+        "Datetime = {0}, Date = {1}, Hour = {2}".format(
+            datetime_obj.isoformat(), datetime_obj.date().isoformat(), datetime_obj.hour
+        )
+    )
     spain_fuel_data_list = spain_fuel_data.get("ListaEESSPrecio")
     return map(_map_spain_fuel_price_wrapped_func, spain_fuel_data_list)
 
@@ -54,7 +71,7 @@ def create_spain_fuel_dataframe(spain_fuel_price_list: Iterable[SpainFuelPrice])
     return get_spark_session().createDataFrame(row_list, SPAIN_FUEL_PRICES_SCHEMA)
 
 
-def map_spain_fuel_price(record, sting_datetime) -> SpainFuelPrice:
+def map_spain_fuel_price(record: dict, utc_datetime_obj: datetime) -> SpainFuelPrice:
     def _format_string(string: str) -> str:
         return string.lower().strip()
 
@@ -64,8 +81,6 @@ def map_spain_fuel_price(record, sting_datetime) -> SpainFuelPrice:
             return None
         return formatted_string.replace(",", ".")
 
-    datetime_obj = datetime.strptime(sting_datetime, "%d/%m/%Y %H:%M:%S")
-    utc_datetime_obj = CET_TIMEZONE.localize(datetime_obj).astimezone(timezone.utc)
     return SpainFuelPrice(
         dt=utc_datetime_obj,
         date=utc_datetime_obj.date(),
