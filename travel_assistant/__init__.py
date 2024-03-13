@@ -15,7 +15,7 @@ FUEL_PRICE_URL = (
 def get_spark_session() -> SparkSession:
     builder = (
         SparkSession.builder.master("local[*]")
-        .appName("financial-assistant")
+        .appName("travel-assistant")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.driver.memory", "2g")

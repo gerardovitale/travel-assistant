@@ -26,7 +26,7 @@ class TestFuelPrice(TestCase):
         )
         return (
             configure_spark_with_delta_pip(builder)
-            .appName("finass-tests")
+            .appName("unit-tests")
             .config("spark.driver.memory", "1g")
             .config("spark.executor.memory", "1g")
             .config("spark.driver.maxResultSize", "500m")
