@@ -3,7 +3,6 @@ name = "travel-assistant"
 version = "0.1.0"
 description = ""
 authors = ["Gerardo Vitale <gerardo.vitale.errico@gmail.com>"]
-readme = "README.md"
 packages = [{include = "travel_assistant"}]
 
 [tool.poetry.dependencies]
@@ -12,6 +11,8 @@ requests = "^2.31.0"
 pyspark = "^3.5.1"
 delta-spark = "^3.1.0"
 pydantic = "^2.6.4"
+python-dotenv = "^1.0.0"
+pytz = "^2024.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
