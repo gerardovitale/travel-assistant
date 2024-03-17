@@ -4,5 +4,11 @@ notebook:
 test:
 	time poetry run pytest -vv --durations=0 .
 
-update_spain_fuel_prices:
-	poetry run python3 -u travel_assistant/main.py
+build:
+	docker build -t travass .
+
+run: build
+	docker run --rm \
+	--name travel-assistant \
+	-v ./data/spain-fuel-price:/app/data/spain-fuel-price \
+	travass
