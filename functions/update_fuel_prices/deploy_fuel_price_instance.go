@@ -45,7 +45,7 @@ func DeployInstance(w http.ResponseWriter, r *http.Request) {
 		os.Exit(1)
 	}
 
-	log.Print(w[FUNC-INFO] , "Function execution finish")
+	log.Print(w, "Function execution finish")
 }
 
 func initComputeService() (*compute.Service, error) {
