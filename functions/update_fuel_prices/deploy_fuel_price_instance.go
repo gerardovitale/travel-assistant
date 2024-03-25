@@ -18,12 +18,11 @@ var instanceName = ""
 var machineType = ""
 
 func init() {
-	log.Print("[FUNC-INFO] Starting function execution")
 	functions.HTTP("DeployInstance", DeployInstance)
 }
 
 func DeployInstance(w http.ResponseWriter, r *http.Request) {
-	log.Print("[FUNC-INFO] Deploying instance")
+	log.Print("[FUNC-INFO] Starting function execution")
 
 	projectID = os.Getenv("PROJECT_ID")
 	zone = os.Getenv("ZONE")
@@ -37,6 +36,7 @@ func DeployInstance(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(err)
 	}
 
+	log.Print("[FUNC-INFO] Deploying instance")
 	_, err = createInstance(cs)
 	if err != nil {
 		log.Fatal(err)
@@ -45,7 +45,7 @@ func DeployInstance(w http.ResponseWriter, r *http.Request) {
 		os.Exit(1)
 	}
 
-	log.Print(w, "Function execution finish")
+	fmt.Fprintln(w, "OK")
 }
 
 func initComputeService() (*compute.Service, error) {
@@ -54,21 +54,25 @@ func initComputeService() (*compute.Service, error) {
 }
 
 func createInstance(computeService *compute.Service) (*compute.Operation, error) {
-	fmt.Printf("[FUNC-INFO] Creating Compute Instance with: instanceName = %s, zone = %s, machineType = %s", instanceName, zone, machineType)
+	log.Printf("[FUNC-INFO] Creating Compute Instance with: instanceName = %s, zone = %s, machineType = %s", instanceName, zone, machineType)
 	instance := &compute.Instance{
-		Name:              instanceName,
+		Name: instanceName,
+		Labels: map[string]string{
+			"goog-ec-src":  "vm_add-rest",
+			"container-vm": "cos-stable-109-17800-147-38",
+		},
 		MachineType:       fmt.Sprintf("zones/%s/machineTypes/%s", zone, machineType),
 		NetworkInterfaces: getNetworkInterfaces(),
 		Scheduling:        getScheduling(),
 		Disks:             getAttachedDisks(),
 		Metadata:          getMetadata(),
 	}
-	fmt.Printf("[FUNC-INFO] Calling computeService.Instances.Insert with PROJECT_ID = %s, ZONE = %s, INSTANCE_NAME = %s", projectID, zone, instanceName)
+	log.Printf("[FUNC-INFO] Calling computeService.Instances.Insert with PROJECT_ID = %s, ZONE = %s, INSTANCE_NAME = %s", projectID, zone, instanceName)
 	return computeService.Instances.Insert(projectID, zone, instance).Do()
 }
 
 func getNetworkInterfaces() []*compute.NetworkInterface {
-	fmt.Printf("[FUNC-INFO] Creating Network Interface obj with PROJECT_ID = %s, REGION = %s", projectID, region)
+	log.Printf("[FUNC-INFO] Creating Network Interface obj with PROJECT_ID = %s, REGION = %s", projectID, region)
 	return []*compute.NetworkInterface{
 		{
 			Name:       "default",
@@ -85,12 +89,12 @@ func getNetworkInterfaces() []*compute.NetworkInterface {
 }
 
 func getScheduling() *compute.Scheduling {
-	fmt.Println("[FUNC-INFO] Creating Scheduling obj")
+	log.Print("[FUNC-INFO] Creating Scheduling obj")
 	return &compute.Scheduling{Preemptible: true}
 }
 
 func getAttachedDisks() []*compute.AttachedDisk {
-	fmt.Println("[FUNC-INFO] Creating Attached Disk obj")
+	log.Print("[FUNC-INFO] Creating Attached Disk obj")
 	return []*compute.AttachedDisk{
 		{
 			Boot:       true,         // The first disk must be a boot disk.
@@ -99,26 +103,32 @@ func getAttachedDisks() []*compute.AttachedDisk {
 			Interface:  "SCSI",       // SCSI or NVME - NVME only for SSDs
 			InitializeParams: &compute.AttachedDiskInitializeParams{
 				DiskName:    "worker-instance-boot-disk",
-				SourceImage: "projects/debian-cloud/global/images/family/debian-12",
+				DiskType:    "projects/travel-assistant-417315/zones/us-central1-a/diskTypes/pd-standard",
+				SourceImage: "projects/cos-cloud/global/images/cos-stable-109-17800-147-38",
+				DiskSizeGb:  10,
 			},
 		},
 	}
 }
 
 func getMetadata() *compute.Metadata {
-	fmt.Println("[FUNC-INFO] Creating Metadata obj")
-	startupMetadata := "#! /bin/bash\n\necho \"I am STARTING some work at $(date)\" | sudo tee -a $HOME/work.txt"
-	shutdownMetadata := "#! /bin/bash\n\necho \"I am FINISHING some work at $(date)\" | sudo tee -a $(HOME)/work.txt"
+	log.Print("[FUNC-INFO] Creating Metadata obj")
+	containerDeclaration := `
+	spec:
+	  containers:
+	  - name: travel-assistant
+	    image: registry.hub.docker.com/gerardovitale/travel-assistant-update-fuel-prices:latest
+	    stdin: false
+	    tty: false
+	  restartPolicy: Never
+    `
 
+	log.Printf("[FUNC-INFO] Adding Metadata gce-container-declaration = '%s'", containerDeclaration)
 	return &compute.Metadata{
 		Items: []*compute.MetadataItems{
 			{
-				Key:   "startup-script",
-				Value: &startupMetadata,
-			},
-			{
-				Key:   "shutdown-script",
-				Value: &shutdownMetadata,
+				Key:   "gce-container-declaration",
+				Value: &containerDeclaration,
 			},
 		},
 	}
