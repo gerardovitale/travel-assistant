@@ -269,8 +269,7 @@ class TestFuelPrice(TestCase):
                 hydrogen_price=None,
             ),
         ]
-        test_config = Config()
-        actual_data = map_spain_fuel_data(test_config, test_data)
+        actual_data = map_spain_fuel_data(test_data)
         assert list(actual_data) == expected_data
 
     def test_create_spain_fuel_dataframe(self):

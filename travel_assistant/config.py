@@ -10,8 +10,6 @@ class Config:
         self.PROJECT_ID = os.getenv("PROJECT_ID")
         self.INSTANCE_NAME = os.getenv("INSTANCE_NAME")
         self.GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        self.DATA_SOURCE_TIMEZONE = pytz.timezone("Europe/Madrid")
-        self.DATA_SOURCE_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
         self.DATA_SOURCE_URL = os.getenv("DATA_SOURCE_URL")
         self.DESTINATION_PATH = os.getenv("DATA_DESTINATION_BUTKET") if os.getenv("PROD") else "data/spain-fuel-price"
         self.PARTITION_COLS = ["date", "hour"]

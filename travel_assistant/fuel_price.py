@@ -4,6 +4,7 @@ from datetime import timezone
 from typing import Iterable
 from typing import Optional
 
+import pytz
 import requests
 from pyspark.sql import DataFrame
 from pyspark.sql import Row
@@ -12,12 +13,15 @@ from travel_assistant.config import Config
 from travel_assistant.entity import SpainFuelPrice
 from travel_assistant.schema import SPAIN_FUEL_PRICES_SCHEMA
 
+DATA_SOURCE_TIMEZONE = pytz.timezone("Europe/Madrid")
+DATA_SOURCE_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
+
 logger = logging.getLogger(__name__)
 
 
 def update_spain_fuel_price_table(config: Config) -> None:
     response_data = get_spain_fuel_price_raw_data(config)
-    spain_fuel_data = map_spain_fuel_data(config, response_data)
+    spain_fuel_data = map_spain_fuel_data(response_data)
     spain_fuel_df = create_spain_fuel_dataframe(config, spain_fuel_data)
     logger.info("Appending Spain Fuel Table to: {0}".format(config.DESTINATION_PATH))
     (
@@ -37,14 +41,14 @@ def get_spain_fuel_price_raw_data(config: Config) -> dict:
     return data
 
 
-def map_spain_fuel_data(config: Config, spain_fuel_data: dict):
+def map_spain_fuel_data(spain_fuel_data: dict):
     def _map_spain_fuel_price_wrapped_func(record):
         return map_spain_fuel_price(record, utc_datetime_obj)
 
     logger.info("Mapping Spain fuel data")
     sting_datetime = spain_fuel_data.get("Fecha")
-    datetime_obj = datetime.strptime(sting_datetime, config.DATA_SOURCE_DATETIME_FORMAT)
-    utc_datetime_obj = config.DATA_SOURCE_TIMEZONE.localize(datetime_obj).astimezone(timezone.utc)
+    datetime_obj = datetime.strptime(sting_datetime, DATA_SOURCE_DATETIME_FORMAT)
+    utc_datetime_obj = DATA_SOURCE_TIMEZONE.localize(datetime_obj).astimezone(timezone.utc)
     logger.info(
         "Datetime = {0}, Date = {1}, Hour = {2}".format(
             datetime_obj.isoformat(), datetime_obj.date().isoformat(), datetime_obj.hour
