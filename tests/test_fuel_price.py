@@ -1,6 +1,7 @@
 from datetime import datetime
 from datetime import timezone
 from unittest import TestCase
+from unittest.mock import Mock
 from unittest.mock import patch
 
 from delta import configure_spark_with_delta_pip
@@ -8,6 +9,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import Row
 from pyspark.sql import SparkSession
 
+from travel_assistant.config import Config
 from travel_assistant.entity import SpainFuelPrice
 from travel_assistant.fuel_price import create_spain_fuel_dataframe
 from travel_assistant.fuel_price import get_spain_fuel_price_raw_data
@@ -61,7 +63,9 @@ class TestFuelPrice(TestCase):
         self.mock_logger = logger_patch.start()
 
     def test_get_spain_gas_price_raw_data(self):
-        _ = get_spain_fuel_price_raw_data()
+        mock_config = Mock()
+        mock_config.config = "test_data_source_url"
+        _ = get_spain_fuel_price_raw_data(mock_config)
         self.mock_requests.get.assert_called_once()
         self.mock_requests.get().json.assert_called_once()
 
@@ -265,7 +269,8 @@ class TestFuelPrice(TestCase):
                 hydrogen_price=None,
             ),
         ]
-        actual_data = map_spain_fuel_data(test_data)
+        test_config = Config()
+        actual_data = map_spain_fuel_data(test_config, test_data)
         assert list(actual_data) == expected_data
 
     def test_create_spain_fuel_dataframe(self):
@@ -396,5 +401,7 @@ class TestFuelPrice(TestCase):
             ),
         ]
         expected_df = self.spark.createDataFrame(expected_data, expected_schema)
-        actual_df = create_spain_fuel_dataframe(test_data)
+        mock_config = Mock()
+        mock_config.get_spark_session.return_value = self.spark
+        actual_df = create_spain_fuel_dataframe(mock_config, test_data)
         self.assert_spark_dataframes_equal(expected_df, actual_df)
