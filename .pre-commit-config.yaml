@@ -20,7 +20,7 @@ repos:
       - id: black
         language: python
         language_version: python3.8
-        entry: black --line-length 120 .
+        entry: black --line-length 100 .
         types: [ python ]
 
   - repo: https://github.com/asottile/reorder-python-imports
