@@ -11,16 +11,7 @@ def main():
 
     logging.info("Stating job")
     load_dotenv()
-
-    try:
-        update_spain_fuel_price_table(Config())
-
-    except Py4JJavaError as err:
-        logging.error(err)
-        if "java.lang.NullPointerException" in str(err):
-            logging.info("Retrying... \n\n")
-            update_spain_fuel_price_table(Config())
-
+    update_spain_fuel_price_table(Config())
     logging.info("Job finished")
 
 
