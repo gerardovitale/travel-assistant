@@ -37,4 +37,5 @@ WORKDIR /app
 COPY poetry.lock pyproject.toml ./
 COPY ${SOURCE_PATH} ./$SOURCE_PATH
 RUN poetry install --only main
+COPY cloud_storage_connector/gcs-connector-hadoop3-latest.jar /app/.venv/lib/python3.9/site-packages/pyspark/jars/
 ENTRYPOINT [ "poetry", "run", "python3", "travel_assistant/main.py" ]

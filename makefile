@@ -17,7 +17,28 @@ build-docker:
 run-docker: build-docker
 	docker run --rm \
 	--name travel-assistant \
-	-v ./data/spain-fuel-price:/app/data/spain-fuel-price \
+	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
+	-v $(PWD)/cloud_storage_connector/keyfile-credential.json:/app/cloud_storage_connector/keyfile-credential.json \
+	-e PROD=$(PROD) \
+	-e PROJECT_ID=$(PROJECT_ID) \
+	-e INSTANCE_NAME=$(INSTANCE_NAME) \
+	-e GOOGLE_APPLICATION_CREDENTIALS=$(GOOGLE_APPLICATION_CREDENTIALS) \
+	-e DATA_SOURCE_URL=$(DATA_SOURCE_URL) \
+	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
+	$(DOCKER_LOCAL_IMAGE_NAME)
+
+run-interactive:
+    docker run --rm \
+    -it --entrypoint="/bin/bash" \
+	--name travel-assistant \
+	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
+	-v $(PWD)/cloud_storage_connector/keyfile-credential.json:/app/cloud_storage_connector/keyfile-credential.json \
+	-e PROD=$(PROD) \
+	-e PROJECT_ID=$(PROJECT_ID) \
+	-e INSTANCE_NAME=$(INSTANCE_NAME) \
+	-e GOOGLE_APPLICATION_CREDENTIALS=$(GOOGLE_APPLICATION_CREDENTIALS) \
+	-e DATA_SOURCE_URL=$(DATA_SOURCE_URL) \
+	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
 	$(DOCKER_LOCAL_IMAGE_NAME)
 
 clean-docker:
