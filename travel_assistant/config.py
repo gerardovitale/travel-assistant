@@ -8,7 +8,16 @@ from pyspark.sql import SparkSession
 logger = logging.getLogger(__name__)
 
 
-class Config:
+class Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+class Config(metaclass=Singleton):
     def __init__(self) -> None:
         is_prod_env = True if os.getenv("PROD") else False
         logger.info("Setting Config Obj for: ENV = {0}".format("PROD" if is_prod_env else "TEST"))
@@ -23,16 +32,16 @@ class Config:
         spark_conf = SparkConf()
         spark_conf.setAppName(self.INSTANCE_NAME)
         spark_conf.setMaster("local[*]")
-        spark_conf.set("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        spark_conf.set("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         spark_conf.set("spark.driver.memory", "2g")
         spark_conf.set("spark.executor.memory", "1g")
+        spark_conf.set("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+        spark_conf.set("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         spark_conf.set("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
         spark_conf.set("spark.hadoop.fs.gs.project.id", self.PROJECT_ID)
         spark_conf.set("spark.hadoop.google.cloud.auth.service.account.enable", "true")
         spark_conf.set(
             "spark.hadoop.google.cloud.auth.service.account.json.keyfile",
-            self.GOOGLE_APPLICATION_CREDENTIALS
+            self.GOOGLE_APPLICATION_CREDENTIALS,
         )
         builder = SparkSession.builder.config(conf=spark_conf)
         spark = configure_spark_with_delta_pip(builder).getOrCreate()
