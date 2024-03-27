@@ -11,7 +11,7 @@ class Config:
         self.INSTANCE_NAME = os.getenv("INSTANCE_NAME")
         self.GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         self.DATA_SOURCE_URL = os.getenv("DATA_SOURCE_URL")
-        self.DESTINATION_PATH = os.getenv("DATA_DESTINATION_BUTKET") if os.getenv("PROD") else "data/spain-fuel-price"
+        self.DESTINATION_PATH = os.getenv("DATA_DESTINATION_BUCKET") if os.getenv("PROD") else "data/spain-fuel-price"
         self.PARTITION_COLS = ["date", "hour"]
 
     def get_spark_session(self) -> SparkSession:
