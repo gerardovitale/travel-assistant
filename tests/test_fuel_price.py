@@ -9,7 +9,6 @@ from pyspark.sql import DataFrame
 from pyspark.sql import Row
 from pyspark.sql import SparkSession
 
-from travel_assistant.config import Config
 from travel_assistant.entity import SpainFuelPrice
 from travel_assistant.fuel_price import create_spain_fuel_dataframe
 from travel_assistant.fuel_price import get_spain_fuel_price_raw_data

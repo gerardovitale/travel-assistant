@@ -3,7 +3,6 @@ name = "travel-assistant"
 version = "0.1.0"
 description = ""
 authors = ["Gerardo Vitale <gerardo.vitale.errico@gmail.com>"]
-packages = [{include = "travel_assistant"}]
 
 [tool.poetry.dependencies]
 python = "^3.9"

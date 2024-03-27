@@ -47,7 +47,7 @@ clean-docker:
 	yes | docker volume prune
 
 run-locally:
-	cp $(GOOGLE_CLOUD_STORAGE_CONNECTOR) /Users/gerardovitaleerrico/Library/Caches/pypoetry/virtualenvs/travel-assistant-iA21hhyf-py3.9/lib/python3.9/site-packages/pyspark/jars
+	cp $(GOOGLE_CLOUD_STORAGE_CONNECTOR) $(poetry env info | grep "Virtualenv" -A 4 | grep "Path:" | awk '{print $2}')/lib/python3.9/site-packages/pyspark/jars
 	poetry run python3 travel-assistant/main.py
 
 publish: build

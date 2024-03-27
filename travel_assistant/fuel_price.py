@@ -6,12 +6,11 @@ from typing import Optional
 
 import pytz
 import requests
+from config import Config
+from entity import SpainFuelPrice
 from pyspark.sql import DataFrame
 from pyspark.sql import Row
-
-from travel_assistant.config import Config
-from travel_assistant.entity import SpainFuelPrice
-from travel_assistant.schema import SPAIN_FUEL_PRICES_SCHEMA
+from schema import SPAIN_FUEL_PRICES_SCHEMA
 
 DATA_SOURCE_TIMEZONE = pytz.timezone("Europe/Madrid")
 DATA_SOURCE_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
@@ -67,7 +66,11 @@ def create_spain_fuel_dataframe(config: Config, spain_fuel_price_list: Iterable[
 
     logger.info("Creating Spain fuel dataframe")
     row_list = map(_map_spark_rows, spain_fuel_price_list)
-    return config.get_spark_session().createDataFrame(row_list, SPAIN_FUEL_PRICES_SCHEMA)
+    spain_fuel_df = config.get_spark_session().createDataFrame(row_list, SPAIN_FUEL_PRICES_SCHEMA)
+    if spain_fuel_df.limit(1).rdd.isEmpty():
+        logger.error("The created dataframe is empty")
+        raise EmptyDataframe()
+    return spain_fuel_df
 
 
 def map_spain_fuel_price(record: dict, utc_datetime_obj: datetime) -> SpainFuelPrice:
@@ -110,3 +113,7 @@ def map_spain_fuel_price(record: dict, utc_datetime_obj: datetime) -> SpainFuelP
         gasoline_98_e5_price=_format_float(record.get("Precio Gasolina 98 E5", "")),
         hydrogen_price=_format_float(record.get("Precio Hidrogeno", "")),
     )
+
+
+class EmptyDataframe(Exception):
+    ...
