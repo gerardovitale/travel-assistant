@@ -1,0 +1,27 @@
+ARG PYTHON_VERSION=3.9
+ARG IMAGE_TYPE=slim
+
+FROM python:${PYTHON_VERSION}-${IMAGE_TYPE} as python-base
+ENV POETRY_VERSION=1.6.1
+RUN python3 -m venv /venv && \
+    /venv/bin/pip install --upgrade pip setuptools wheel && \
+    /venv/bin/pip install "poetry==${POETRY_VERSION}"
+
+
+FROM python-base AS build-venv
+COPY ../poetry.lock pyproject.toml ./
+RUN /venv/bin/poetry export --only main --with-credentials --format requirements.txt --output /requirements.txt
+RUN /venv/bin/pip install --disable-pip-version-check -r /requirements.txt
+
+
+FROM eclipse-temurin:11 AS JAVA11
+
+
+FROM gcr.io/distroless/python3-debian11
+ARG SOURCE_PATH=travel_assistant/
+ENV JAVA_HOME=/opt/java/openjdk
+COPY --from=JAVA11 $JAVA_HOME $JAVA_HOME
+COPY --from=build-venv /venv /venv
+COPY ${SOURCE_PATH} ./app
+WORKDIR /app
+ENTRYPOINT ["/venv/bin/python3", "main.py"]

@@ -1,0 +1,21 @@
+FROM debian:11-slim AS build
+RUN apt-get update && \
+    apt-get install --no-install-suggests --no-install-recommends --yes python3-venv gcc libpython3-dev && \
+    python3 -m venv /venv && \
+    /venv/bin/pip install --upgrade pip setuptools wheel
+
+FROM eclipse-temurin:11 AS JAVA11
+
+# Build the virtualenv as a separate step: Only re-execute this step when requirements.txt changes
+FROM build AS build-venv
+COPY ../requirements.txt /requirements.txt
+RUN /venv/bin/pip install --disable-pip-version-check -r /requirements.txt
+
+FROM gcr.io/distroless/python3-debian11
+ARG SOURCE_PATH=travel_assistant/
+ENV JAVA_HOME=/opt/java/openjdk
+COPY --from=JAVA11 $JAVA_HOME $JAVA_HOME
+COPY --from=build-venv /venv /venv
+COPY ${SOURCE_PATH} ./app
+WORKDIR /app
+ENTRYPOINT ["/venv/bin/python3", "main.py"]
