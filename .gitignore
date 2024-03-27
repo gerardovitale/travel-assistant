@@ -217,4 +217,4 @@ data/
 /crontab.log
 /crontab_errors.log
 update_spain_fuel_prices.sh
-keyfile-credential.json
+cloud_storage_connector/keyfile-credential.json
