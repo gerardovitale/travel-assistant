@@ -28,7 +28,7 @@ jobs:
         run: COMMIT_ID=$(git rev-parse --short HEAD)
 
       - name: Check Commit ID
-        run: echo "${{ env.COMMIT_ID }}, $COMMIT_ID, ${{ COMMIT_ID }}"
+        run: echo "${{ env.COMMIT_ID }}, $COMMIT_ID"
 
       - name: Build and push
         uses: docker/build-push-action@v5
