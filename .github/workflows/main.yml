@@ -29,11 +29,12 @@ jobs:
 
       - name: Push image
         run: |
-          IMAGE_ID=${{ secrets.DOCKER_REGISTRY_URL }}/${{ secrets.DOCKER_REPOSITORY_NAME }}/$IMAGE_NAME
+          IMAGE_ID=${{ secrets.DOCKERHUB_USERNAME }}/$IMAGE_NAME
           VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
           echo "$IMAGE_ID:$VERSION"
+          echo "$IMAGE_ID:$COMMIT_ID"
 
       - name: Build and push
         uses: docker/build-push-action@v5
