@@ -5,7 +5,7 @@ on:
     branches: [ "main" ]
 
 env:
-    IMAGE_NAME: update_fuel_prices
+  IMAGE_NAME: image
 
 jobs:
   build:
@@ -25,10 +25,15 @@ jobs:
 
       - name: Get Commit ID
         id: commit
-        run: COMMIT_ID=$(git rev-parse --short HEAD)
+        run: echo "COMMIT_ID=$(git rev-parse --short HEAD)" && echo "$COMMIT_ID"
 
-      - name: Check Commit ID
-        run: echo "${{ env.COMMIT_ID }}, $COMMIT_ID"
+      - name: Push image
+        run: |
+          IMAGE_ID=${{ secrets.DOCKER_REGISTRY_URL }}/${{ secrets.DOCKER_REPOSITORY_NAME }}/$IMAGE_NAME
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          echo IMAGE_ID=$IMAGE_ID
+          echo VERSION=$VERSION
+          echo "$IMAGE_ID:$VERSION"
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -36,4 +41,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/$IMAGE_NAME:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/travel-assistant-update-fuel-prices:latest
