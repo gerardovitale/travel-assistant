@@ -122,13 +122,18 @@ func getMetadata() *compute.Metadata {
 	    tty: false
 	  restartPolicy: Never
     `
-
-	log.Printf("[FUNC-INFO] Adding Metadata gce-container-declaration = '%s'", containerDeclaration)
+	loggingEnable := "true"
+	log.Printf("[FUNC-INFO] Adding Metadata gce-container-declaration = %s and google-logging-enable = %s", containerDeclaration, loggingEnable)
 	return &compute.Metadata{
 		Items: []*compute.MetadataItems{
 			{
 				Key:   "gce-container-declaration",
 				Value: &containerDeclaration,
+			},
+
+			{
+				Key:   "google-logging-enabled",
+				Value: &loggingEnable,
 			},
 		},
 	}
