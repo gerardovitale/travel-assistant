@@ -114,21 +114,25 @@ func getAttachedDisks() []*compute.AttachedDisk {
 func getMetadata() *compute.Metadata {
 	log.Print("[FUNC-INFO] Creating Metadata obj")
 	containerDeclaration := `
-	spec:
-	  containers:
-	  - name: travel-assistant
-	    image: registry.hub.docker.com/gerardovitale/travel-assistant-update-fuel-prices:latest
-	    stdin: false
-	    tty: false
-	  restartPolicy: Never
-    `
-
-	log.Printf("[FUNC-INFO] Adding Metadata gce-container-declaration = '%s'", containerDeclaration)
+  spec:
+    containers:
+      - name: travel-assistant
+        image: registry.hub.docker.com/gerardovitale/travel-assistant-update-fuel-prices:latest
+        stdin: false
+        tty: false
+    restartPolicy: Never
+`
+	loggingEnable := "true"
+	log.Printf("[FUNC-INFO] Adding Metadata gce-container-declaration = %s and google-logging-enable = %s", containerDeclaration, loggingEnable)
 	return &compute.Metadata{
 		Items: []*compute.MetadataItems{
 			{
 				Key:   "gce-container-declaration",
 				Value: &containerDeclaration,
+			},
+			{
+				Key:   "google-logging-enabled",
+				Value: &loggingEnable,
 			},
 		},
 	}
