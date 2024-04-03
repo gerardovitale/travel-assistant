@@ -27,8 +27,8 @@ run-docker: build-docker
 	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
 	$(DOCKER_LOCAL_IMAGE_NAME)
 
-run-interactive:
-    docker run --rm \
+run-interactive: build-docker
+	docker run --rm \
     -it --entrypoint="/bin/bash" \
 	--name travel-assistant \
 	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
@@ -47,8 +47,9 @@ clean-docker:
 	yes | docker volume prune
 
 run-locally:
-	cp $(GOOGLE_CLOUD_STORAGE_CONNECTOR) $(poetry env info | grep "Virtualenv" -A 4 | grep "Path:" | awk '{print $2}')/lib/python3.9/site-packages/pyspark/jars
-	poetry run python3 travel-assistant/main.py
+	cp $(GOOGLE_CLOUD_STORAGE_CONNECTOR) \
+	   $(shell poetry env info | grep "Virtualenv" -A 4 | awk '/Path:/ {print $$2}')/lib/python3.9/site-packages/pyspark/jars
+	poetry run python3 travel_assistant/main.py
 
 publish: build
 	./scripts/docker-publish-update-fuel-prices.sh
