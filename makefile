@@ -18,7 +18,7 @@ run-docker: build-docker
 	docker run --rm \
 	--name travel-assistant \
 	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
-	-v $(PWD)/cloud_storage_connector/keyfile-credential.json:/app/cloud_storage_connector/keyfile-credential.json \
+	-v $(PWD)/$(GOOGLE_APPLICATION_CREDENTIALS):/app/$(GOOGLE_APPLICATION_CREDENTIALS) \
 	-e PROD=$(PROD) \
 	-e PROJECT_ID=$(PROJECT_ID) \
 	-e INSTANCE_NAME=$(INSTANCE_NAME) \
@@ -29,10 +29,10 @@ run-docker: build-docker
 
 run-interactive: build-docker
 	docker run --rm \
-    -it --entrypoint="/bin/bash" \
+    -it --entrypoint=/bin/bash \
 	--name travel-assistant \
 	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
-	-v $(PWD)/cloud_storage_connector/keyfile-credential.json:/app/cloud_storage_connector/keyfile-credential.json \
+	-v $(PWD)/$(GOOGLE_APPLICATION_CREDENTIALS):/app/$(GOOGLE_APPLICATION_CREDENTIALS) \
 	-e PROD=$(PROD) \
 	-e PROJECT_ID=$(PROJECT_ID) \
 	-e INSTANCE_NAME=$(INSTANCE_NAME) \
