@@ -39,10 +39,9 @@ func DeployInstance(w http.ResponseWriter, r *http.Request) {
 	log.Print("[FUNC-INFO] Deploying instance")
 	_, err = createInstance(cs)
 	if err != nil {
-		log.Fatal(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("creating instance " + instanceName + "in zone: " + zone))
-		os.Exit(1)
+		log.Fatal(err)
 	}
 
 	fmt.Fprintln(w, "OK")
@@ -54,7 +53,9 @@ func initComputeService() (*compute.Service, error) {
 }
 
 func createInstance(computeService *compute.Service) (*compute.Operation, error) {
-	log.Printf("[FUNC-INFO] Creating Compute Instance with: instanceName = %s, zone = %s, machineType = %s", instanceName, zone, machineType)
+	log.Printf(
+		"[FUNC-INFO] Creating Compute Instance with: instanceName = %s, zone = %s, machineType = %s",
+		instanceName, zone, machineType)
 	instance := &compute.Instance{
 		Name: instanceName,
 		Labels: map[string]string{
@@ -67,7 +68,9 @@ func createInstance(computeService *compute.Service) (*compute.Operation, error)
 		Disks:             getAttachedDisks(),
 		Metadata:          getMetadata(),
 	}
-	log.Printf("[FUNC-INFO] Calling computeService.Instances.Insert with PROJECT_ID = %s, ZONE = %s, INSTANCE_NAME = %s", projectID, zone, instanceName)
+	log.Printf(
+		"[FUNC-INFO] Calling computeService.Instances.Insert with PROJECT_ID = %s, ZONE = %s, INSTANCE_NAME = %s",
+		projectID, zone, instanceName)
 	return computeService.Instances.Insert(projectID, zone, instance).Do()
 }
 
@@ -97,10 +100,10 @@ func getAttachedDisks() []*compute.AttachedDisk {
 	log.Print("[FUNC-INFO] Creating Attached Disk obj")
 	return []*compute.AttachedDisk{
 		{
-			Boot:       true,         // The first disk must be a boot disk.
-			AutoDelete: true,         // Optional
-			Mode:       "READ_WRITE", // Mode should be READ_WRITE or READ_ONLY
-			Interface:  "SCSI",       // SCSI or NVME - NVME only for SSDs
+			Boot:       true,
+			AutoDelete: true,
+			Mode:       "READ_WRITE",
+			Interface:  "SCSI",
 			InitializeParams: &compute.AttachedDiskInitializeParams{
 				DiskName:    "worker-instance-boot-disk",
 				DiskType:    "projects/travel-assistant-417315/zones/us-central1-a/diskTypes/pd-standard",
@@ -117,18 +120,43 @@ func getMetadata() *compute.Metadata {
   spec:
     containers:
       - name: travel-assistant
-        image: registry.hub.docker.com/gerardovitale/travel-assistant-update-fuel-prices:latest
+        image: %s
+        env:
+          - name: PROD
+            value: %s
+          - name: PROJECT_ID
+            value: %s
+          - name: INSTANCE_NAME
+            value: %s
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: %s
+          - name: DATA_SOURCE_URL
+            value: %s
+          - name: DATA_DESTINATION_BUCKET
+            value: %s
         stdin: false
         tty: false
     restartPolicy: Never
 `
+	formatedContainerDeclaration := fmt.Sprintf(
+		containerDeclaration,
+		os.Getenv("DOCKER_IMAGE_TO_DEPLOY"),
+		os.Getenv("PROD"),
+		projectID,
+		instanceName,
+		os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+		os.Getenv("DATA_SOURCE_URL"),
+		os.Getenv("DATA_DESTINATION_BUCKET"),
+	)
 	loggingEnable := "true"
-	log.Printf("[FUNC-INFO] Adding Metadata gce-container-declaration = %s and google-logging-enable = %s", containerDeclaration, loggingEnable)
+	log.Printf(
+		"[FUNC-INFO] Adding Metadata gce-container-declaration = %s and google-logging-enable = %s",
+		containerDeclaration, loggingEnable)
 	return &compute.Metadata{
 		Items: []*compute.MetadataItems{
 			{
 				Key:   "gce-container-declaration",
-				Value: &containerDeclaration,
+				Value: &formatedContainerDeclaration,
 			},
 			{
 				Key:   "google-logging-enabled",
