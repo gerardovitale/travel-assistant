@@ -23,7 +23,7 @@ class Config(metaclass=Singleton):
         logger.info("Setting Config Obj for: ENV = {0}".format("PROD" if is_prod_env else "TEST"))
         self.PROJECT_ID = os.getenv("PROJECT_ID")
         self.INSTANCE_NAME = os.getenv("INSTANCE_NAME")
-        self.GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        self.GOOGLE_APPLICATION_CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_PATH")
         self.DATA_SOURCE_URL = os.getenv("DATA_SOURCE_URL")
         self.DESTINATION_PATH = os.getenv("DATA_DESTINATION_BUCKET") if is_prod_env else "data/spain-fuel-price"
         self.PARTITION_COLS = ["date", "hour"]
@@ -41,7 +41,7 @@ class Config(metaclass=Singleton):
         spark_conf.set("spark.hadoop.google.cloud.auth.service.account.enable", "true")
         spark_conf.set(
             "spark.hadoop.google.cloud.auth.service.account.json.keyfile",
-            self.GOOGLE_APPLICATION_CREDENTIALS,
+            self.GOOGLE_APPLICATION_CREDENTIALS_PATH,
         )
         builder = SparkSession.builder.config(conf=spark_conf)
         spark = configure_spark_with_delta_pip(builder).getOrCreate()
