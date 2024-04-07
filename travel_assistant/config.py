@@ -1,7 +1,10 @@
+import json
 import logging
 import os
+import tempfile
 
 from delta import configure_spark_with_delta_pip
+from google.cloud import secretmanager
 from pyspark import SparkConf
 from pyspark.sql import SparkSession
 
@@ -23,7 +26,6 @@ class Config(metaclass=Singleton):
         logger.info("Setting Config Obj for: ENV = {0}".format("PROD" if is_prod_env else "TEST"))
         self.PROJECT_ID = os.getenv("PROJECT_ID")
         self.INSTANCE_NAME = os.getenv("INSTANCE_NAME")
-        self.GOOGLE_APPLICATION_CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_PATH")
         self.DATA_SOURCE_URL = os.getenv("DATA_SOURCE_URL")
         self.DESTINATION_PATH = os.getenv("DATA_DESTINATION_BUCKET") if is_prod_env else "data/spain-fuel-price"
         self.PARTITION_COLS = ["date", "hour"]
@@ -39,11 +41,26 @@ class Config(metaclass=Singleton):
         spark_conf.set("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
         spark_conf.set("spark.hadoop.fs.gs.project.id", self.PROJECT_ID)
         spark_conf.set("spark.hadoop.google.cloud.auth.service.account.enable", "true")
-        spark_conf.set(
-            "spark.hadoop.google.cloud.auth.service.account.json.keyfile",
-            self.GOOGLE_APPLICATION_CREDENTIALS_PATH,
-        )
+        self.set_google_storage_connector_config(spark_conf)
         builder = SparkSession.builder.config(conf=spark_conf)
         spark = configure_spark_with_delta_pip(builder).getOrCreate()
         spark.sparkContext.setLogLevel("ERROR")
         return spark
+
+    def set_google_storage_connector_config(self, spark_conf: SparkConf) -> None:
+        credentials = self.get_google_storage_connector_keyfile()
+        with tempfile.NamedTemporaryFile(delete=True) as temp_file:
+            temp_file.write(json.dumps(credentials).encode("UTF-8"))
+            spark_conf.set(
+                "spark.hadoop.google.cloud.auth.service.account.json.keyfile",
+                temp_file.name,
+            )
+
+    def get_google_storage_connector_keyfile(self) -> str:
+        logger.info("Fetching Google Storage Connector Keyfile")
+        client = secretmanager.SecretManagerServiceClient()
+        request = {"name": client.secret_path(self.PROJECT_ID, os.getenv("GCS_SECRET_NAME"))}
+        response = client.access_secret_version(request)
+        logger.info("Google Storage Connector Keyfile Fetched")
+        secret_payload = response.payload.data.decode("UTF-8")
+        return json.loads(secret_payload)

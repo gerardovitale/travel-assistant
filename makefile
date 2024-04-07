@@ -70,7 +70,7 @@ deploy-function:
     --set-env-vars MACHINE_TYPE="$(MACHINE_TYPE)" \
     --set-env-vars DOCKER_IMAGE_TO_DEPLOY="$(DOCKER_IMAGE_TO_DEPLOY)" \
     --set-env-vars PROD="$(PROD)" \
-    --set-env-vars GOOGLE_APPLICATION_CREDENTIALS_PATH="$(GOOGLE_APPLICATION_CREDENTIALS_PATH)" \
+    --set-env-vars GCS_SECRET_NAME="$(GCS_SECRET_NAME)" \
     --set-env-vars DATA_SOURCE_URL="$(DATA_SOURCE_URL)" \
     --set-env-vars DATA_DESTINATION_BUCKET="$(DATA_DESTINATION_BUCKET)"
 

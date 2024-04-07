@@ -128,7 +128,7 @@ func getMetadata() *compute.Metadata {
             value: %s
           - name: INSTANCE_NAME
             value: %s
-          - name: GOOGLE_APPLICATION_CREDENTIALS
+          - name: GCS_SECRET_NAME
             value: %s
           - name: DATA_SOURCE_URL
             value: %s
@@ -144,14 +144,14 @@ func getMetadata() *compute.Metadata {
 		os.Getenv("PROD"),
 		projectID,
 		instanceName,
-		os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+		os.Getenv("GCS_SECRET_NAME"),
 		os.Getenv("DATA_SOURCE_URL"),
 		os.Getenv("DATA_DESTINATION_BUCKET"),
 	)
 	loggingEnable := "true"
 	log.Printf(
 		"[FUNC-INFO] Adding Metadata gce-container-declaration = %s and google-logging-enable = %s",
-		containerDeclaration, loggingEnable)
+		formatedContainerDeclaration, loggingEnable)
 	return &compute.Metadata{
 		Items: []*compute.MetadataItems{
 			{
