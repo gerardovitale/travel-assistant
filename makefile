@@ -27,7 +27,7 @@ run-docker: build-docker
 	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
 	$(DOCKER_LOCAL_IMAGE_NAME)
 
-run-interactive: build-docker
+run-interactively: build-docker
 	docker run --rm \
     -it --entrypoint=/bin/bash \
 	--name travel-assistant \
