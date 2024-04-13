@@ -48,7 +48,9 @@ class Config(metaclass=Singleton):
         return spark
 
     def set_google_storage_connector_config(self, spark_conf: SparkConf) -> None:
+        logger.info("Getting Google Storage Connector Config")
         credentials = self.get_google_storage_connector_keyfile()
+        logger.info("Setting Google Storage Connector Keyfile to the Spark Config")
         with tempfile.NamedTemporaryFile(delete=True) as temp_file:
             temp_file.write(json.dumps(credentials).encode("UTF-8"))
             spark_conf.set(
