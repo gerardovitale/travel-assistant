@@ -51,7 +51,7 @@ class Config(metaclass=Singleton):
         logger.info("Getting Google Storage Connector Config")
         credentials = self.get_google_storage_connector_keyfile()
         logger.info("Setting Google Storage Connector Keyfile to the Spark Config")
-        with tempfile.NamedTemporaryFile(delete=True) as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             temp_file.write(json.dumps(credentials).encode("UTF-8"))
             spark_conf.set(
                 "spark.hadoop.google.cloud.auth.service.account.json.keyfile",
@@ -61,7 +61,7 @@ class Config(metaclass=Singleton):
     def get_google_storage_connector_keyfile(self) -> str:
         logger.info("Fetching Google Storage Connector Keyfile")
         client = secretmanager.SecretManagerServiceClient()
-        request = {"name": client.secret_path(self.PROJECT_ID, os.getenv("GCS_SECRET_NAME"))}
+        request = {"name": client.secret_version_path(self.PROJECT_ID, os.getenv("GCS_SECRET_NAME"), "latest")}
         response = client.access_secret_version(request)
         logger.info("Google Storage Connector Keyfile Fetched")
         secret_payload = response.payload.data.decode("UTF-8")
