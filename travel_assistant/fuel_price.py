@@ -6,11 +6,12 @@ from typing import Optional
 
 import pytz
 import requests
-from config import Config
-from entity import SpainFuelPrice
 from pyspark.sql import DataFrame
 from pyspark.sql import Row
-from schema import SPAIN_FUEL_PRICES_SCHEMA
+
+from travel_assistant.config import Config
+from travel_assistant.entity import SpainFuelPrice
+from travel_assistant.schema import SPAIN_FUEL_PRICES_SCHEMA
 
 DATA_SOURCE_TIMEZONE = pytz.timezone("Europe/Madrid")
 DATA_SOURCE_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
@@ -24,6 +25,7 @@ def update_spain_fuel_price_table(config: Config) -> None:
     spain_fuel_df = create_spain_fuel_dataframe(config, spain_fuel_data)
     logger.info("Appending Spain Fuel Table to: {0}".format(config.DESTINATION_PATH))
     (
+        # ToDo: what about when the actual data already exist in the table?
         spain_fuel_df.write.format("delta")
         .mode("append")
         .partitionBy(config.PARTITION_COLS)

@@ -16,6 +16,7 @@ var zone = ""
 var region = ""
 var instanceName = ""
 var machineType = ""
+var computeServiceAccountEmail = ""
 
 func init() {
 	functions.HTTP("DeployInstance", DeployInstance)
@@ -24,11 +25,12 @@ func init() {
 func DeployInstance(w http.ResponseWriter, r *http.Request) {
 	log.Print("[FUNC-INFO] Starting function execution")
 
-	projectID = os.Getenv("PROJECT_ID")
-	zone = os.Getenv("ZONE")
-	region = os.Getenv("REGION")
-	instanceName = os.Getenv("INSTANCE_NAME")
-	machineType = os.Getenv("MACHINE_TYPE")
+	projectID = os.Getenv("G_CLOUD_PROJECT_ID")
+	zone = os.Getenv("G_CLOUD_COMPUTE_ZONE")
+	region = os.Getenv("G_CLOUD_REGION")
+	instanceName = os.Getenv("G_CLOUD_COMPUTE_INSTANCE_NAME")
+	machineType = os.Getenv("G_CLOUD_COMPUTE_MACHINE_TYPE")
+	computeServiceAccountEmail = os.Getenv("G_CLOUD_COMPUTE_SERVICE_ACCOUNT")
 
 	cs, err := initComputeService()
 	if err != nil {
@@ -58,6 +60,7 @@ func createInstance(computeService *compute.Service) (*compute.Operation, error)
 		instanceName, zone, machineType)
 	instance := &compute.Instance{
 		Name: instanceName,
+		ServiceAccounts: []*compute.ServiceAccount{{Email: computeServiceAccountEmail}},
 		Labels: map[string]string{
 			"goog-ec-src":  "vm_add-rest",
 			"container-vm": "cos-stable-109-17800-147-38",
@@ -69,13 +72,13 @@ func createInstance(computeService *compute.Service) (*compute.Operation, error)
 		Metadata:          getMetadata(),
 	}
 	log.Printf(
-		"[FUNC-INFO] Calling computeService.Instances.Insert with PROJECT_ID = %s, ZONE = %s, INSTANCE_NAME = %s",
+		"[FUNC-INFO] Calling computeService.Instances.Insert with G_CLOUD_PROJECT_ID = %s, G_CLOUD_COMPUTE_ZONE = %s, G_CLOUD_COMPUTE_INSTANCE_NAME = %s",
 		projectID, zone, instanceName)
 	return computeService.Instances.Insert(projectID, zone, instance).Do()
 }
 
 func getNetworkInterfaces() []*compute.NetworkInterface {
-	log.Printf("[FUNC-INFO] Creating Network Interface obj with PROJECT_ID = %s, REGION = %s", projectID, region)
+	log.Printf("[FUNC-INFO] Creating Network Interface obj with G_CLOUD_PROJECT_ID = %s, G_CLOUD_REGION = %s", projectID, region)
 	return []*compute.NetworkInterface{
 		{
 			Name:       "default",
@@ -124,11 +127,11 @@ func getMetadata() *compute.Metadata {
         env:
           - name: PROD
             value: %s
-          - name: PROJECT_ID
+          - name: G_CLOUD_PROJECT_ID
             value: %s
-          - name: INSTANCE_NAME
+          - name: G_CLOUD_COMPUTE_INSTANCE_NAME
             value: %s
-          - name: GCS_SECRET_NAME
+          - name: G_CLOUD_COMPUTE_SECRET_NAME
             value: %s
           - name: DATA_SOURCE_URL
             value: %s
@@ -140,11 +143,11 @@ func getMetadata() *compute.Metadata {
 `
 	formatedContainerDeclaration := fmt.Sprintf(
 		containerDeclaration,
-		os.Getenv("DOCKER_IMAGE_TO_DEPLOY"),
+		os.Getenv("G_CLOUD_COMPUTE_DOCKER_IMAGE_TO_DEPLOY"),
 		os.Getenv("PROD"),
 		projectID,
 		instanceName,
-		os.Getenv("GCS_SECRET_NAME"),
+		os.Getenv("G_CLOUD_COMPUTE_SECRET_NAME"),
 		os.Getenv("DATA_SOURCE_URL"),
 		os.Getenv("DATA_DESTINATION_BUCKET"),
 	)

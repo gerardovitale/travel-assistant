@@ -1,10 +1,11 @@
 import logging
 
-from config import Config
 from dotenv import load_dotenv
-from fuel_price import update_spain_fuel_price_table
 
-LOGGING_FORMAT = "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s %(filename)s:%(lineno)d"
+from travel_assistant.config import Config
+from travel_assistant.fuel_price import update_spain_fuel_price_table
+
+LOGGING_FORMAT = "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s [%(filename)s:%(lineno)d]"
 LOGGING_LEVEL = logging.DEBUG
 
 

@@ -29,14 +29,15 @@ WORKDIR $PYSETUP_PATH
 
 FROM python-base as development
 ARG SOURCE_PATH=travel_assistant/
+ARG TEST_PATH=tests/
 WORKDIR $PYSETUP_PATH
 COPY --from=JAVA11 $JAVA_HOME $JAVA_HOME
 COPY --from=builder-base $POETRY_HOME $POETRY_HOME
 COPY --from=builder-base $PYSETUP_PATH $PYSETUP_PATH
 WORKDIR /app
 COPY poetry.lock pyproject.toml ./
-RUN poetry install --only main
+RUN poetry install
 COPY cloud_storage_connector/gcs-connector-hadoop3-latest.jar /app/.venv/lib/python3.9/site-packages/pyspark/jars/
 COPY ${SOURCE_PATH} ./${SOURCE_PATH}/
-RUN poetry run pip install -e .
-ENTRYPOINT [ "poetry", "run", "python3", "travel_assistant/main.py" ]
+COPY ${TEST_PATH} ./${TEST_PATH}
+ENTRYPOINT [ "poetry", "run", "pytest", "-vv", "." ]

@@ -11,18 +11,22 @@ notebook:
 unittest:
 	time poetry run pytest -vv --durations=0 .
 
+unittest-docker:
+	docker buildx build -f Dockerfile.test -t unit-test-image-$(DOCKER_LOCAL_IMAGE_NAME) .
+	docker run --rm unit-test-image-$(DOCKER_LOCAL_IMAGE_NAME)
+
 build-docker:
-	docker build -f Dockerfile -t $(DOCKER_LOCAL_IMAGE_NAME) .
+	docker buildx build -f Dockerfile -t $(DOCKER_LOCAL_IMAGE_NAME) .
 
 run-docker: build-docker
 	docker run --rm \
 	--name travel-assistant \
 	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
-	-v $(PWD)/$(GOOGLE_APPLICATION_CREDENTIALS):/app/$(GOOGLE_APPLICATION_CREDENTIALS) \
+	-v $(PWD)/$(G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH):/app/$(G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH) \
 	-e PROD=$(PROD) \
-	-e PROJECT_ID=$(PROJECT_ID) \
-	-e INSTANCE_NAME=$(INSTANCE_NAME) \
-	-e GOOGLE_APPLICATION_CREDENTIALS=$(GOOGLE_APPLICATION_CREDENTIALS) \
+	-e G_CLOUD_PROJECT_ID=$(G_CLOUD_PROJECT_ID) \
+	-e G_CLOUD_COMPUTE_INSTANCE_NAME=$(G_CLOUD_COMPUTE_INSTANCE_NAME) \
+	-e G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH=$(G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH) \
 	-e DATA_SOURCE_URL=$(DATA_SOURCE_URL) \
 	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
 	$(DOCKER_LOCAL_IMAGE_NAME)
@@ -32,11 +36,11 @@ run-interactively: build-docker
     -it --entrypoint=/bin/bash \
 	--name travel-assistant \
 	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
-	-v $(PWD)/$(GOOGLE_APPLICATION_CREDENTIALS):/app/$(GOOGLE_APPLICATION_CREDENTIALS) \
+	-v $(PWD)/$(G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH):/app/$(G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH) \
 	-e PROD=$(PROD) \
-	-e PROJECT_ID=$(PROJECT_ID) \
-	-e INSTANCE_NAME=$(INSTANCE_NAME) \
-	-e GOOGLE_APPLICATION_CREDENTIALS=$(GOOGLE_APPLICATION_CREDENTIALS) \
+	-e G_CLOUD_PROJECT_ID=$(G_CLOUD_PROJECT_ID) \
+	-e G_CLOUD_COMPUTE_INSTANCE_NAME=$(G_CLOUD_COMPUTE_INSTANCE_NAME) \
+	-e G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH=$(G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH) \
 	-e DATA_SOURCE_URL=$(DATA_SOURCE_URL) \
 	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
 	$(DOCKER_LOCAL_IMAGE_NAME)
@@ -47,30 +51,30 @@ clean-docker:
 	yes | docker volume prune
 
 run-locally:
-	cp $(GOOGLE_CLOUD_STORAGE_CONNECTOR) \
-	   $(shell poetry env info | grep "Virtualenv" -A 4 | awk '/Path:/ {print $$2}')/lib/python3.9/site-packages/pyspark/jars
+	cp $(G_CLOUD_COMPUTE_STORAGE_CONNECTOR_PATH) \
+	   $(shell poetry env info | grep "Virtualenv" -A 4 | awk '/Path:/ {print $$2}')/lib/python3.12/site-packages/pyspark/jars
 	poetry run python3 travel_assistant/main.py
 
-publish: build
+publish-docker: build-docker
 	./scripts/docker-publish-update-fuel-prices.sh
 
 deploy-function:
-	gcloud functions deploy "$(FUNCT_NAME)" \
+	gcloud functions deploy "$(G_CLOUD_FUNCT_NAME)" \
     --gen2 \
-    --service-account="$(SERVICE_ACCOUNT)" \
-    --region="$(REGION)" \
-    --runtime="$(RUNTIME)" \
-    --source="$(SOURCE)" \
-    --entry-point="$(ENTRYPOINT)" \
+    --service-account="$(G_CLOUD_FUNCT_SERVICE_ACCOUNT)" \
+    --region="$(G_CLOUD_REGION)" \
+    --runtime="$(G_CLOUD_FUNCT_RUNTIME)" \
+    --source="$(G_CLOUD_FUNCT_SOURCE)" \
+    --entry-point="$(G_CLOUD_FUNCT_ENTRYPOINT)" \
     --trigger-http \
-    --set-env-vars PROJECT_ID="$(PROJECT_ID)" \
-    --set-env-vars ZONE="$(ZONE)" \
-    --set-env-vars REGION="$(REGION)" \
-    --set-env-vars INSTANCE_NAME="$(INSTANCE_NAME)" \
-    --set-env-vars MACHINE_TYPE="$(MACHINE_TYPE)" \
-    --set-env-vars DOCKER_IMAGE_TO_DEPLOY="$(DOCKER_IMAGE_TO_DEPLOY)" \
     --set-env-vars PROD="$(PROD)" \
-    --set-env-vars GCS_SECRET_NAME="$(GCS_SECRET_NAME)" \
+    --set-env-vars G_CLOUD_PROJECT_ID="$(G_CLOUD_PROJECT_ID)" \
+    --set-env-vars G_CLOUD_REGION="$(G_CLOUD_REGION)" \
+    --set-env-vars G_CLOUD_COMPUTE_INSTANCE_NAME="$(G_CLOUD_COMPUTE_INSTANCE_NAME)" \
+    --set-env-vars G_CLOUD_COMPUTE_ZONE="$(G_CLOUD_COMPUTE_ZONE)" \
+    --set-env-vars G_CLOUD_COMPUTE_MACHINE_TYPE="$(G_CLOUD_COMPUTE_MACHINE_TYPE)" \
+    --set-env-vars G_CLOUD_COMPUTE_DOCKER_IMAGE_TO_DEPLOY="$(G_CLOUD_COMPUTE_DOCKER_IMAGE_TO_DEPLOY)" \
+    --set-env-vars G_CLOUD_COMPUTE_SECRET_NAME="$(G_CLOUD_COMPUTE_SECRET_NAME)" \
     --set-env-vars DATA_SOURCE_URL="$(DATA_SOURCE_URL)" \
     --set-env-vars DATA_DESTINATION_BUCKET="$(DATA_DESTINATION_BUCKET)"
 
