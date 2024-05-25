@@ -1,14 +1,11 @@
 from datetime import datetime
 from datetime import timezone
-from unittest import TestCase
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from delta import configure_spark_with_delta_pip
-from pyspark.sql import DataFrame
 from pyspark.sql import Row
-from pyspark.sql import SparkSession
 
+from tests.config_test import BaseTestCase
 from travel_assistant.entity import SpainFuelPrice
 from travel_assistant.fuel_price import create_spain_fuel_dataframe
 from travel_assistant.fuel_price import get_spain_fuel_price_raw_data
@@ -17,40 +14,7 @@ from travel_assistant.fuel_price import map_spain_fuel_price
 from travel_assistant.schema import SPAIN_FUEL_PRICES_SCHEMA
 
 
-class TestFuelPrice(TestCase):
-    @staticmethod
-    def setup_test_spark_session():
-        builder = (
-            SparkSession.builder.master("local[*]")
-            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-            .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        )
-        return (
-            configure_spark_with_delta_pip(builder)
-            .appName("unit-tests")
-            .config("spark.driver.memory", "1g")
-            .config("spark.executor.memory", "1g")
-            .config("spark.driver.maxResultSize", "500m")
-            .getOrCreate()
-        )
-
-    @staticmethod
-    def assert_spark_dataframes_equal(expected_df: DataFrame, actual_df: DataFrame):
-        assert actual_df is not None, "The actual_df is None"
-        assert expected_df.schema == actual_df.schema, "Schema mismatch"
-        expected_rows = expected_df.orderBy(expected_df.columns).collect()
-        actual_rows = actual_df.orderBy(actual_df.columns).collect()
-        assert expected_rows == actual_rows, "Data mismatch"
-
-    @classmethod
-    def setUpClass(cls):
-        cls.spark = cls.setup_test_spark_session()
-        cls.maxDiff = None
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.spark.stop()
-        cls.spark = None
+class TestFuelPrice(BaseTestCase):
 
     def setUp(self):
         requests_patch = patch("travel_assistant.fuel_price.requests")
