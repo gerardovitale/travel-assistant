@@ -34,12 +34,12 @@ def data_quality_metrics(table_name: str):
         def wrapper(*args, **kwargs):
             logger.info(f"Calling `{func.__name__}` with `{[arg for arg in args]}`.")
             df = func(*args, **kwargs)
-            logger.info(f"Collecting data quality metrics for {table_name}.")
+            logger.info(f"Collecting data quality metrics for `{table_name}`.")
             metrics = collect_metrics(df)
-            logger.info(f"Data quality metrics for {table_name} collected.")
+            logger.info(f"Data quality metrics for `{table_name}` collected.")
             metrics.show(truncate=False)
             write_data_quality_metrics(metrics, table_name)
-            logger.info(f"Data quality metrics for {table_name} written.")
+            logger.info(f"Data quality metrics for `{table_name}` written.")
             return df
 
         return wrapper
@@ -53,7 +53,7 @@ def collect_metrics(df: DataFrame) -> DataFrame:
         raise NotDataFrameError(f"PySpark DataFrame was expected, instead got {type(df)}.")
 
     total_rows = float(df.count())
-    logger.info(f"Processing DataFrame with the following total rows: {total_rows}.")
+    logger.info(f"Processing DataFrame with the following total rows: {total_rows:,}.")
     processing_time = datetime.now().astimezone(timezone.utc).isoformat()
     event_time = df.select("timestamp").first().timestamp if "timestamp" in df.columns else None
     metric_rows = [(processing_time, event_time, "DataFrame", "size", "RowNumber", total_rows)]
@@ -70,10 +70,14 @@ def collect_metrics(df: DataFrame) -> DataFrame:
 
 def write_data_quality_metrics(metrics: DataFrame, table_name: str) -> None:
     table_path = f"{BASE_QUALITY_PATH}/{table_name}"
-    logger.info(f"Writing data quality metrics to {table_path}.")
-    (metrics.write
-     .format("delta")
-     .mode("append")
-     .option("mergeSchema", "true")
-     .save(table_path)
-     )
+    logger.info(f"Writing data quality metrics to `{table_path}`.")
+    try:
+        (metrics.write
+         .format("delta")
+         .mode("append")
+         .option("mergeSchema", "true")
+         .save(table_path)
+         )
+    except Exception as e:
+        logger.error(f"Failed to write data quality metrics to `{table_path}`.")
+        logger.error(e)
