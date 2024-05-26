@@ -25,6 +25,22 @@ class TestFuelPrice(BaseTestCase):
         self.addCleanup(logger_patch.stop)
         self.mock_logger = logger_patch.start()
 
+        quality_logger_patch = patch("travel_assistant.quality.logger")
+        self.addCleanup(quality_logger_patch.stop)
+        self.mock_quality_logger = quality_logger_patch.start()
+
+        quality_metrics_patch = patch("travel_assistant.quality.data_quality_metrics")
+        self.addCleanup(quality_metrics_patch.stop)
+        self.mock_quality_metrics = quality_metrics_patch.start()
+
+        collect_metrics_patch = patch("travel_assistant.quality.collect_metrics")
+        self.addCleanup(collect_metrics_patch.stop)
+        self.mock_collect_metrics = collect_metrics_patch.start()
+
+        write_metrics_patch = patch("travel_assistant.quality.write_data_quality_metrics")
+        self.addCleanup(write_metrics_patch.stop)
+        self.mock_write_metrics = write_metrics_patch.start()
+
     def test_get_spain_gas_price_raw_data(self):
         mock_config = Mock()
         mock_config.config = "test_data_source_url"
@@ -235,8 +251,7 @@ class TestFuelPrice(BaseTestCase):
         actual_data = map_spain_fuel_data(test_data)
         assert list(actual_data) == expected_data
 
-    @patch("travel_assistant.fuel_price.data_quality_metrics")
-    def test_create_spain_fuel_dataframe(self, mock_data_quality_metrics: Mock):
+    def test_create_spain_fuel_dataframe(self):
         test_datetime_obj = datetime(2024, 3, 12, 18, 48, 4, tzinfo=timezone.utc)
         test_data = [
             SpainFuelPrice(

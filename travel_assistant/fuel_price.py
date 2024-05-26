@@ -60,7 +60,7 @@ def map_spain_fuel_data(spain_fuel_data: dict):
     return map(_map_spain_fuel_price_wrapped_func, spain_fuel_data_list)
 
 
-@data_quality_metrics("spain_fuel_df")
+@data_quality_metrics("spain-fuel-price")
 def create_spain_fuel_dataframe(config: Config, spain_fuel_price_list: Iterable[SpainFuelPrice]) -> DataFrame:
     def _map_spark_rows(spain_fuel_price: SpainFuelPrice) -> Row:
         spain_fuel_price_dict = spain_fuel_price.model_dump()

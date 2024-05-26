@@ -49,9 +49,11 @@ def data_quality_metrics(table_name: str):
 
 def collect_metrics(df: DataFrame) -> DataFrame:
     if not isinstance(df, DataFrame):
+        logger.error(f"PySpark DataFrame was expected, instead got {type(df)}.")
         raise NotDataFrameError(f"PySpark DataFrame was expected, instead got {type(df)}.")
 
     total_rows = float(df.count())
+    logger.info(f"Processing DataFrame with the following total rows: {total_rows}.")
     processing_time = datetime.now().astimezone(timezone.utc).isoformat()
     event_time = df.select("dt").first().dt if "dt" in df.columns else None
     metric_rows = [(processing_time, event_time, "DataFrame", "size", "row_number", total_rows)]
