@@ -19,18 +19,17 @@ QUALITY_SCHEMA = StructType([
 ])
 
 
+class NotDataFrameError(Exception):
+    pass
+
+
 def data_quality_metrics(table_name: str):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             df = func(*args, **kwargs)
-
-            if not isinstance(df, DataFrame):
-                raise ValueError("The decorated function must return a PySpark DataFrame")
-
             metrics = collect_metrics(df)
             metrics.show(truncate=False)
-
             return df
 
         return wrapper
@@ -39,12 +38,16 @@ def data_quality_metrics(table_name: str):
 
 
 def collect_metrics(df: DataFrame) -> DataFrame:
+    if not isinstance(df, DataFrame):
+        raise NotDataFrameError(f"PySpark DataFrame was expected, instead got {type(df)}.")
+
+    total_rows = float(df.count())
     processing_dt = datetime.now()
-    metric_rows = [(processing_dt, "DataFrame", "size", "row_number", float(df.count()))]
+    metric_rows = [(processing_dt, "DataFrame", "size", "row_number", total_rows)]
+
     for column in df.columns:
-        completeness = df.filter(col(column).isNotNull()).count() / df.count()
+        completeness = df.filter(col(column).isNotNull()).count() / (total_rows if total_rows > 0 else 1.0)
         metric_rows.append((processing_dt, "Column", column, "completeness", completeness))
 
     spark = SparkSession.builder.getOrCreate()
-    metrics_df = spark.createDataFrame(metric_rows, QUALITY_SCHEMA)
-    return metrics_df
+    return spark.createDataFrame(metric_rows, QUALITY_SCHEMA)
