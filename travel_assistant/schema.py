@@ -6,7 +6,7 @@ from pyspark.sql.types import StructType
 
 SPAIN_FUEL_PRICES_SCHEMA = StructType(
     [
-        StructField("dt", StringType()),
+        StructField("timestamp", StringType()),
         StructField("date", StringType()),
         StructField("hour", IntegerType()),
         StructField("zip_code", IntegerType()),

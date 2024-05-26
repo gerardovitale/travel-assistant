@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 
 class SpainFuelPrice(BaseModel):
-    dt: datetime
+    timestamp: datetime
     date: date
     hour: int
     zip_code: int

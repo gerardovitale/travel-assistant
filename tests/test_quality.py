@@ -64,7 +64,7 @@ class TestQuality(BaseTestCase):
         mock_datetime.now.return_value = datetime(2024, 5, 26, tzinfo=timezone.utc)
 
         test_schema = StructType([
-            StructField("dt", StringType(), True),
+            StructField("timestamp", StringType(), True),
             StructField("column1", StringType(), True),
             StructField("column2", StringType(), True),
         ])
@@ -77,10 +77,10 @@ class TestQuality(BaseTestCase):
         test_df = self.spark.createDataFrame(test_data, test_schema)
 
         expected_data = [
-            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "dt", "completeness", 1.0),
-            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "column1", "completeness", 0.75),
-            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "column2", "completeness", 0.0),
-            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "DataFrame", "size", "row_number", 4.0),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "timestamp", "Completeness", 1.0),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "column1", "Completeness", 0.75),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "column2", "Completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "DataFrame", "size", "RowNumber", 4.0),
         ]
         expected_df = self.spark.createDataFrame(expected_data, QUALITY_SCHEMA)
 
@@ -100,10 +100,10 @@ class TestQuality(BaseTestCase):
         test_df = self.spark.createDataFrame(test_data, test_schema)
 
         expected_data = [
-            ("2024-05-26T00:00:00+00:00", None, "Column", "column1", "completeness", 0.0),
-            ("2024-05-26T00:00:00+00:00", None, "Column", "column2", "completeness", 0.0),
-            ("2024-05-26T00:00:00+00:00", None, "Column", "column3", "completeness", 0.0),
-            ("2024-05-26T00:00:00+00:00", None, "DataFrame", "size", "row_number", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "Column", "column1", "Completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "Column", "column2", "Completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "Column", "column3", "Completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "DataFrame", "size", "RowNumber", 0.0),
         ]
         expected_df = self.spark.createDataFrame(expected_data, QUALITY_SCHEMA)
 

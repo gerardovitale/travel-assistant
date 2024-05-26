@@ -79,7 +79,7 @@ class TestFuelPrice(BaseTestCase):
         }
         expected_datetime_obj = datetime(2024, 3, 12, 18, 48, 4, tzinfo=timezone.utc)
         expected_fuel_price = SpainFuelPrice(
-            dt=expected_datetime_obj,
+            timestamp=expected_datetime_obj,
             date=expected_datetime_obj.date(),
             hour=expected_datetime_obj.hour,
             zip_code=23400,
@@ -188,7 +188,7 @@ class TestFuelPrice(BaseTestCase):
         expected_datetime_obj = datetime(2024, 3, 12, 18, 48, 4, tzinfo=timezone.utc)
         expected_data = [
             SpainFuelPrice(
-                dt=expected_datetime_obj,
+                timestamp=expected_datetime_obj,
                 date=expected_datetime_obj.date(),
                 hour=expected_datetime_obj.hour,
                 zip_code=48170,
@@ -218,7 +218,7 @@ class TestFuelPrice(BaseTestCase):
                 hydrogen_price=None,
             ),
             SpainFuelPrice(
-                dt=expected_datetime_obj,
+                timestamp=expected_datetime_obj,
                 date=expected_datetime_obj.date(),
                 hour=expected_datetime_obj.hour,
                 zip_code=15570,
@@ -255,7 +255,7 @@ class TestFuelPrice(BaseTestCase):
         test_datetime_obj = datetime(2024, 3, 12, 18, 48, 4, tzinfo=timezone.utc)
         test_data = [
             SpainFuelPrice(
-                dt=test_datetime_obj,
+                timestamp=test_datetime_obj,
                 date=test_datetime_obj.date(),
                 hour=test_datetime_obj.hour,
                 zip_code=48170,
@@ -285,7 +285,7 @@ class TestFuelPrice(BaseTestCase):
                 hydrogen_price=None,
             ),
             SpainFuelPrice(
-                dt=test_datetime_obj,
+                timestamp=test_datetime_obj,
                 date=test_datetime_obj.date(),
                 hour=test_datetime_obj.hour,
                 zip_code=15570,
@@ -318,7 +318,7 @@ class TestFuelPrice(BaseTestCase):
         expected_schema = SPAIN_FUEL_PRICES_SCHEMA
         expected_data = [
             Row(
-                dt="2024-03-12T18:48:04+00:00",
+                timestamp="2024-03-12T18:48:04+00:00",
                 date="2024-03-12",
                 hour=18,
                 zip_code=48170,
@@ -348,7 +348,7 @@ class TestFuelPrice(BaseTestCase):
                 hydrogen_price=None,
             ),
             Row(
-                dt="2024-03-12T18:48:04+00:00",
+                timestamp="2024-03-12T18:48:04+00:00",
                 date="2024-03-12",
                 hour=18,
                 zip_code=15570,

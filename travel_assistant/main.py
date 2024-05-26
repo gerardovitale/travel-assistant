@@ -6,7 +6,7 @@ from travel_assistant.config import Config
 from travel_assistant.fuel_price import update_spain_fuel_price_table
 
 LOGGING_FORMAT = "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s [%(filename)s:%(lineno)d]"
-LOGGING_LEVEL = logging.DEBUG
+LOGGING_LEVEL = logging.INFO
 
 
 def main():

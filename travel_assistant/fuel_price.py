@@ -64,7 +64,7 @@ def map_spain_fuel_data(spain_fuel_data: dict):
 def create_spain_fuel_dataframe(config: Config, spain_fuel_price_list: Iterable[SpainFuelPrice]) -> DataFrame:
     def _map_spark_rows(spain_fuel_price: SpainFuelPrice) -> Row:
         spain_fuel_price_dict = spain_fuel_price.model_dump()
-        spain_fuel_price_dict["dt"] = spain_fuel_price_dict["dt"].isoformat()
+        spain_fuel_price_dict["timestamp"] = spain_fuel_price_dict["timestamp"].isoformat()
         spain_fuel_price_dict["date"] = spain_fuel_price_dict["date"].isoformat()
         return Row(**spain_fuel_price_dict)
 
@@ -88,7 +88,7 @@ def map_spain_fuel_price(record: dict, utc_datetime_obj: datetime) -> SpainFuelP
         return formatted_string.replace(",", ".")
 
     return SpainFuelPrice(
-        dt=utc_datetime_obj,
+        timestamp=utc_datetime_obj,
         date=utc_datetime_obj.date(),
         hour=utc_datetime_obj.hour,
         zip_code=_format_string(record.get("C.P.", "")),
