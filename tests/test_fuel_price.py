@@ -235,7 +235,8 @@ class TestFuelPrice(BaseTestCase):
         actual_data = map_spain_fuel_data(test_data)
         assert list(actual_data) == expected_data
 
-    def test_create_spain_fuel_dataframe(self):
+    @patch("travel_assistant.fuel_price.data_quality_metrics")
+    def test_create_spain_fuel_dataframe(self, mock_data_quality_metrics: Mock):
         test_datetime_obj = datetime(2024, 3, 12, 18, 48, 4, tzinfo=timezone.utc)
         test_data = [
             SpainFuelPrice(

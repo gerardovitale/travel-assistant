@@ -11,6 +11,7 @@ from pyspark.sql import Row
 
 from travel_assistant.config import Config
 from travel_assistant.entity import SpainFuelPrice
+from travel_assistant.quality import data_quality_metrics
 from travel_assistant.schema import SPAIN_FUEL_PRICES_SCHEMA
 
 DATA_SOURCE_TIMEZONE = pytz.timezone("Europe/Madrid")
@@ -59,6 +60,7 @@ def map_spain_fuel_data(spain_fuel_data: dict):
     return map(_map_spain_fuel_price_wrapped_func, spain_fuel_data_list)
 
 
+@data_quality_metrics("spain_fuel_df")
 def create_spain_fuel_dataframe(config: Config, spain_fuel_price_list: Iterable[SpainFuelPrice]) -> DataFrame:
     def _map_spark_rows(spain_fuel_price: SpainFuelPrice) -> Row:
         spain_fuel_price_dict = spain_fuel_price.model_dump()
