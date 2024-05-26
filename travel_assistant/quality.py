@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from datetime import timezone
 from functools import wraps
 
 from pyspark.sql import DataFrame
@@ -9,11 +10,9 @@ from pyspark.sql.types import DoubleType
 from pyspark.sql.types import StringType
 from pyspark.sql.types import StructField
 from pyspark.sql.types import StructType
-from pyspark.sql.types import TimestampType
 
 logger = logging.getLogger(__name__)
 
-# ISO_MILLIS_TIMESTAMP_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
 BASE_QUALITY_PATH = "data/data-quality-metrics"
 QUALITY_SCHEMA = StructType([
     StructField("processing_time", StringType(), False),
@@ -53,13 +52,13 @@ def collect_metrics(df: DataFrame) -> DataFrame:
         raise NotDataFrameError(f"PySpark DataFrame was expected, instead got {type(df)}.")
 
     total_rows = float(df.count())
-    processing_dt = datetime.now().isoformat()
+    processing_time = datetime.now().astimezone(timezone.utc).isoformat()
     event_time = df.select("dt").first().dt if "dt" in df.columns else None
-    metric_rows = [(processing_dt, event_time, "DataFrame", "size", "row_number", total_rows)]
+    metric_rows = [(processing_time, event_time, "DataFrame", "size", "row_number", total_rows)]
 
     for column in df.columns:
         completeness = df.filter(col(column).isNotNull()).count() / (total_rows if total_rows > 0 else 1.0)
-        metric_rows.append((processing_dt, event_time, "Column", column, "completeness", completeness))
+        metric_rows.append((processing_time, event_time, "Column", column, "completeness", completeness))
 
     return (
         SparkSession.builder.getOrCreate()

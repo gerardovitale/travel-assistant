@@ -1,4 +1,5 @@
 from datetime import datetime
+from datetime import timezone
 from unittest.mock import Mock
 from unittest.mock import patch
 
@@ -60,7 +61,7 @@ class TestQuality(BaseTestCase):
 
     @patch("travel_assistant.quality.datetime")
     def test_collect_metrics(self, mock_datetime: Mock):
-        mock_datetime.now.return_value = datetime(2024, 5, 25)
+        mock_datetime.now.return_value = datetime(2024, 5, 26, tzinfo=timezone.utc)
 
         test_schema = StructType([
             StructField("dt", StringType(), True),
@@ -68,18 +69,18 @@ class TestQuality(BaseTestCase):
             StructField("column2", StringType(), True),
         ])
         test_data = [
-            (datetime(2024, 1, 1).isoformat(), "a", None,),
-            (datetime(2024, 1, 1).isoformat(), "b", None,),
-            (datetime(2024, 1, 1).isoformat(), "c", None,),
-            (datetime(2024, 1, 1).isoformat(), None, None,),
+            ("2024-01-01T00:00:00+00:00", "a", None,),
+            ("2024-01-01T00:00:00+00:00", "b", None,),
+            ("2024-01-01T00:00:00+00:00", "c", None,),
+            ("2024-01-01T00:00:00+00:00", None, None,),
         ]
         test_df = self.spark.createDataFrame(test_data, test_schema)
 
         expected_data = [
-            (datetime(2024, 5, 25).isoformat(), datetime(2024, 1, 1).isoformat(), "Column", "dt", "completeness", 1.0),
-            (datetime(2024, 5, 25).isoformat(), datetime(2024, 1, 1).isoformat(), "Column", "column1", "completeness", 0.75),
-            (datetime(2024, 5, 25).isoformat(), datetime(2024, 1, 1).isoformat(), "Column", "column2", "completeness", 0.0),
-            (datetime(2024, 5, 25).isoformat(), datetime(2024, 1, 1).isoformat(), "DataFrame", "size", "row_number", 4.0),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "dt", "completeness", 1.0),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "column1", "completeness", 0.75),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "Column", "column2", "completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", "2024-01-01T00:00:00+00:00", "DataFrame", "size", "row_number", 4.0),
         ]
         expected_df = self.spark.createDataFrame(expected_data, QUALITY_SCHEMA)
 
@@ -89,7 +90,7 @@ class TestQuality(BaseTestCase):
 
     @patch("travel_assistant.quality.datetime")
     def test_collect_metrics_when_df_is_empty(self, mock_datetime: Mock):
-        mock_datetime.now.return_value = datetime(2024, 5, 25)
+        mock_datetime.now.return_value = datetime(2024, 5, 26, tzinfo=timezone.utc)
         test_schema = StructType([
             StructField("column1", StringType(), True),
             StructField("column2", StringType(), True),
@@ -99,10 +100,10 @@ class TestQuality(BaseTestCase):
         test_df = self.spark.createDataFrame(test_data, test_schema)
 
         expected_data = [
-            (datetime(2024, 5, 25).isoformat(), None, "Column", "column1", "completeness", 0.0),
-            (datetime(2024, 5, 25).isoformat(), None, "Column", "column2", "completeness", 0.0),
-            (datetime(2024, 5, 25).isoformat(), None, "Column", "column3", "completeness", 0.0),
-            (datetime(2024, 5, 25).isoformat(), None, "DataFrame", "size", "row_number", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "Column", "column1", "completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "Column", "column2", "completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "Column", "column3", "completeness", 0.0),
+            ("2024-05-26T00:00:00+00:00", None, "DataFrame", "size", "row_number", 0.0),
         ]
         expected_df = self.spark.createDataFrame(expected_data, QUALITY_SCHEMA)
 
