@@ -80,3 +80,18 @@ deploy-function:
 
 test-function:
 	./scripts/test-cloud-function.sh
+
+# TF BACKEND
+backend.init:
+	cd deploy/backend_support/ && terraform init
+
+backend.plan:
+	cd deploy/backend_support/ && terraform plan
+
+backend.apply:
+	cd deploy/backend_support/ && terraform apply -auto-approve
+
+backend.destroy:
+	cd deploy/backend_support/ && terraform destroy -auto-approve
+
+backend.run: backend.init backend.plan backend.apply
