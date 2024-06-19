@@ -5,6 +5,7 @@ resource "google_service_account" "cicd_service_account" {
 
 resource "google_project_iam_member" "cicd_service_account_roles" {
   for_each = toset([
+    "roles/resourcemanager.projectIamAdmin",
     "roles/storage.objectViewer",
     "roles/storage.objectAdmin",
   ])

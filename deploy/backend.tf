@@ -1,6 +1,6 @@
 terraform {
   backend "gcs" {
     bucket  = "travass-bucket-tf-state"
-    prefix  = "terraform.tfstate"
+    prefix  = "terraform/state"
   }
 }
