@@ -1,11 +1,9 @@
 output "service_account_github_actions_email" {
   description = "Service Account used by GitHub Actions"
-  value       = google_service_account.ci_cd_service_account.email
+  value       = google_service_account.cicd_service_account.email
 }
 
-output "ci_cd_service_account_key" {
-  description = "Service Account Key"
-  value = google_service_account_key.ci_cd_service_account_key.private_key
-  sensitive = true
+output "google_iam_workload_identity_pool_provider_github_name" {
+  description = "Workload Identity Pood Provider ID"
+  value       = google_iam_workload_identity_pool_provider.github.name
 }
-
