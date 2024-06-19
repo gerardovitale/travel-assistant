@@ -20,12 +20,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.8.5
+        uses: actions/checkout@v4.1.7
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2.1.3
@@ -33,14 +28,28 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_IDENTITY_POOL_PROVIDER }}
           service_account: ${{ secrets.GPC_SERVICE_ACCOUNT_EMAIL }}
 
+      - name: Set up Terraform
+        id: setup-tf
+        uses: hashicorp/setup-terraform@v3.1.1
+        with:
+          terraform_version: 1.8.5
+
+      - name: Terraform fmt
+        id: fmt
+        run: terraform fmt -check
+        continue-on-error: true
+
       - name: Initialize Terraform
+        id: init
         working-directory: ./deploy
         run: terraform init
 
       - name: Plan Terraform changes
+        id: plan
         working-directory: ./deploy
         run: terraform plan
 
       - name: Apply Terraform changes
+        id: apply
         working-directory: ./deploy
         run: terraform apply -auto-approve
