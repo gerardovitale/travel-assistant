@@ -34,6 +34,6 @@ resource "google_tags_tag_value" "values" {
 
 resource "google_tags_tag_binding" "bindings" {
   for_each  = local.tags
-  tag_value = google_tags_tag_value.values[each.key].id
-  parent    = "projects/${var.PROJECT}"
+  tag_value = "tagValues/${google_tags_tag_value.values[each.key].id}"
+  parent = "//cloudresourcemanager.googleapis.com/projects/${var.PROJECT}"
 }
