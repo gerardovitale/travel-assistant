@@ -19,21 +19,3 @@ locals {
     "manage_by"   = "cicd-terraform"
   }
 }
-
-resource "google_tags_tag_key" "keys" {
-  for_each   = local.tags
-  short_name = each.key
-  parent     = "projects/${var.PROJECT}"
-}
-
-resource "google_tags_tag_value" "values" {
-  for_each   = local.tags
-  short_name = each.value
-  parent     = "tagKeys/${google_tags_tag_key.keys[each.key].name}"
-}
-
-resource "google_tags_tag_binding" "bindings" {
-  for_each  = local.tags
-  tag_value = google_tags_tag_value.values[each.key].id
-  parent = "//cloudresourcemanager.googleapis.com/projects/${var.PROJECT}"
-}
