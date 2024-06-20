@@ -6,6 +6,8 @@ resource "google_service_account" "cicd_service_account" {
 resource "google_project_iam_member" "cicd_service_account_roles" {
   for_each = toset([
     "roles/resourcemanager.projectIamAdmin",
+    "roles/iam.serviceAccountTokenCreator",
+    "roles/iam.workloadIdentityUser",
     "roles/storage.objectViewer",
     "roles/storage.objectAdmin",
   ])
@@ -18,8 +20,8 @@ resource "google_project_iam_member" "cicd_service_account_roles" {
 resource "google_iam_workload_identity_pool" "github" {
   provider                  = google-beta
   project                   = var.PROJECT
-  workload_identity_pool_id = "github"
-  display_name              = "github"
+  workload_identity_pool_id = "github-actions"
+  display_name              = "github-actions"
   description               = "for GitHub Actions"
 }
 
