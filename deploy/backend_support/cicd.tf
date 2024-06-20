@@ -10,6 +10,7 @@ resource "google_project_iam_member" "cicd_service_account_roles" {
     "roles/iam.workloadIdentityUser",
     "roles/storage.objectViewer",
     "roles/storage.objectAdmin",
+    "roles/resourcemanager.tagAdmin",
   ])
 
   project = var.PROJECT
