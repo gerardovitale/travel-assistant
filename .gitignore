@@ -256,3 +256,6 @@ override.tf.json
 .terraformrc
 terraform.rc
 
+
+## SPECIFICS
+service-account-key.json
