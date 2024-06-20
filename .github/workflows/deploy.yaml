@@ -15,20 +15,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4.1.7
+        with:
+          fetch-depth: 2
 
       - name: Set up output for build-docker-image
         id: check_changes
         run: |
-          # Check if there are changes in the 'specific-folder' directory or specific files
-          if git diff --quiet HEAD~1 HEAD -- travel_assistant Dockerfile poetry.lock pyproject.toml; then
-            echo "changes=false" >> $GITHUB_ENV
+          # Check if there are changes in the 'travel_assistant' directory or specific files [ Dockerfile, poetry.lock, pyproject.toml ]
+          git diff --quiet HEAD~1 HEAD -- travel_assistant Dockerfile poetry.lock pyproject.toml >> changes.txt
+          if [ -s "changes.txt" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
           else
-            echo "changes=true" >> $GITHUB_ENV
+            echo "changes=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Set output
-        id: set_output
-        run: echo "::set-output name=changes::$changes"
 
   build-docker-image:
     runs-on: ubuntu-latest
