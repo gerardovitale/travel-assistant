@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-docker-image:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,6 +34,7 @@ jobs:
 
   terraform-deploy:
     runs-on: ubuntu-latest
+    needs: build-docker-image
 
     env:
       TF_VAR_PREFIX: travass
