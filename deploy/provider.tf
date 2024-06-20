@@ -23,7 +23,7 @@ locals {
 resource "google_tags_tag_key" "keys" {
   for_each   = local.tags
   short_name = each.key
-  parent     = var.PROJECT
+  parent     = "projects/${var.PROJECT}"
 }
 
 resource "google_tags_tag_value" "values" {
@@ -35,5 +35,5 @@ resource "google_tags_tag_value" "values" {
 resource "google_tags_tag_binding" "bindings" {
   for_each  = local.tags
   tag_value = google_tags_tag_value.values[each.key].id
-  parent    = var.PROJECT
+  parent    = "projects/${var.PROJECT}"
 }

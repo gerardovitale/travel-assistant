@@ -5,7 +5,7 @@ variable "PREFIX" {
 
 variable "PROJECT" {
   type        = string
-  description = "Project name"
+  description = "Project ID"
 }
 
 variable "REGION" {
