@@ -25,8 +25,14 @@ jobs:
           git diff --quiet HEAD~1 HEAD -- travel_assistant Dockerfile poetry.lock pyproject.toml >> changes.txt
           if [ -s "changes.txt" ]; then
             echo "changes=true" >> $GITHUB_OUTPUT
+            echo "::group::Changes on travel_assistant package => $changes"
+            cat changes.txt
+            echo "::endgroup::"
           else
             echo "changes=false" >> $GITHUB_OUTPUT
+            echo "::group::Changes on travel_assistant package => $changes"
+            cat changes.txt
+            echo "::endgroup::"
           fi
 
   build-docker-image:
