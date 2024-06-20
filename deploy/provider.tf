@@ -29,7 +29,7 @@ resource "google_tags_tag_key" "keys" {
 resource "google_tags_tag_value" "values" {
   for_each   = local.tags
   short_name = each.value
-  parent     = google_tags_tag_key.keys[each.key].name
+  parent     = "tagKeys/${google_tags_tag_key.keys[each.key].name}"
 }
 
 resource "google_tags_tag_binding" "bindings" {
