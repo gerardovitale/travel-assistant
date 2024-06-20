@@ -33,7 +33,7 @@ jobs:
   build-docker-image:
     runs-on: ubuntu-latest
     needs: check-changes-on-main-package
-    if: ${{ env.changes == 'true' }}
+    if: needs.check-changes-on-main-package.outputs.changes == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4.1.7
