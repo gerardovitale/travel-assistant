@@ -28,7 +28,7 @@ WORKDIR $PYSETUP_PATH
 
 
 FROM python-base as development
-ARG SOURCE_PATH=travel_assistant/
+ARG SOURCE_PATH=travel_assistant
 WORKDIR $PYSETUP_PATH
 COPY --from=JAVA11 $JAVA_HOME $JAVA_HOME
 COPY --from=builder-base $POETRY_HOME $POETRY_HOME

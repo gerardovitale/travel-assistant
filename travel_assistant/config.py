@@ -22,12 +22,12 @@ class Singleton(type):
 
 class Config(metaclass=Singleton):
     def __init__(self) -> None:
-        is_prod_env = True if os.getenv("PROD") else False
-        logger.info("Setting Config Obj for: ENV = {0}".format("PROD" if is_prod_env else "TEST"))
+        self.is_prod_env = True if os.getenv("PROD") else False
+        logger.info("Setting Config Obj for: ENV = {0}".format("PROD" if self.is_prod_env else "TEST"))
         self.G_CLOUD_PROJECT_ID = os.getenv("G_CLOUD_PROJECT_ID")
         self.G_CLOUD_COMPUTE_INSTANCE_NAME = os.getenv("G_CLOUD_COMPUTE_INSTANCE_NAME")
         self.DATA_SOURCE_URL = os.getenv("DATA_SOURCE_URL")
-        self.DESTINATION_PATH = os.getenv("DATA_DESTINATION_BUCKET") if is_prod_env else "data/spain-fuel-price"
+        self.DESTINATION_PATH = os.getenv("DATA_DESTINATION_BUCKET") if self.is_prod_env else "data/spain-fuel-price"
         self.PARTITION_COLS = ["date", "hour"]
 
     def get_spark_session(self) -> SparkSession:
@@ -41,7 +41,8 @@ class Config(metaclass=Singleton):
         spark_conf.set("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")
         spark_conf.set("spark.hadoop.fs.gs.project.id", self.G_CLOUD_PROJECT_ID)
         spark_conf.set("spark.hadoop.google.cloud.auth.service.account.enable", "true")
-        self.set_google_storage_connector_config(spark_conf)
+        if self.is_prod_env:
+            self.set_google_storage_connector_config(spark_conf)
         builder = SparkSession.builder.config(conf=spark_conf)
         spark = configure_spark_with_delta_pip(builder).getOrCreate()
         spark.sparkContext.setLogLevel("ERROR")

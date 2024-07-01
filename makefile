@@ -8,17 +8,14 @@ export
 notebook:
 	poetry run jupyter-notebook
 
-unittest:
-	time poetry run pytest -vv --durations=0 .
-
-unittest-docker:
+travel-assistant.unittest:
 	docker buildx build -f Dockerfile.test -t unit-test-image-$(DOCKER_LOCAL_IMAGE_NAME) .
 	docker run --rm unit-test-image-$(DOCKER_LOCAL_IMAGE_NAME)
 
-build-docker:
+travel-assistant.build:
 	docker buildx build -f Dockerfile -t $(DOCKER_LOCAL_IMAGE_NAME) .
 
-run-docker: build-docker
+travel-assistant.run: travel-assistant.build
 	docker run --rm \
 	--name travel-assistant \
 	-v $(PWD)/data/spain-fuel-price:/app/data/spain-fuel-price \
@@ -31,7 +28,7 @@ run-docker: build-docker
 	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
 	$(DOCKER_LOCAL_IMAGE_NAME)
 
-run-interactively: build-docker
+travel-assistant.run-interactively: travel-assistant.build
 	docker run --rm \
     -it --entrypoint=/bin/bash \
 	--name travel-assistant \
@@ -45,18 +42,13 @@ run-interactively: build-docker
 	-e DATA_DESTINATION_BUCKET=$(DATA_DESTINATION_BUCKET) \
 	$(DOCKER_LOCAL_IMAGE_NAME)
 
+travel-assistant.publish: travel-assistant.build
+	./scripts/docker-publish-update-fuel-prices.sh
+
 clean-docker:
 	yes | docker container prune
 	yes | docker image prune
 	yes | docker volume prune
-
-run-locally:
-	cp $(G_CLOUD_COMPUTE_STORAGE_CONNECTOR_PATH) \
-	   $(shell poetry env info | grep "Virtualenv" -A 4 | awk '/Path:/ {print $$2}')/lib/python3.12/site-packages/pyspark/jars
-	poetry run python3 travel_assistant/main.py
-
-publish-docker: build-docker
-	./scripts/docker-publish-update-fuel-prices.sh
 
 deploy-function:
 	gcloud functions deploy "$(G_CLOUD_FUNCT_NAME)" \
@@ -81,6 +73,7 @@ deploy-function:
 test-function:
 	./scripts/test-cloud-function.sh
 
+
 # TF BACKEND
 backend.init:
 	cd deploy/backend_support/ && terraform init
@@ -95,3 +88,26 @@ backend.destroy:
 	cd deploy/backend_support/ && terraform destroy -auto-approve
 
 backend.run: backend.init backend.plan backend.apply
+
+
+# CLOUD FUNCTIONS
+ingest-function.unittest:
+	cd functions/ingest-fuel-prices/ && time pytest -vv --durations=0 .
+
+travel-assistant.deploy:
+	gcloud run deploy ingest-fuel-prices \
+	--service-account="$(G_CLOUD_FUNCT_SERVICE_ACCOUNT)" \
+	--region="$(G_CLOUD_REGION)" \
+	--platform=managed \
+	--image="docker.io/$(DOCKER_HUB_USERNAME)/$(PROJECT_NAME)-$(DOCKER_LOCAL_IMAGE_NAME):latest" \
+	--set-env-vars PROD="$(PROD)" \
+	--set-env-vars DATA_SOURCE_URL="$(DATA_SOURCE_URL)" \
+	--set-env-vars DATA_DESTINATION_BUCKET="$(DATA_DESTINATION_BUCKET)" \
+	--set-env-vars G_CLOUD_PROJECT_ID="$(G_CLOUD_PROJECT_ID)" \
+	--set-env-vars G_CLOUD_COMPUTE_INSTANCE_NAME="$(G_CLOUD_COMPUTE_INSTANCE_NAME)" \
+	--set-env-vars G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH="$(G_CLOUD_COMPUTE_APPLICATION_CREDENTIALS_PATH)" \
+	--set-env-vars G_CLOUD_COMPUTE_SECRET_NAME="$(G_CLOUD_COMPUTE_SECRET_NAME)" \
+	--tag environment=production \
+	--tag project=travel-assistant \
+	--tag managed-by=gve \
+	--no-allow-unauthenticated
