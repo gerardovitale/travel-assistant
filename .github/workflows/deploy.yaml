@@ -72,6 +72,7 @@ jobs:
       TF_VAR_DATA_DESTINATION_BUCKET: gs://travel-assistant/spain-fuel-price
       TF_VAR_G_CLOUD_RUN_INSTANCE_NAME: update-fuel-prices
       TF_VAR_G_CLOUD_RUN_APPLICATION_CREDENTIALS_PATH: ${{ secrets.G_CLOUD_RUN_APPLICATION_CREDENTIALS_PATH }}
+      TF_VAR_G_CLOUD_COMPUTE_SECRET_NAME: ${{ secrets.G_CLOUD_COMPUTE_SECRET_NAME }}
       TF_VAR_G_CLOUD_RUN_SECRET_NAME: ${{ secrets.G_CLOUD_RUN_SECRET_NAME }}
     steps:
       - name: Checkout repository
