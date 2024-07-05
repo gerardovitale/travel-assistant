@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  Terraform-Deploy:
+  Terraform-Destroy:
     runs-on: ubuntu-latest
     env:
       TF_VAR_PREFIX: travass
@@ -36,22 +36,12 @@ jobs:
         with:
           terraform_version: 1.8.5
 
-      - name: Terraform fmt
-        id: fmt
-        run: terraform fmt -check
-        continue-on-error: true
-
       - name: Initialize Terraform
         id: init
         working-directory: ./deploy
         run: terraform init
 
-      - name: Plan Terraform changes
-        id: plan
-        working-directory: ./deploy
-        run: terraform plan
-
-      - name: Apply Terraform changes
+      - name: Destroy Terraform Resources
         id: apply
         working-directory: ./deploy
-        run: terraform apply -auto-approve
+        run: terraform destroy -auto-approve
