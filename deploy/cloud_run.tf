@@ -61,7 +61,7 @@ resource "google_cloud_run_service" "ingest_fuel_prices" {
         }
       }
 
-      service_account_name = var.gcloud_funct_service_account
+      service_account_name = google_service_account.ingest_fuel_price_service_account.email
     }
 
     metadata {
