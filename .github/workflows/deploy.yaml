@@ -26,14 +26,12 @@ jobs:
           if [ -s "changes.txt" ]; then
             echo "changes=true" >> $GITHUB_OUTPUT
             echo "::group::There were changes on travel_assistant package"
-            echo "cat changes.txt =>"
-            cat changes.txt
+            echo "Changes detected"
             echo "::endgroup::"
           else
             echo "changes=false" >> $GITHUB_OUTPUT
             echo "::group::No changes on travel_assistant package"
-            echo "cat changes.txt =>"
-            cat changes.txt
+            echo "No changes detected"
             echo "::endgroup::"
           fi
 
@@ -69,6 +67,12 @@ jobs:
       TF_VAR_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
       TF_VAR_REGION: europe-west1
       TF_VAR_REPO_NAME: travel-assistant
+      TF_VAR_DOCKER_HUB_USERNAME: gerardovitale
+      TF_VAR_DATA_SOURCE_URL: https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/
+      TF_VAR_DATA_DESTINATION_BUCKET: gs://travel-assistant/spain-fuel-price
+      TF_VAR_G_CLOUD_RUN_INSTANCE_NAME: update-fuel-prices
+      TF_VAR_G_CLOUD_RUN_APPLICATION_CREDENTIALS_PATH: ${{ secrets.G_CLOUD_RUN_APPLICATION_CREDENTIALS_PATH }}
+      TF_VAR_G_CLOUD_RUN_SECRET_NAME: ${{ secrets.G_CLOUD_RUN_SECRET_NAME }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4.1.7
@@ -79,6 +83,10 @@ jobs:
       #   with:
       #     workload_identity_provider: ${{ secrets.GCP_IDENTITY_POOL_PROVIDER }}
       #     service_account: ${{ secrets.GPC_SERVICE_ACCOUNT_EMAIL }}
+
+      # - name: Zip cloud funciton
+      #   working-directory: ./functions/ingest-fuel-prices/
+      #   run: zip -r ingest-fuel-prices-function.zip .
       
       - name: Authenticate to Google Cloud
         id: auth
