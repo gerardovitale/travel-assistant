@@ -8,6 +8,7 @@ resource "google_project_iam_member" "cicd_service_account_roles" {
     "roles/resourcemanager.projectIamAdmin",
     "roles/iam.serviceAccountTokenCreator",
     "roles/iam.workloadIdentityUser",
+    "roles/storage.admin",
     "roles/storage.objectViewer",
     "roles/storage.objectAdmin",
     "roles/resourcemanager.tagAdmin",
