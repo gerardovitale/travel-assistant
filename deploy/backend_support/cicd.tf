@@ -1,17 +1,41 @@
+resource "google_project_service" "iam" {
+  project = var.PROJECT
+  service = "iam.googleapis.com"
+}
+
 resource "google_service_account" "cicd_service_account" {
+  depends_on = [google_project_service.iam]
   account_id   = "${var.PREFIX}-cicd"
   display_name = "CI/CD Service Account"
 }
 
+resource "google_project_iam_custom_role" "cicd_custom_role" {
+  depends_on = [google_project_service.iam]
+  role_id     = "cicdCustomRole"
+  title       = "CICD Custom Role"
+  description = "Minimum permission for CICD"
+  permissions = [
+    "storage.buckets.create",
+    "storage.buckets.get",
+    "iam.serviceAccounts.create",
+    "iam.serviceAccounts.actAs",
+    "run.services.create",
+    "run.services.get",
+    "run.services.delete",
+  ]
+  project = var.PROJECT
+}
+
 resource "google_project_iam_member" "cicd_service_account_roles" {
+  depends_on = [google_project_service.iam]
   for_each = toset([
     "roles/resourcemanager.projectIamAdmin",
     "roles/iam.serviceAccountTokenCreator",
     "roles/iam.workloadIdentityUser",
-    "roles/storage.admin",
     "roles/storage.objectViewer",
     "roles/storage.objectAdmin",
     "roles/resourcemanager.tagAdmin",
+    google_project_iam_custom_role.cicd_custom_role.name,
   ])
 
   project = var.PROJECT
@@ -47,6 +71,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
 }
 
 resource "google_service_account_iam_member" "github_actions" {
+  depends_on = [google_project_service.iam]
   service_account_id = google_service_account.cicd_service_account.id
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.REPO_NAME}"
