@@ -9,6 +9,7 @@ resource "google_project_iam_member" "ingest_fuel_price_service_account_roles" {
     "roles/secretmanager.secretAccessor",
     "roles/storage.objectAdmin",
     "roles/resourcemanager.tagAdmin",
+    "roles/secretmanager.secretAccessor",
   ])
 
   project = var.PROJECT
