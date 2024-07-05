@@ -1,0 +1,57 @@
+name: "Destroy Infrastructure Manually"
+
+on: workflow_dispatch
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  Terraform-Deploy:
+    runs-on: ubuntu-latest
+    env:
+      TF_VAR_PREFIX: travass
+      TF_VAR_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
+      TF_VAR_REGION: europe-west1
+      TF_VAR_REPO_NAME: travel-assistant
+      TF_VAR_DOCKER_HUB_USERNAME: gerardovitale
+      TF_VAR_DATA_SOURCE_URL: https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/
+      TF_VAR_DATA_DESTINATION_BUCKET: gs://travel-assistant/spain-fuel-price
+      TF_VAR_G_CLOUD_RUN_INSTANCE_NAME: update-fuel-prices
+      TF_VAR_G_CLOUD_RUN_APPLICATION_CREDENTIALS_PATH: ${{ secrets.G_CLOUD_RUN_APPLICATION_CREDENTIALS_PATH }}
+      TF_VAR_G_CLOUD_RUN_SECRET_NAME: ${{ secrets.G_CLOUD_RUN_SECRET_NAME }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.1.7
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2.1.3
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Set up Terraform
+        id: setup-tf
+        uses: hashicorp/setup-terraform@v3.1.1
+        with:
+          terraform_version: 1.8.5
+
+      - name: Terraform fmt
+        id: fmt
+        run: terraform fmt -check
+        continue-on-error: true
+
+      - name: Initialize Terraform
+        id: init
+        working-directory: ./deploy
+        run: terraform init
+
+      - name: Plan Terraform changes
+        id: plan
+        working-directory: ./deploy
+        run: terraform plan
+
+      - name: Apply Terraform changes
+        id: apply
+        working-directory: ./deploy
+        run: terraform apply -auto-approve
