@@ -1,17 +1,20 @@
 import logging
 from datetime import datetime
 from datetime import timezone
-from typing import Optional
 
 import pandas as pd
 import pytz
 import requests
+from google.cloud import storage
 
 from src.entity import SpainFuelPrice
 
-DATA_SOURCE_URL = "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
+DATA_SOURCE_URL = (
+    "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
+)
 DATA_SOURCE_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
 DATA_SOURCE_TIMEZONE = pytz.timezone("Europe/Madrid")
+DATA_DESTINATION_BUCKET = "gs://travel-assistant-417315-spain-fuel-prices"
 
 logger = logging.getLogger(__name__)
 
