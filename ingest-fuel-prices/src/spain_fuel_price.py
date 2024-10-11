@@ -54,7 +54,6 @@ def create_spain_fuel_dataframe(raw_data_response: dict) -> pd.DataFrame:
     datetime_obj = datetime.strptime(sting_datetime, DATA_SOURCE_DATETIME_FORMAT)
     utc_datetime_obj = DATA_SOURCE_TIMEZONE.localize(datetime_obj).astimezone(timezone.utc)
     fuel_df["timestamp"] = utc_datetime_obj.isoformat()
-    fuel_df["date"] = utc_datetime_obj.date().isoformat()
 
     return fuel_df[get_expected_columns()]
 
