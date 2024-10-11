@@ -28,19 +28,20 @@ def extract_fuel_prices_raw_data() -> dict:
         logger.error(f"Error getting fuel price raw data with code: {response.status_code}")
         logger.error(f"Error message: {response.json()}")
         raise requests.exceptions.HTTPError
+    logger.info("Response code: {0}".format(response.status_code))
+    logger.info("Response headers: {0}".format(response.headers))
     raw_data = response.json()
-    logger.info("Status = {0}".format(raw_data.get("ResultadoConsulta")))
+    logger.info("Response status: {0}".format(raw_data.get("ResultadoConsulta")))
     return raw_data
 
 
 def create_spain_fuel_dataframe(raw_data_response: dict) -> pd.DataFrame:
     logger.info("Creating Spain Fuel DataFrame")
+    data = raw_data_response.get("ListaEESSPrecio")
+    logger.info("Number of Data Points: {0}".format(len(data)))
+    logger.info("Existing keys: {0}".format(list(data[0].keys())))
     renaming_map, float_columns = get_renaming_map(), get_float_columns()
-    fuel_df = (
-        pd.DataFrame(raw_data_response.get("ListaEESSPrecio"))
-        .rename(columns=renaming_map)
-        [list(renaming_map.values())]
-    )
+    fuel_df = pd.DataFrame(data).rename(columns=renaming_map)[list(renaming_map.values())]
 
     logger.info("Processing columns")
     for column in fuel_df.columns:
