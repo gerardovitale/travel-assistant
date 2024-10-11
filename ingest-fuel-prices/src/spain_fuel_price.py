@@ -46,7 +46,7 @@ def create_spain_fuel_dataframe(raw_data_response: dict) -> pd.DataFrame:
     for column in fuel_df.columns:
         fuel_df[column] = fuel_df[column].str.lower().str.strip()
         if column in float_columns:
-            fuel_df[column] = pd.to_numeric(fuel_df[column].str.replace(",", "."), errors='coerce')
+            fuel_df[column] = pd.to_numeric(fuel_df[column].str.replace(",", "."), errors="coerce")
 
     logger.info("Adding datetime column")
     sting_datetime = raw_data_response.get("Fecha")
@@ -63,5 +63,5 @@ def write_spain_fuel_prices_data_as_csv(spain_fuel_prices_df: pd.DataFrame) -> N
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(DATA_DESTINATION_BUCKET)
     timestamp = datetime.now().isoformat()
-    blob = bucket.blob(f'spain_fuel_prices_{timestamp}.csv')
-    blob.upload_from_string(spain_fuel_prices_df.to_csv(index=False), 'text/csv')
+    blob = bucket.blob(f"spain_fuel_prices_{timestamp}.csv")
+    blob.upload_from_string(spain_fuel_prices_df.to_csv(index=False), "text/csv")

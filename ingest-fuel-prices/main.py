@@ -21,5 +21,5 @@ def ingest_fuel_prices(request):
     write_spain_fuel_prices_data_as_csv(spain_fuel_price_df)
 
     end_time = time.time()
-    logging.info(f"Job finished! Total processing time: {start_time - end_time}")
+    logging.info(f"Job finished! Total processing time: {end_time - start_time}")
     return "OK"
