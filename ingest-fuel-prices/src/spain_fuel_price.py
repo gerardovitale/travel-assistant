@@ -16,7 +16,7 @@ DATA_SOURCE_URL = (
 )
 DATA_SOURCE_DATETIME_FORMAT = "%d/%m/%Y %H:%M:%S"
 DATA_SOURCE_TIMEZONE = pytz.timezone("Europe/Madrid")
-DATA_DESTINATION_BUCKET = "gs://spain-fuel-prices"
+DATA_DESTINATION_BUCKET = "spain-fuel-prices"
 
 logger = logging.getLogger(__name__)
 
