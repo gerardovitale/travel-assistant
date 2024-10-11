@@ -63,6 +63,6 @@ def write_spain_fuel_prices_data_as_csv(spain_fuel_prices_df: pd.DataFrame) -> N
     logger.info(f"Writing Spain Fuel Price Data to: {DATA_DESTINATION_BUCKET}")
     storage_client = storage.Client()
     bucket = storage_client.get_bucket(DATA_DESTINATION_BUCKET)
-    timestamp = datetime.now().isoformat()
+    timestamp = datetime.now().isoformat(timespec="seconds")
     blob = bucket.blob(f"spain_fuel_prices_{timestamp}.csv")
     blob.upload_from_string(spain_fuel_prices_df.to_csv(index=False), "text/csv")

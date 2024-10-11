@@ -19,7 +19,6 @@ def ingest_fuel_prices(request):
 
     raw_data = extract_fuel_prices_raw_data()
     spain_fuel_price_df = create_spain_fuel_dataframe(raw_data)
-    # spain_fuel_price_df.to_csv(f"../data/{datetime.now().isoformat()}-spain_fuel_prices.csv", index=False)
     write_spain_fuel_prices_data_as_csv(spain_fuel_price_df)
 
     end_time = time.time()
