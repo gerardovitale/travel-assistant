@@ -13,7 +13,7 @@ LOGGING_FORMAT = "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s [%(file
 @functions_framework.http
 def ingest_fuel_prices(request):
     logging.basicConfig(format=LOGGING_FORMAT, level=logging.INFO)
-    logging.info("Starting job")
+    logging.info("Starting Spain fuel data ingestion job")
     start_time = time.time()
 
     raw_data = extract_fuel_prices_raw_data()
@@ -21,5 +21,6 @@ def ingest_fuel_prices(request):
     write_spain_fuel_prices_data_as_csv(spain_fuel_price_df)
 
     end_time = time.time()
-    logging.info(f"Job finished! Total processing time: {end_time - start_time}")
+    logging.info("Job successfully finished!")
+    logging.info(f"Total processing time: {end_time - start_time} seconds")
     return "OK"
