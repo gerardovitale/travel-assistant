@@ -22,5 +22,5 @@ def ingest_fuel_prices(request):
 
     end_time = time.time()
     logging.info("Job successfully finished!")
-    logging.info(f"Total processing time: {end_time - start_time} seconds")
+    logging.info(f"Total processing time: {end_time - start_time} seconds, {(end_time - start_time) / 60} minutes")
     return "OK"

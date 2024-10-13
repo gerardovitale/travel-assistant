@@ -21,8 +21,9 @@ ingest-fuel-prices.deploy:
     --runtime="$(G_CLOUD_FUNCT_RUNTIME)" \
     --source="$(G_CLOUD_FUNCT_SOURCE)" \
     --entry-point="$(G_CLOUD_FUNCT_ENTRYPOINT)" \
-    --trigger-http \
-    --timeout=120s
+    --timeout="$(G_CLOUD_FUNCT_TIMEOUT)" \
+    --max-instances=1 \
+    --trigger-http
 	#--no-allow-unauthenticated
 
 
