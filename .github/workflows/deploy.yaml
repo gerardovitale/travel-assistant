@@ -51,15 +51,15 @@ jobs:
 
       - name: Initialize Terraform
         id: init
-        working-directory: ./deploy
+        working-directory: tf_infra/
         run: terraform init
 
       - name: Plan Terraform changes
         id: plan
-        working-directory: ./deploy
+        working-directory: tf_infra/
         run: terraform plan
 
       - name: Apply Terraform changes
         id: apply
-        working-directory: ./deploy
+        working-directory: tf_infra/
         run: terraform apply -auto-approve
