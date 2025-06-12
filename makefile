@@ -34,15 +34,15 @@ ingest-fuel-prices.deploy:
 
 # TF BACKEND
 backend.init:
-	cd tf_infra/backend_support/ && terraform init
+	cd infra/backend_support/ && terraform init
 
 backend.plan:
-	cd tf_infra/backend_support/ && terraform plan
+	cd infra/backend_support/ && terraform plan
 
 backend.apply:
-	cd tf_infra/backend_support/ && terraform apply -auto-approve
+	cd infra/backend_support/ && terraform apply -auto-approve
 
 backend.destroy:
-	cd tf_infra/backend_support/ && terraform destroy -auto-approve
+	cd infra/backend_support/ && terraform destroy -auto-approve
 
 backend.run: backend.init backend.plan backend.apply
