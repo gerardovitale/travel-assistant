@@ -18,5 +18,11 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
-      - name: Trigger Ingestor Cloud Run Job
-        run: gcloud run jobs execute ${{ env.GCP_RUN_JOB_NAME }} --region ${{ env.GCP_REGION }}
+#      - name: Trigger Ingestor Cloud Run Job
+#        run: gcloud run jobs execute ${{ env.GCP_RUN_JOB_NAME }} --region ${{ env.GCP_REGION }}
+
+      - name: Trigger Ingest Fuel Prices Function
+        run: |
+          gcloud functions call ingest-spain-fuel-prices \
+            --region europe-southwest1 \
+            --data '{}'
