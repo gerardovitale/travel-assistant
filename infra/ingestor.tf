@@ -15,14 +15,6 @@ resource "google_project_iam_member" "cloud_run_job_ingestor_storage_permissions
   member  = "serviceAccount:${google_service_account.fuel_ingestor_sa.email}"
   role    = each.value
 }
-
-# Allow CI/CD service account to act as the ingestor service account
-resource "google_service_account_iam_member" "cicd_can_act_as_ingestor" {
-  service_account_id = google_service_account.fuel_ingestor_sa.name
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${var.PREFIX}-cicd@${var.PROJECT}.iam.gserviceaccount.com"
-}
-
 # Job Definition
 resource "google_cloud_run_v2_job" "fuel_ingestor_job" {
   name     = "${var.APP_NAME}-ingestor-job"
