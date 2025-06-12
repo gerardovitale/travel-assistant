@@ -1,6 +1,6 @@
 # Service Account for Cloud Run job
 resource "google_service_account" "fuel_ingestor_sa" {
-  account_id   = "${var.APP_NAME}-ingestor"
+  account_id   = "${var.APP_NAME}-fuel-ingestor"
   description  = "Fuel Prices Ingestor Service Account created by terraform"
   display_name = "Cloud Run Job Service Account for Fuel Prices Ingestor"
 }
@@ -17,7 +17,7 @@ resource "google_project_iam_member" "cloud_run_job_ingestor_storage_permissions
 }
 # Job Definition
 resource "google_cloud_run_v2_job" "fuel_ingestor_job" {
-  name     = "${var.APP_NAME}-ingestor-job"
+  name     = "${var.APP_NAME}-fuel-ingestor-job"
   location = var.REGION
 
   template {
@@ -27,7 +27,7 @@ resource "google_cloud_run_v2_job" "fuel_ingestor_job" {
       service_account = google_service_account.fuel_ingestor_sa.email
 
       containers {
-        image = "docker.io/${var.DOCKER_HUB_USERNAME}/${var.APP_NAME}-ingestor:${var.DOCKER_IMAGE_TAG}"
+        image = "docker.io/${var.DOCKER_HUB_USERNAME}/${var.APP_NAME}-fuel-ingestor:${var.DOCKER_IMAGE_TAG}"
         resources {
           limits = {
             cpu    = "1"
