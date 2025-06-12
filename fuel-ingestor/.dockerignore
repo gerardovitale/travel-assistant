@@ -1,0 +1,60 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment files
+.env
+*.env
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+.ENV/
+.env/
+
+# Docker-related files
+Dockerfile
+docker-compose.yml
+
+# Selenium-related files
+selenium_logs/
+screenshots/
+
+# Beautiful Soup cache
+.cache/
+
+# Miscellaneous
+*.bak
+*.swp
+*.tmp
+*.temp
+*.old

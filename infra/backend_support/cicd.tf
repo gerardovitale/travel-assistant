@@ -11,7 +11,7 @@ resource "google_service_account" "cicd_service_account" {
 
 resource "google_project_iam_member" "cicd_service_account_roles" {
   depends_on = [google_project_service.iam]
-  for_each   = toset([
+  for_each = toset([
     "roles/resourcemanager.projectIamAdmin",
     "roles/iam.serviceAccountTokenCreator",
     "roles/iam.workloadIdentityUser",

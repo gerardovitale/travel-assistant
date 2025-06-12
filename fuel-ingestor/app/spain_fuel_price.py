@@ -5,10 +5,10 @@ from datetime import timezone
 import pandas as pd
 import pytz
 import requests
+from entity import get_expected_columns
+from entity import get_float_columns
+from entity import get_renaming_map
 from google.cloud import storage
-from src.entity import get_expected_columns
-from src.entity import get_float_columns
-from src.entity import get_renaming_map
 
 DATA_SOURCE_URL = (
     "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"

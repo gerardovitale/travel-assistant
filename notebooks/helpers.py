@@ -2,8 +2,29 @@ from io import StringIO
 from typing import List
 
 import pandas as pd
+import seaborn as sns
 from google.cloud import storage
 from pyspark.sql import SparkSession
+
+BUCKET = "spain-fuel-prices"
+LABEL_LIST = [
+    "repsol",
+    "cepsa",
+    "bp",
+    "shell",
+    "galp",
+    "disa",
+    "ballenoil",
+    "carrefour",
+    "plenoil",
+    "petroprix",
+    "costco",
+]
+SEABORN_PALETTE = "colorblind"
+SEABORN_FIGURE_FIGSIZE = (12, 10)
+
+sns.set_palette(SEABORN_PALETTE)
+sns.set(rc={"figure.figsize": SEABORN_FIGURE_FIGSIZE})
 
 
 def get_spark_session() -> SparkSession:

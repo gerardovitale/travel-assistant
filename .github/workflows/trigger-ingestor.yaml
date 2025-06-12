@@ -1,0 +1,22 @@
+name: Trigger Ingestor
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+env:
+  GCP_RUN_JOB_NAME: travass-ingestor-job
+  GCP_REGION: europe-southwest1
+
+jobs:
+  trigger-ingestor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2.1.7
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Trigger Ingestor Cloud Run Job
+        run: gcloud run jobs execute ${{ env.GCP_RUN_JOB_NAME }} --region ${{ env.GCP_REGION }}

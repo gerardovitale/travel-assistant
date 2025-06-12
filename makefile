@@ -6,6 +6,11 @@ include $(ENV)
 export
 
 
+# CLOUD RUN JOB
+fuel-ingestor.test:
+	./run-docker-test.sh fuel-ingestor
+
+
 # CLOUD FUNCT
 ingest-fuel-prices.test:
 	cd ingest-fuel-prices && time pytest -vv --durations=0 .
