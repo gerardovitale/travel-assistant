@@ -57,12 +57,14 @@ def create_spain_fuel_dataframe(raw_data_response: dict) -> pd.DataFrame:
     return fuel_df[get_expected_columns()]
 
 
-def write_spain_fuel_prices_data_as_csv(spain_fuel_prices_df: pd.DataFrame) -> None:
+def write_spain_fuel_prices_data_as_parquet(spain_fuel_prices_df: pd.DataFrame) -> None:
     logger.info(f"Writing Spain Fuel Price Data to: {DATA_DESTINATION_BUCKET}")
     storage_client = storage.Client()
     logger.info("Getting bucket")
     bucket = storage_client.get_bucket(DATA_DESTINATION_BUCKET)
     timestamp = datetime.now().isoformat(timespec="seconds")
-    blob = bucket.blob(f"spain_fuel_prices_{timestamp}.csv")
-    logger.info("Writing CSV data")
-    blob.upload_from_string(spain_fuel_prices_df.to_csv(index=False), "text/csv")
+    blob = bucket.blob(f"spain_fuel_prices_{timestamp}.parquet")
+    logger.info("Writing Parquet data")
+    blob.upload_from_string(
+        spain_fuel_prices_df.to_parquet(index=False, compression="snappy"), "application/octet-stream"
+    )

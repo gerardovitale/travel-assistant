@@ -1,4 +1,4 @@
-from io import StringIO
+from io import BytesIO
 from typing import List
 
 import pandas as pd
@@ -48,28 +48,27 @@ def read_blobs(bucket_name, blob_name):
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
-    with blob.open("r") as f:
+    with blob.open("rb") as f:
         return f.read()
 
 
-def read_csv_as_pd_df(bucket_name: str, limit: int = None) -> pd.DataFrame:
+def read_parquet_as_pd_df(bucket_name: str, limit: int = None) -> pd.DataFrame:
     df_list = []
-    bucket_list = list_blobs(bucket_name)
+    bucket_list = list(list_blobs(bucket_name))
     if limit:
         print(f"Setting limit to {limit}")
         bucket_list = bucket_list[:limit]
 
     for b in bucket_list:
+        if not b.name.endswith(".parquet"):
+            print(f"Skipping non-parquet file: {b.name}")
+            continue
         print(f"Reading {b.name}")
-        string_csv_data = read_blobs(bucket_name, b.name)
-        csv_data = StringIO(string_csv_data)
-        df = pd.read_csv(csv_data)
-        if "date" in df.columns:
-            print(f"Dropping Date column from {b.name}")
-            df.drop(columns=["date"], inplace=True)
+        raw_data = read_blobs(bucket_name, b.name)
+        df = pd.read_parquet(BytesIO(raw_data))
         df_list.append(df)
 
-    return pd.concat(df_list).reset_index().drop(columns=["index"])
+    return pd.concat(df_list).reset_index(drop=True)
 
 
 def preprocess_spain_fuel_price_df(df: pd.DataFrame, label_list: List[str]) -> pd.DataFrame:

@@ -27,8 +27,6 @@ resource "google_project_iam_member" "cicd_service_account_roles" {
   for_each = toset([
     "roles/storage.admin",
     "roles/run.admin",
-    "roles/cloudfunctions.invoker",
-    "roles/workflows.editor",
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountTokenCreator",
     "roles/iam.workloadIdentityUser",
