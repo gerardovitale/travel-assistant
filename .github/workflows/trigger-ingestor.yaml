@@ -19,4 +19,4 @@ jobs:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
       - name: Trigger Ingestor Cloud Run Job
-        run: gcloud run jobs execute ${{ env.GCP_RUN_JOB_NAME }} --region ${{ env.GCP_REGION }}
+        run: gcloud run jobs execute ${{ env.GCP_RUN_JOB_NAME }} --region ${{ env.GCP_REGION }} --wait
