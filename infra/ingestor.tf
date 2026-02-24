@@ -5,15 +5,17 @@ resource "google_service_account" "fuel_ingestor_sa" {
   display_name = "Cloud Run Job Service Account for Fuel Prices Ingestor"
 }
 
-# Grant necessary permissions
-resource "google_project_iam_member" "cloud_run_job_ingestor_storage_permissions" {
-  for_each = toset([
-    "roles/storage.objectCreator",
-    "roles/storage.objectViewer",
-  ])
-  project = var.PROJECT
-  member  = "serviceAccount:${google_service_account.fuel_ingestor_sa.email}"
-  role    = each.value
+# Grant bucket-level permissions
+resource "google_storage_bucket_iam_member" "fuel_ingestor_bucket_creator" {
+  bucket = google_storage_bucket.fuel_prices_bucket.name
+  role   = "roles/storage.objectCreator"
+  member = "serviceAccount:${google_service_account.fuel_ingestor_sa.email}"
+}
+
+resource "google_storage_bucket_iam_member" "fuel_ingestor_bucket_viewer" {
+  bucket = google_storage_bucket.fuel_prices_bucket.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.fuel_ingestor_sa.email}"
 }
 # Job Definition
 resource "google_cloud_run_v2_job" "fuel_ingestor_job" {
