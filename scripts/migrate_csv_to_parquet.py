@@ -1,12 +1,3 @@
-"""One-time migration script: convert existing CSV files in GCS to Parquet (snappy).
-
-Usage:
-    python scripts/migrate_csv_to_parquet.py [--delete-csv]
-
-Requires:
-    pip install google-cloud-storage pandas pyarrow
-"""
-
 import argparse
 from io import BytesIO
 from io import StringIO

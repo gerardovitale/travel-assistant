@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [ fuel-ingestor ]
+        service: [ fuel-ingestor, fuel-dashboard ]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4.2.2
@@ -50,7 +50,7 @@ jobs:
     needs: test
     strategy:
       matrix:
-        service: [ fuel-ingestor ]
+        service: [ fuel-ingestor, fuel-dashboard ]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4.2.2

@@ -5,10 +5,24 @@ ENV := $(PWD)/.env
 include $(ENV)
 export
 
+test: fuel-ingestor.test fuel-dashboard.test
+
 
 # CLOUD RUN JOB
 fuel-ingestor.test:
 	./run-docker-test.sh fuel-ingestor
+
+
+# FUEL DASHBOARD
+fuel-dashboard.test:
+	./run-docker-test.sh fuel-dashboard
+
+fuel-dashboard.run:
+	cd fuel-dashboard && docker buildx build -t fuel-dashboard . && \
+	docker run --rm -p 8080:8080 \
+		-v $(HOME)/.config/gcloud:/root/.config/gcloud:ro \
+		-e GOOGLE_APPLICATION_CREDENTIALS="" \
+		fuel-dashboard
 
 
 # TF BACKEND

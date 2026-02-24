@@ -51,7 +51,7 @@ Enforced via pre-commit hooks (`.pre-commit-config.yaml`):
 - **gitleaks** for secret detection
 - **terraform_fmt** and **terraform_validate** for Terraform files
 
-Python version: 3.9. Run `pre-commit run --all-files` to check all hooks.
+Python version: 3.13. Run `pre-commit run --all-files` to check all hooks.
 
 ## Key Configuration
 
