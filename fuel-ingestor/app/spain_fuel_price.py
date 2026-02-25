@@ -9,6 +9,8 @@ from entity import get_expected_columns
 from entity import get_float_columns
 from entity import get_renaming_map
 from google.cloud import storage
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 DATA_SOURCE_URL = (
     "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
@@ -22,7 +24,15 @@ logger = logging.getLogger(__name__)
 
 def extract_fuel_prices_raw_data() -> dict:
     logger.info(f"Getting fuel price raw data from {DATA_SOURCE_URL}")
-    response = requests.get(DATA_SOURCE_URL)
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=[500, 502, 503, 504],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    response = session.get(DATA_SOURCE_URL, timeout=30)
     if response.status_code != 200:
         logger.error(f"Error getting fuel price raw data with code: {response.status_code}")
         logger.error(f"Error message: {response.json()}")

@@ -20,10 +20,12 @@ class TestFuelPrice(TestCase):
         self.mock_logger = logger_patch.start()
 
     def test_extract_fuel_prices_raw_data(self):
-        self.mock_requests.get.return_value.status_code = 200
+        mock_session = self.mock_requests.Session.return_value
+        mock_session.get.return_value.status_code = 200
         _ = extract_fuel_prices_raw_data()
-        self.mock_requests.get.assert_called_once()
-        self.mock_requests.get().json.assert_called_once()
+        mock_session.mount.assert_called_once()
+        mock_session.get.assert_called_once()
+        mock_session.get().json.assert_called_once()
 
     def test_create_spain_fuel_dataframe(self):
         test_data = get_response_raw_data()
