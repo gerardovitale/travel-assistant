@@ -1,6 +1,7 @@
 #!/bin/bash
 
-source scripts/logger.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/logger.sh"
 
 # Check if subdirectory name is provided
 if [ -z "$1" ]; then

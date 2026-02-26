@@ -10,12 +10,12 @@ test: fuel-ingestor.test fuel-dashboard.test
 
 # CLOUD RUN JOB
 fuel-ingestor.test:
-	./run-docker-test.sh fuel-ingestor
+	./scripts/run-docker-test.sh fuel-ingestor
 
 
 # FUEL DASHBOARD
 fuel-dashboard.test:
-	./run-docker-test.sh fuel-dashboard
+	./scripts/run-docker-test.sh fuel-dashboard
 
 fuel-dashboard.run:
 	cd fuel-dashboard && docker buildx build -t fuel-dashboard . && \
