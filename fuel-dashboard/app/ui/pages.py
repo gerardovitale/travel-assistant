@@ -12,6 +12,7 @@ from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
 from services.station_service import get_nearest_by_address
 from services.station_service import get_price_trends
+from services.station_service import get_provinces
 from ui.charts import build_trend_chart
 from ui.charts import build_zone_bar_chart
 from ui.components import empty_state
@@ -31,30 +32,51 @@ from ui.view_models import station_summary
 from ui.view_models import trend_kpis
 from ui.view_models import zone_kpis
 
+from data.cache import is_data_ready
+
 logger = logging.getLogger(__name__)
 
 
 def init_ui(app: FastAPI) -> None:
     @ui.page("/")
     def index():
-        with ui.column().classes("w-full max-w-7xl mx-auto gap-3 p-4"):
-            ui.label("Panel de precios de combustible en Espana").classes("text-2xl font-bold")
-            ui.label("Consulta estaciones, tendencias y zonas con una vista mas clara en movil y escritorio.").classes(
-                "text-sm text-gray-600"
-            )
+        page_container = ui.column().classes("w-full max-w-7xl mx-auto gap-3 p-4")
 
-            with ui.tabs().classes("w-full") as tabs:
-                search_tab = ui.tab("Buscar estaciones")
-                trends_tab = ui.tab("Tendencias de precios")
-                zones_tab = ui.tab("Comparar zonas")
+        def _render_dashboard() -> None:
+            page_container.clear()
+            with page_container:
+                ui.label("Panel de precios de combustible en Espana").classes("text-2xl font-bold")
+                ui.label(
+                    "Consulta estaciones, tendencias y zonas con una vista mas clara en movil y escritorio."
+                ).classes("text-sm text-gray-600")
 
-            with ui.tab_panels(tabs, value=search_tab).classes("w-full"):
-                with ui.tab_panel(search_tab):
-                    _build_search_panel()
-                with ui.tab_panel(trends_tab):
-                    _build_trends_panel()
-                with ui.tab_panel(zones_tab):
-                    _build_zones_panel()
+                with ui.tabs().classes("w-full") as tabs:
+                    search_tab = ui.tab("Buscar estaciones")
+                    trends_tab = ui.tab("Tendencias de precios")
+                    zones_tab = ui.tab("Comparar zonas")
+
+                with ui.tab_panels(tabs, value=search_tab).classes("w-full"):
+                    with ui.tab_panel(search_tab):
+                        _build_search_panel()
+                    with ui.tab_panel(trends_tab):
+                        _build_trends_panel()
+                    with ui.tab_panel(zones_tab):
+                        _build_zones_panel()
+
+        if is_data_ready():
+            _render_dashboard()
+        else:
+            with page_container:
+                with ui.column().classes("w-full items-center justify-center py-24 gap-4"):
+                    ui.spinner(size="xl").classes("text-primary")
+                    ui.label("Cargando datos iniciales...").classes("text-lg text-gray-600")
+
+            def check_ready():
+                if is_data_ready():
+                    timer.deactivate()
+                    _render_dashboard()
+
+            timer = ui.timer(1.5, check_ready)
 
     ui.run_with(app, title="Panel de precios de combustible", favicon="⛽")
 
@@ -104,6 +126,9 @@ def _build_search_panel() -> None:
             return
 
         set_status("loading", "Buscando estaciones...")
+        with results_container:
+            with ui.column().classes("w-full items-center py-8"):
+                ui.spinner(size="lg").classes("text-primary")
         search_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
@@ -122,6 +147,7 @@ def _build_search_panel() -> None:
             else:
                 stations = []
 
+            results_container.clear()
             if not stations:
                 set_status("empty", "No se encontraron resultados para esta busqueda.")
                 with results_container:
@@ -191,11 +217,15 @@ def _build_trends_panel() -> None:
             return
 
         set_status("loading", "Cargando tendencia de precios...")
+        with chart_container:
+            with ui.column().classes("w-full items-center py-8"):
+                ui.spinner(size="lg").classes("text-primary")
         trend_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
             trend_period = TrendPeriod(period.value)
             trend_data = get_price_trends(zip_code, fuel_type, trend_period)
+            chart_container.clear()
             if not trend_data:
                 set_status("empty", "No hay datos de tendencia para esta combinacion.")
                 with chart_container:
@@ -231,8 +261,9 @@ def _build_zones_panel() -> None:
     with ui.column().classes("w-full gap-3"):
         with ui.card().classes("w-full p-4"):
             ui.label("Compara zonas por precio promedio de combustible.").classes("text-sm text-gray-600")
+            provinces = get_provinces()
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                province_input = ui.input(label="Provincia", placeholder="Ejemplo: madrid").classes("w-56")
+                province_input = ui.select(options=provinces, label="Provincia", with_input=True).classes("w-56")
                 fuel = fuel_type_select()
                 zones_button = ui.button("Cargar zonas").props("unelevated color=primary")
 
@@ -253,16 +284,20 @@ def _build_zones_panel() -> None:
         summary_container.clear()
         chart_container.clear()
         table_container.clear()
-        province = (province_input.value or "").strip()
+        province = province_input.value
         if not province:
-            set_status("warning", "Introduce una provincia para cargar zonas.")
+            set_status("warning", "Selecciona una provincia para cargar zonas.")
             return
 
         set_status("loading", "Cargando comparativa de zonas...")
+        with chart_container:
+            with ui.column().classes("w-full items-center py-8"):
+                ui.spinner(size="lg").classes("text-primary")
         zones_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
             zones = get_cheapest_zones(province, fuel_type)
+            chart_container.clear()
             if not zones:
                 set_status("empty", "No hay datos de zonas para esta provincia.")
                 with chart_container:

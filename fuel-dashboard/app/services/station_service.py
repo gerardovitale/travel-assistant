@@ -11,6 +11,7 @@ from api.schemas import ZoneResult
 from config import settings
 from services.geocoding import geocode_address
 
+from data.duckdb_engine import get_distinct_provinces
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_nearest_stations
@@ -84,6 +85,10 @@ def get_best_by_address(address: str, fuel_type: FuelType, radius_km: float = No
     df["score"] = settings.price_weight * df["price_rank"] + settings.distance_weight * df["distance_rank"]
     df = df.sort_values("score").head(settings.default_limit)
     return _df_to_station_results(df, fuel_type.value)
+
+
+def get_provinces() -> List[str]:
+    return get_distinct_provinces()
 
 
 def get_cheapest_zones(province: str, fuel_type: FuelType) -> List[ZoneResult]:

@@ -33,9 +33,4 @@ def start_cache_refresh():
         return
     _refresh_thread = threading.Thread(target=_refresh_loop, daemon=True)
     _refresh_thread.start()
-    logger.info(f"Cache refresh started (TTL: {settings.cache_ttl_seconds}s)")
-    logger.info("Waiting for initial data load...")
-    if _data_ready.wait(timeout=60):
-        logger.info("Initial data load complete")
-    else:
-        logger.warning("Initial data load timed out — queries will fail until data is available")
+    logger.info(f"Cache refresh started (TTL: {settings.cache_ttl_seconds}s) — initial load in background")
