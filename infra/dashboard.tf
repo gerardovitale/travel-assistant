@@ -22,7 +22,7 @@
 
 #     scaling {
 #       min_instance_count = 0
-#       max_instance_count = 2
+#       max_instance_count = 1
 #     }
 
 #     containers {
@@ -33,9 +33,11 @@
 #       }
 
 #       resources {
+#         cpu_idle          = true
+#         startup_cpu_boost = true
 #         limits = {
 #           cpu    = "1"
-#           memory = "2Gi"
+#           memory = "512Mi"
 #         }
 #       }
 #     }

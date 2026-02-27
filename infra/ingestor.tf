@@ -24,7 +24,7 @@ resource "google_cloud_run_v2_job" "fuel_ingestor_job" {
 
   template {
     template {
-      timeout         = "1200s"
+      timeout         = "300s"
       max_retries     = 0
       service_account = google_service_account.fuel_ingestor_sa.email
 
@@ -33,7 +33,7 @@ resource "google_cloud_run_v2_job" "fuel_ingestor_job" {
         resources {
           limits = {
             cpu    = "1"
-            memory = "2Gi"
+            memory = "512Mi"
           }
         }
       }

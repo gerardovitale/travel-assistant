@@ -7,7 +7,7 @@ class Settings(BaseSettings):
 
     gcp_project_id: str = "travel-assistant-417315"
     gcs_bucket_name: str = "travel-assistant-spain-fuel-prices"
-    cache_ttl_seconds: int = 3600
+    cache_ttl_seconds: int = 86400
     port: int = 8080
     host: str = "0.0.0.0"
     geocoding_user_agent: str = "spain-fuel-dashboard"
