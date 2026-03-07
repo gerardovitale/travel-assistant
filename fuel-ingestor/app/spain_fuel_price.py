@@ -1,4 +1,5 @@
 import logging
+import ssl
 import time
 from datetime import datetime
 from datetime import timezone
@@ -14,6 +15,7 @@ from requests.adapters import HTTPAdapter
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import Timeout as RequestsTimeout
 from urllib3.util.retry import Retry
+from urllib3.util.ssl_ import create_urllib3_context
 
 DATA_SOURCE_URL = (
     "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
@@ -25,6 +27,17 @@ DATA_DESTINATION_BUCKET = "travel-assistant-spain-fuel-prices"
 logger = logging.getLogger(__name__)
 
 
+class TLSv12Adapter(HTTPAdapter):
+    """HTTPS adapter that forces TLS 1.2 for servers that don't support TLS 1.3."""
+
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = create_urllib3_context()
+        ctx.maximum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_default_certs()
+        kwargs["ssl_context"] = ctx
+        return super().init_poolmanager(*args, **kwargs)
+
+
 def extract_fuel_prices_raw_data() -> dict:
     logger.info(f"Getting fuel price raw data from {DATA_SOURCE_URL}")
     retry_strategy = Retry(
@@ -32,8 +45,9 @@ def extract_fuel_prices_raw_data() -> dict:
         backoff_factor=3,
         status_forcelist=[500, 502, 503, 504],
     )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
+    adapter = TLSv12Adapter(max_retries=retry_strategy)
     session = requests.Session()
+    session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; FuelPriceBot/1.0)"})
     session.mount("https://", adapter)
 
     max_attempts = 3
