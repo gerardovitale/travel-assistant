@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime
 from datetime import timezone
 
@@ -10,6 +11,8 @@ from entity import get_float_columns
 from entity import get_renaming_map
 from google.cloud import storage
 from requests.adapters import HTTPAdapter
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import Timeout as RequestsTimeout
 from urllib3.util.retry import Retry
 
 DATA_SOURCE_URL = (
@@ -25,14 +28,27 @@ logger = logging.getLogger(__name__)
 def extract_fuel_prices_raw_data() -> dict:
     logger.info(f"Getting fuel price raw data from {DATA_SOURCE_URL}")
     retry_strategy = Retry(
-        total=3,
-        backoff_factor=2,
+        total=5,
+        backoff_factor=3,
         status_forcelist=[500, 502, 503, 504],
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session = requests.Session()
     session.mount("https://", adapter)
-    response = session.get(DATA_SOURCE_URL, timeout=30)
+
+    max_attempts = 3
+    retry_delay = 30
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = session.get(DATA_SOURCE_URL, timeout=30)
+            break
+        except (RequestsConnectionError, RequestsTimeout) as exc:
+            if attempt < max_attempts:
+                logger.warning(f"Attempt {attempt}/{max_attempts} failed: {exc}. Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"All {max_attempts} attempts failed. Last error: {exc}")
+                raise
     if response.status_code != 200:
         logger.error(f"Error getting fuel price raw data with code: {response.status_code}")
         logger.error(f"Error message: {response.json()}")

@@ -2,6 +2,7 @@ from unittest import TestCase
 from unittest.mock import patch
 
 import pandas as pd
+import requests
 from entity import get_expected_columns
 from spain_fuel_price import create_spain_fuel_dataframe
 from spain_fuel_price import extract_fuel_prices_raw_data
@@ -26,6 +27,31 @@ class TestFuelPrice(TestCase):
         mock_session.mount.assert_called_once()
         mock_session.get.assert_called_once()
         mock_session.get().json.assert_called_once()
+
+    @patch("spain_fuel_price.time.sleep")
+    def test_extract_fuel_prices_raw_data_retries_on_connection_error(self, mock_sleep):
+        mock_session = self.mock_requests.Session.return_value
+        mock_response = mock_session.get.return_value
+        mock_response.status_code = 200
+
+        mock_session.get.side_effect = [
+            requests.exceptions.ConnectionError("SSL EOF"),
+            mock_response,
+        ]
+        result = extract_fuel_prices_raw_data()
+        self.assertEqual(mock_session.get.call_count, 2)
+        mock_sleep.assert_called_once_with(30)
+        self.assertEqual(result, mock_response.json())
+
+    @patch("spain_fuel_price.time.sleep")
+    def test_extract_fuel_prices_raw_data_raises_after_all_retries_exhausted(self, mock_sleep):
+        mock_session = self.mock_requests.Session.return_value
+        mock_session.get.side_effect = requests.exceptions.ConnectionError("SSL EOF")
+
+        with self.assertRaises(requests.exceptions.ConnectionError):
+            extract_fuel_prices_raw_data()
+        self.assertEqual(mock_session.get.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 2)
 
     def test_create_spain_fuel_dataframe(self):
         test_data = get_response_raw_data()
