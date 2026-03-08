@@ -69,7 +69,7 @@ def station_results_table(stations: List[StationResult], mode: str) -> None:
     has_distance = any(s.distance_km is not None for s in stations)
     has_score = any(s.score is not None for s in stations)
     columns = [
-        {"name": "recommended", "label": "Top", "field": "recommended", "align": "center"},
+        {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
         {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
         {"name": "address", "label": "Direccion", "field": "address", "align": "left"},
         {"name": "municipality", "label": "Municipio", "field": "municipality", "align": "left"},
@@ -91,7 +91,7 @@ def station_results_table(stations: List[StationResult], mode: str) -> None:
     rows = []
     for idx, station in enumerate(stations):
         row = {
-            "recommended": "Si" if idx == 0 else "",
+            "ranking": idx + 1,
             "label": station.label,
             "address": station.address,
             "municipality": station.municipality,
