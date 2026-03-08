@@ -1,9 +1,12 @@
 import logging
+import math
 from typing import List
+from typing import Optional
 
 import plotly.graph_objects as go
 from api.schemas import DistrictPriceResult
 from api.schemas import ProvincePriceResult
+from api.schemas import StationResult
 from api.schemas import TrendPoint
 from ui.view_models import fuel_label
 
@@ -182,6 +185,77 @@ def build_province_choropleth(
         ),
         height=550,
         margin=dict(l=0, r=0, t=50, b=0),
+    )
+    return fig
+
+
+def build_station_map(
+    stations: List[StationResult],
+    search_lat: Optional[float],
+    search_lon: Optional[float],
+    search_label: str,
+) -> go.Figure:
+    fig = go.Figure()
+
+    st_lats = [s.latitude for s in stations]
+    st_lons = [s.longitude for s in stations]
+    st_texts = [f"{s.label}<br>{s.price:.3f} EUR/L<br>{s.address}" for s in stations]
+
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=st_lats,
+            lon=st_lons,
+            mode="markers",
+            marker=dict(size=12, color="#2563eb"),
+            text=st_texts,
+            hoverinfo="text",
+            name="Estaciones",
+        )
+    )
+
+    all_lats = list(st_lats)
+    all_lons = list(st_lons)
+
+    if search_lat is not None and search_lon is not None:
+        fig.add_trace(
+            go.Scattermapbox(
+                lat=[search_lat],
+                lon=[search_lon],
+                mode="markers",
+                marker=dict(size=18, color="#dc2626"),
+                text=[search_label],
+                hoverinfo="text",
+                name="Ubicacion buscada",
+            )
+        )
+        all_lats.append(search_lat)
+        all_lons.append(search_lon)
+
+    if all_lats:
+        min_lat, max_lat = min(all_lats), max(all_lats)
+        min_lon, max_lon = min(all_lons), max(all_lons)
+        center_lat = (min_lat + max_lat) / 2
+        center_lon = (min_lon + max_lon) / 2
+        # Add 20% padding so edge markers aren't clipped
+        lat_span = (max_lat - min_lat) * 1.2 or 0.005
+        lon_span = (max_lon - min_lon) * 1.2 or 0.005
+        # Mapbox zoom: world ≈ 360° at zoom 0, each zoom level halves the span
+        zoom_lat = math.log2(180 / lat_span)
+        zoom_lon = math.log2(360 / lon_span)
+        zoom = min(zoom_lat, zoom_lon)
+        zoom = max(2, min(zoom, 15))
+    else:
+        center_lat, center_lon, zoom = 40.0, -3.7, 6
+
+    fig.update_layout(
+        mapbox=dict(
+            style="open-street-map",
+            center=dict(lat=center_lat, lon=center_lon),
+            zoom=zoom,
+        ),
+        height=450,
+        margin=dict(l=0, r=0, t=0, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0.0),
     )
     return fig
 

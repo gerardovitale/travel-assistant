@@ -18,37 +18,34 @@ def test_get_cheapest_by_zip(mock_query):
     mock_query.assert_called_once_with("28001", SAMPLE_FUEL_TYPE, 3)
 
 
-@patch("services.station_service.geocode_address")
 @patch("services.station_service.query_nearest_stations")
-def test_get_nearest_by_address(mock_query, mock_geocode):
+def test_get_nearest_by_address(mock_query):
     from services.station_service import get_nearest_by_address
 
-    mock_geocode.return_value = (40.4168, -3.7038)
     mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 3)
-    results = get_nearest_by_address("Madrid", FuelType.diesel_a_price, 3)
+    results = get_nearest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 3)
     assert len(results) == 3
-    mock_geocode.assert_called_once_with("Madrid")
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 3)
 
 
-@patch("services.station_service.geocode_address")
-def test_get_nearest_by_address_geocode_fails(mock_geocode):
-    from services.station_service import get_nearest_by_address
-
-    mock_geocode.return_value = None
-    results = get_nearest_by_address("nonexistent", FuelType.diesel_a_price, 3)
-    assert results == []
-
-
-@patch("services.station_service.geocode_address")
 @patch("services.station_service.query_stations_within_radius")
-def test_get_best_by_address(mock_query, mock_geocode):
+def test_get_best_by_address(mock_query):
     from services.station_service import get_best_by_address
 
-    mock_geocode.return_value = (40.4168, -3.7038)
     mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 5)
-    results = get_best_by_address("Madrid", FuelType.diesel_a_price, 5.0)
+    results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0)
     assert len(results) == 3  # default limit
     assert all(r.score is not None for r in results)
+
+
+@patch("services.station_service.query_stations_within_radius")
+def test_get_cheapest_by_address(mock_query):
+    from services.station_service import get_cheapest_by_address
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 5)
+    results = get_cheapest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 3)
+    assert len(results) == 3
+    assert results[0].price <= results[1].price
 
 
 @patch("services.station_service.query_cheapest_zones")

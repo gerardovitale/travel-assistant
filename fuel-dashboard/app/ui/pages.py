@@ -7,6 +7,7 @@ from api.schemas import TrendPeriod
 from config import settings
 from fastapi import FastAPI
 from nicegui import ui
+from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
 from services.station_service import get_cheapest_by_address
 from services.station_service import get_cheapest_by_zip
@@ -18,6 +19,7 @@ from services.station_service import get_province_price_map
 from services.station_service import get_provinces
 from ui.charts import build_district_choropleth
 from ui.charts import build_province_choropleth
+from ui.charts import build_station_map
 from ui.charts import build_trend_chart
 from ui.components import empty_state
 from ui.components import fuel_type_select
@@ -100,6 +102,7 @@ def _build_search_panel() -> None:
     state: Dict[str, Any] = {"query_input": None, "radius_input": None, "dynamic_container": None}
     mode = None
     search_button = None
+    limit_input = None
 
     def on_mode_change(_: Any) -> None:
         container = state.get("dynamic_container")
@@ -115,17 +118,20 @@ def _build_search_panel() -> None:
                 fuel = fuel_type_select()
                 dynamic_container = ui.column().classes("gap-1")
                 state["dynamic_container"] = dynamic_container
+                limit_input = ui.number(label="Numero de estaciones", value=5, min=1, max=20).classes("w-48")
                 search_button = ui.button("Buscar").props("unelevated color=primary").classes("self-end")
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
         results_container = ui.column().classes("w-full")
+        map_container = ui.column().classes("w-full")
 
     set_status = _make_set_status(status_container)
 
     def on_search() -> None:
         summary_container.clear()
         results_container.clear()
+        map_container.clear()
         query_input = state.get("query_input")
         if query_input is None:
             return
@@ -144,15 +150,31 @@ def _build_search_panel() -> None:
             current_mode = mode.value
             radius_input = state.get("radius_input")
             radius_km = radius_input.value if radius_input else None
+            limit = int(limit_input.value)
+
+            search_lat = None
+            search_lon = None
 
             if current_mode == "cheapest_by_zip":
-                stations = get_cheapest_by_zip(query_value, fuel_type)
-            elif current_mode == "nearest_by_address":
-                stations = get_nearest_by_address(query_value, fuel_type)
-            elif current_mode == "cheapest_by_address":
-                stations = get_cheapest_by_address(query_value, fuel_type, radius_km)
-            elif current_mode == "best_by_address":
-                stations = get_best_by_address(query_value, fuel_type, radius_km)
+                coords = geocode_address(f"{query_value}, Spain")
+                if coords:
+                    search_lat, search_lon = coords
+                stations = get_cheapest_by_zip(query_value, fuel_type, limit)
+            elif current_mode in ("nearest_by_address", "cheapest_by_address", "best_by_address"):
+                coords = geocode_address(query_value)
+                if coords is None:
+                    results_container.clear()
+                    set_status("warning", "No se pudo geocodificar la direccion proporcionada.")
+                    return
+                search_lat, search_lon = coords
+                if current_mode == "nearest_by_address":
+                    stations = get_nearest_by_address(search_lat, search_lon, fuel_type, limit)
+                elif current_mode == "cheapest_by_address":
+                    stations = get_cheapest_by_address(search_lat, search_lon, fuel_type, radius_km, limit)
+                elif current_mode == "best_by_address":
+                    stations = get_best_by_address(search_lat, search_lon, fuel_type, radius_km, limit)
+                else:
+                    stations = []
             else:
                 stations = []
 
@@ -169,6 +191,9 @@ def _build_search_panel() -> None:
                 kpi_row(search_summary_cards(summary, current_mode))
             with results_container:
                 station_results_table(stations, current_mode)
+            with map_container:
+                fig = build_station_map(stations, search_lat, search_lon, query_value)
+                ui.plotly(fig).classes("w-full")
         except ValueError as exc:
             logger.warning("Search validation error: %s", exc)
             set_status("warning", str(exc))

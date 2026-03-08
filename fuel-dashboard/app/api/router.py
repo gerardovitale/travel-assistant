@@ -6,6 +6,7 @@ from api.schemas import ZoneListResponse
 from fastapi import APIRouter
 from fastapi import HTTPException
 from fastapi import Query
+from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
 from services.station_service import get_cheapest_by_address
 from services.station_service import get_cheapest_by_zip
@@ -32,9 +33,13 @@ def nearest_by_address(
     fuel_type: FuelType = Query(..., description="Fuel type"),
     limit: int = Query(3, ge=1, le=20, description="Max results"),
 ):
-    stations = get_nearest_by_address(address, fuel_type, limit)
-    if not stations:
+    coords = geocode_address(address)
+    if coords is None:
         raise HTTPException(status_code=404, detail="Address could not be geocoded")
+    lat, lon = coords
+    stations = get_nearest_by_address(lat, lon, fuel_type, limit)
+    if not stations:
+        raise HTTPException(status_code=404, detail="No stations found near this address")
     return StationListResponse(stations=stations, fuel_type=fuel_type.value, query_type="nearest_by_address")
 
 
@@ -43,10 +48,15 @@ def cheapest_by_address(
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
+    limit: int = Query(3, ge=1, le=20, description="Max results"),
 ):
-    stations = get_cheapest_by_address(address, fuel_type, radius_km)
+    coords = geocode_address(address)
+    if coords is None:
+        raise HTTPException(status_code=404, detail="Address could not be geocoded")
+    lat, lon = coords
+    stations = get_cheapest_by_address(lat, lon, fuel_type, radius_km, limit)
     if not stations:
-        raise HTTPException(status_code=404, detail="No stations found or address could not be geocoded")
+        raise HTTPException(status_code=404, detail="No stations found within radius")
     return StationListResponse(stations=stations, fuel_type=fuel_type.value, query_type="cheapest_by_address")
 
 
@@ -55,10 +65,15 @@ def best_by_address(
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
+    limit: int = Query(3, ge=1, le=20, description="Max results"),
 ):
-    stations = get_best_by_address(address, fuel_type, radius_km)
+    coords = geocode_address(address)
+    if coords is None:
+        raise HTTPException(status_code=404, detail="Address could not be geocoded")
+    lat, lon = coords
+    stations = get_best_by_address(lat, lon, fuel_type, radius_km, limit)
     if not stations:
-        raise HTTPException(status_code=404, detail="No stations found or address could not be geocoded")
+        raise HTTPException(status_code=404, detail="No stations found within radius")
     return StationListResponse(stations=stations, fuel_type=fuel_type.value, query_type="best_by_address")
 
 

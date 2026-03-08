@@ -13,7 +13,6 @@ from api.schemas import TrendPoint
 from api.schemas import ZoneResult
 from config import settings
 from services.geo_utils import assign_districts
-from services.geocoding import geocode_address
 
 from data.duckdb_engine import get_distinct_provinces
 from data.duckdb_engine import query_avg_price_by_province
@@ -61,43 +60,35 @@ def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 3) -> L
     return _df_to_station_results(df, fuel_type.value)
 
 
-def get_nearest_by_address(address: str, fuel_type: FuelType, limit: int = 3) -> List[StationResult]:
-    coords = geocode_address(address)
-    if coords is None:
-        return []
-    lat, lon = coords
+def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: int = 3) -> List[StationResult]:
     df = query_nearest_stations(lat, lon, fuel_type.value, limit)
     return _df_to_station_results(df, fuel_type.value)
 
 
-def get_cheapest_by_address(address: str, fuel_type: FuelType, radius_km: float = None) -> List[StationResult]:
+def get_cheapest_by_address(
+    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 3
+) -> List[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km
-    coords = geocode_address(address)
-    if coords is None:
-        return []
-    lat, lon = coords
     df = query_stations_within_radius(lat, lon, fuel_type.value, radius_km)
     if df.empty:
         return []
-    df = df.sort_values(fuel_type.value).head(settings.default_limit)
+    df = df.sort_values(fuel_type.value).head(limit)
     return _df_to_station_results(df, fuel_type.value)
 
 
-def get_best_by_address(address: str, fuel_type: FuelType, radius_km: float = None) -> List[StationResult]:
+def get_best_by_address(
+    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 3
+) -> List[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km
-    coords = geocode_address(address)
-    if coords is None:
-        return []
-    lat, lon = coords
     df = query_stations_within_radius(lat, lon, fuel_type.value, radius_km)
     if df.empty:
         return []
     df["price_rank"] = df[fuel_type.value].rank(method="min")
     df["distance_rank"] = df["distance_km"].rank(method="min")
     df["score"] = settings.price_weight * df["price_rank"] + settings.distance_weight * df["distance_rank"]
-    df = df.sort_values("score").head(settings.default_limit)
+    df = df.sort_values("score").head(limit)
     return _df_to_station_results(df, fuel_type.value)
 
 
