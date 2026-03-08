@@ -62,6 +62,12 @@ class TrendPoint(BaseModel):
     max_price: float
 
 
+class ProvincePriceResult(BaseModel):
+    province: str
+    avg_price: float
+    station_count: int
+
+
 class StationListResponse(BaseModel):
     stations: List[StationResult]
     fuel_type: str

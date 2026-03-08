@@ -128,6 +128,21 @@ def query_price_trends(blob_names: List[str], zip_code: str, fuel_type: str) -> 
     ).fetchdf()
 
 
+def query_avg_price_by_province(fuel_type: str) -> pd.DataFrame:
+    conn = get_connection()
+    return conn.execute(
+        f"""
+        SELECT province,
+            AVG({fuel_type}) AS avg_price,
+            COUNT(*) AS station_count
+        FROM latest_stations
+        WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
+        GROUP BY province
+        ORDER BY avg_price ASC
+        """,
+    ).fetchdf()
+
+
 def get_distinct_provinces() -> List[str]:
     conn = get_connection()
     result = conn.execute("SELECT DISTINCT province FROM latest_stations ORDER BY province").fetchdf()

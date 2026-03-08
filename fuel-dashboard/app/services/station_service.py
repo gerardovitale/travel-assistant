@@ -3,6 +3,7 @@ from typing import List
 
 import pandas as pd
 from api.schemas import FuelType
+from api.schemas import ProvincePriceResult
 from api.schemas import StationResult
 from api.schemas import TREND_PERIOD_DAYS
 from api.schemas import TrendPeriod
@@ -12,6 +13,7 @@ from config import settings
 from services.geocoding import geocode_address
 
 from data.duckdb_engine import get_distinct_provinces
+from data.duckdb_engine import query_avg_price_by_province
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_nearest_stations
@@ -98,6 +100,18 @@ def get_cheapest_zones(province: str, fuel_type: FuelType) -> List[ZoneResult]:
             zip_code=str(row["zip_code"]),
             avg_price=row["avg_price"],
             min_price=row["min_price"],
+            station_count=row["station_count"],
+        )
+        for _, row in df.iterrows()
+    ]
+
+
+def get_province_price_map(fuel_type: FuelType) -> List[ProvincePriceResult]:
+    df = query_avg_price_by_province(fuel_type.value)
+    return [
+        ProvincePriceResult(
+            province=row["province"],
+            avg_price=row["avg_price"],
             station_count=row["station_count"],
         )
         for _, row in df.iterrows()

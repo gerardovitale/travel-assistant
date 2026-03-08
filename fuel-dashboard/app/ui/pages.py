@@ -12,9 +12,10 @@ from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
 from services.station_service import get_nearest_by_address
 from services.station_service import get_price_trends
+from services.station_service import get_province_price_map
 from services.station_service import get_provinces
+from ui.charts import build_province_choropleth
 from ui.charts import build_trend_chart
-from ui.charts import build_zone_bar_chart
 from ui.components import empty_state
 from ui.components import fuel_type_select
 from ui.components import kpi_row
@@ -23,7 +24,6 @@ from ui.components import search_mode_select
 from ui.components import station_results_table
 from ui.components import status_banner
 from ui.components import trend_period_select
-from ui.components import zone_results_table
 from ui.view_models import format_delta
 from ui.view_models import format_price
 from ui.view_models import search_mode_metadata
@@ -265,12 +265,12 @@ def _build_zones_panel() -> None:
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 province_input = ui.select(options=provinces, label="Provincia", with_input=True).classes("w-56")
                 fuel = fuel_type_select()
+                mainland_only = ui.checkbox("Solo peninsula").classes("self-center")
                 zones_button = ui.button("Cargar zonas").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
-        chart_container = ui.column().classes("w-full")
-        table_container = ui.column().classes("w-full")
+        map_container = ui.column().classes("w-full")
 
     def set_status(status: str, message: str) -> None:
         status_container.clear()
@@ -282,25 +282,24 @@ def _build_zones_panel() -> None:
 
     def on_load_zones() -> None:
         summary_container.clear()
-        chart_container.clear()
-        table_container.clear()
+        map_container.clear()
         province = province_input.value
         if not province:
             set_status("warning", "Selecciona una provincia para cargar zonas.")
             return
 
         set_status("loading", "Cargando comparativa de zonas...")
-        with chart_container:
+        with map_container:
             with ui.column().classes("w-full items-center py-8"):
                 ui.spinner(size="lg").classes("text-primary")
         zones_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
             zones = get_cheapest_zones(province, fuel_type)
-            chart_container.clear()
+            map_container.clear()
             if not zones:
                 set_status("empty", "No hay datos de zonas para esta provincia.")
-                with chart_container:
+                with map_container:
                     empty_state("Prueba otra provincia o tipo de combustible.")
                 return
 
@@ -315,11 +314,17 @@ def _build_zones_panel() -> None:
                     ]
                 )
 
-            with chart_container:
-                fig = build_zone_bar_chart(zones, province, fuel_type.value)
-                ui.plotly(fig).classes("w-full")
-            with table_container:
-                zone_results_table(zones)
+            province_prices = get_province_price_map(fuel_type)
+            if province_prices:
+                with map_container:
+                    map_fig = build_province_choropleth(
+                        province_prices,
+                        province,
+                        fuel_type.value,
+                        mainland_only.value,
+                    )
+                    ui.plotly(map_fig).classes("w-full")
+
             set_status("success", f"Comparativa cargada para {province}.")
         except Exception:
             logger.exception("Zone error")
