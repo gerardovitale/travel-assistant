@@ -1,8 +1,6 @@
-import json
 import logging
-from pathlib import Path
+import re
 from typing import List
-from typing import Optional
 
 import pandas as pd
 from api.schemas import DistrictPriceResult
@@ -26,11 +24,15 @@ from data.duckdb_engine import query_price_trends
 from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
 from data.gcs_client import list_parquet_files
+from data.geojson_loader import load_madrid_districts
 
 logger = logging.getLogger(__name__)
 
-_GEOJSON_DIR = Path(__file__).resolve().parent.parent / "data" / "geojson"
-_madrid_districts_geojson: Optional[dict] = None
+
+def _validate_zip_code(zip_code: str) -> str:
+    if not re.fullmatch(r"\d{5}", zip_code):
+        raise ValueError(f"Invalid zip code: {zip_code!r}. Must be exactly 5 digits.")
+    return zip_code
 
 
 def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResult]:
@@ -54,6 +56,7 @@ def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResu
 
 
 def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 3) -> List[StationResult]:
+    _validate_zip_code(zip_code)
     df = query_cheapest_by_zip(zip_code, fuel_type.value, limit)
     return _df_to_station_results(df, fuel_type.value)
 
@@ -127,17 +130,8 @@ def get_province_price_map(fuel_type: FuelType) -> List[ProvincePriceResult]:
     ]
 
 
-def _load_madrid_districts() -> dict:
-    global _madrid_districts_geojson
-    if _madrid_districts_geojson is None:
-        path = _GEOJSON_DIR / "distritos-madrid.geojson"
-        with open(path, encoding="utf-8") as f:
-            _madrid_districts_geojson = json.load(f)
-    return _madrid_districts_geojson
-
-
 def get_district_price_map(province: str, fuel_type: FuelType) -> List[DistrictPriceResult]:
-    geojson = _load_madrid_districts()
+    geojson = load_madrid_districts()
     df = query_stations_by_province(province, fuel_type.value)
     if df.empty:
         return []
@@ -160,6 +154,7 @@ def get_district_price_map(province: str, fuel_type: FuelType) -> List[DistrictP
 
 
 def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:
+    _validate_zip_code(zip_code)
     days_back = TREND_PERIOD_DAYS[period]
     files = list_parquet_files(days_back=days_back)
     df = query_price_trends(files, zip_code, fuel_type.value)

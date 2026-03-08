@@ -18,7 +18,7 @@ router = APIRouter()
 
 @router.get("/stations/cheapest-by-zip", response_model=StationListResponse)
 def cheapest_by_zip(
-    zip_code: str = Query(..., description="Zip code to search"),
+    zip_code: str = Query(..., pattern=r"^\d{5}$", description="Zip code to search"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     limit: int = Query(3, ge=1, le=20, description="Max results"),
 ):
@@ -73,7 +73,7 @@ def cheapest_zones(
 
 @router.get("/trends/price", response_model=TrendResponse)
 def price_trends(
-    zip_code: str = Query(..., description="Zip code"),
+    zip_code: str = Query(..., pattern=r"^\d{5}$", description="Zip code"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     period: TrendPeriod = Query(TrendPeriod.month, description="Trend period"),
 ):

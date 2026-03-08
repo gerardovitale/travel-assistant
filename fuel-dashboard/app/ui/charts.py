@@ -1,81 +1,25 @@
-import json
 import logging
-from pathlib import Path
-from typing import Dict
 from typing import List
-from typing import Optional
 
 import plotly.graph_objects as go
 from api.schemas import DistrictPriceResult
 from api.schemas import ProvincePriceResult
 from api.schemas import TrendPoint
-from api.schemas import ZoneResult
 from ui.view_models import fuel_label
 
+from data.geojson_loader import _NON_MAINLAND_PROVINCES
+from data.geojson_loader import get_geojson_province_name
+from data.geojson_loader import load_madrid_districts
+from data.geojson_loader import load_provinces_geojson
+
 logger = logging.getLogger(__name__)
-
-_GEOJSON_DIR = Path(__file__).resolve().parent.parent / "data" / "geojson"
-_provinces_geojson: Optional[dict] = None
-_provinces_name_lookup: Optional[Dict[str, str]] = None
-_districts_geojson: Optional[dict] = None
-
-# API province names (lowercased) that don't match GeoJSON by simple case folding.
-# Format: "api name" -> "GeoJSON name"
-_DATA_TO_GEOJSON_OVERRIDES: Dict[str, str] = {
-    "coruña (a)": "A Coruña",
-    "rioja (la)": "La Rioja",
-    "palmas (las)": "Las Palmas",
-    "balears (illes)": "Illes Balears",
-    "valencia / valència": "València/Valencia",
-    "castellón / castelló": "Castelló/Castellón",
-    "gipuzkoa": "Gipuzkoa/Guipúzcoa",
-    "bizkaia": "Bizkaia/Vizcaya",
-    "araba/álava": "Araba/Álava",
-    "alicante": "Alacant/Alicante",
-}
-
-_NON_MAINLAND_PROVINCES = {
-    "Las Palmas",
-    "Santa Cruz De Tenerife",
-    "Illes Balears",
-    "Ceuta",
-    "Melilla",
-}
-
-
-def _load_provinces_geojson() -> dict:
-    global _provinces_geojson, _provinces_name_lookup
-    if _provinces_geojson is None:
-        path = _GEOJSON_DIR / "spain-provinces.geojson"
-        with open(path, encoding="utf-8") as f:
-            _provinces_geojson = json.load(f)
-        _provinces_name_lookup = {}
-        for feature in _provinces_geojson["features"]:
-            geojson_name = feature["properties"]["name"]
-            _provinces_name_lookup[geojson_name.lower()] = geojson_name
-        _provinces_name_lookup.update(_DATA_TO_GEOJSON_OVERRIDES)
-    return _provinces_geojson
-
-
-def _get_geojson_name(data_province: str) -> Optional[str]:
-    _load_provinces_geojson()
-    return _provinces_name_lookup.get(data_province.lower())
-
-
-def _load_districts_geojson() -> dict:
-    global _districts_geojson
-    if _districts_geojson is None:
-        path = _GEOJSON_DIR / "distritos-madrid.geojson"
-        with open(path, encoding="utf-8") as f:
-            _districts_geojson = json.load(f)
-    return _districts_geojson
 
 
 def build_district_choropleth(
     district_prices: List[DistrictPriceResult],
     fuel_type: str,
 ) -> go.Figure:
-    geojson = _load_districts_geojson()
+    geojson = load_madrid_districts()
     fuel_name = fuel_label(fuel_type)
 
     districts = [dp.district for dp in district_prices]
@@ -172,14 +116,14 @@ def build_province_choropleth(
     fuel_type: str,
     mainland_only: bool = False,
 ) -> go.Figure:
-    geojson = _load_provinces_geojson()
+    geojson = load_provinces_geojson()
     fuel_name = fuel_label(fuel_type)
 
     locations = []
     avg_prices = []
     station_counts = []
     for pp in province_prices:
-        geojson_name = _get_geojson_name(pp.province)
+        geojson_name = get_geojson_province_name(pp.province)
         if geojson_name is None:
             logger.debug(f"Province '{pp.province}' not found in GeoJSON, skipping")
             continue
@@ -189,7 +133,7 @@ def build_province_choropleth(
         avg_prices.append(round(pp.avg_price, 4))
         station_counts.append(pp.station_count)
 
-    selected_geojson_name = _get_geojson_name(selected_province) or selected_province
+    selected_geojson_name = get_geojson_province_name(selected_province) or selected_province
 
     fig = go.Figure(
         go.Choroplethmapbox(
@@ -251,46 +195,3 @@ def _flatten_coordinates(coords):
     for item in coords:
         result.extend(_flatten_coordinates(item))
     return result
-
-
-def build_zone_bar_chart(zones: List[ZoneResult], province: str, fuel_type: str) -> go.Figure:
-    zip_codes = [z.zip_code for z in zones]
-    avg_prices = [z.avg_price for z in zones]
-    min_prices = [z.min_price for z in zones]
-    station_counts = [z.station_count for z in zones]
-    fuel_name = fuel_label(fuel_type)
-
-    if avg_prices:
-        min_index = avg_prices.index(min(avg_prices))
-    else:
-        min_index = 0
-    colors = ["#0f766e" if idx == min_index else "#4f46e5" for idx in range(len(zip_codes))]
-
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=avg_prices,
-            y=zip_codes,
-            orientation="h",
-            marker_color=colors,
-            text=[f"{value:.3f}" for value in avg_prices],
-            textposition="outside",
-            customdata=list(zip(min_prices, station_counts)),
-            hovertemplate=(
-                "CP %{y}<br>Promedio: %{x:.3f} EUR/L<br>"
-                "Minimo: %{customdata[0]:.3f} EUR/L<br>"
-                "Estaciones: %{customdata[1]}<extra></extra>"
-            ),
-        )
-    )
-    fig.update_layout(
-        title=f"Promedio por codigo postal: {fuel_name} - {province}",
-        xaxis_title="Precio promedio (EUR/L)",
-        yaxis_title="Codigo postal",
-        template="plotly_white",
-        height=max(320, len(zip_codes) * 30),
-        yaxis=dict(autorange="reversed"),
-        margin=dict(l=70, r=40, t=70, b=50),
-    )
-    fig.update_xaxes(tickformat=".3f")
-    return fig

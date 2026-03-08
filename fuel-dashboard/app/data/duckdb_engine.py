@@ -4,12 +4,22 @@ from typing import Optional
 
 import duckdb
 import pandas as pd
+from api.schemas import FuelType
 
 from data.gcs_client import download_parquet_as_df
 from data.gcs_client import download_parquets_as_df
 from data.gcs_client import get_latest_parquet_file
 
 logger = logging.getLogger(__name__)
+
+_VALID_FUEL_COLUMNS: frozenset[str] = frozenset(ft.value for ft in FuelType)
+
+
+def _validate_fuel_column(fuel_type: str) -> str:
+    if fuel_type not in _VALID_FUEL_COLUMNS:
+        raise ValueError(f"Invalid fuel column: {fuel_type!r}")
+    return fuel_type
+
 
 _connection: Optional[duckdb.DuckDBPyConnection] = None
 
@@ -36,6 +46,7 @@ def refresh_latest_snapshot() -> None:
 
 
 def query_cheapest_by_zip(zip_code: str, fuel_type: str, limit: int = 3) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(
         f"""
@@ -50,6 +61,7 @@ def query_cheapest_by_zip(zip_code: str, fuel_type: str, limit: int = 3) -> pd.D
 
 
 def query_stations_within_radius(lat: float, lon: float, fuel_type: str, radius_km: float) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(
         f"""
@@ -71,6 +83,7 @@ def query_stations_within_radius(lat: float, lon: float, fuel_type: str, radius_
 
 
 def query_nearest_stations(lat: float, lon: float, fuel_type: str, limit: int = 3) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(
         f"""
@@ -91,6 +104,7 @@ def query_nearest_stations(lat: float, lon: float, fuel_type: str, limit: int = 
 
 
 def query_cheapest_zones(province: str, fuel_type: str) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(
         f"""
@@ -108,6 +122,7 @@ def query_cheapest_zones(province: str, fuel_type: str) -> pd.DataFrame:
 
 
 def query_price_trends(blob_names: List[str], zip_code: str, fuel_type: str) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
     if not blob_names:
         return pd.DataFrame()
     df = download_parquets_as_df(blob_names)  # noqa: F841
@@ -129,6 +144,7 @@ def query_price_trends(blob_names: List[str], zip_code: str, fuel_type: str) -> 
 
 
 def query_avg_price_by_province(fuel_type: str) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(
         f"""
@@ -144,6 +160,7 @@ def query_avg_price_by_province(fuel_type: str) -> pd.DataFrame:
 
 
 def query_stations_by_province(province: str, fuel_type: str) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(
         f"""

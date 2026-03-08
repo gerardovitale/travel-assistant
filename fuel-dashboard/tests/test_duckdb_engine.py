@@ -2,7 +2,9 @@ from unittest.mock import patch
 
 import duckdb
 import pandas as pd
+import pytest
 
+from data.duckdb_engine import _validate_fuel_column
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_nearest_stations
@@ -81,3 +83,22 @@ def test_query_cheapest_zones(mock_conn):
     assert len(result) == 1
     assert result.iloc[0]["zip_code"] == "28001"
     assert result.iloc[0]["station_count"] == 2
+
+
+def test_validate_fuel_column_valid():
+    assert _validate_fuel_column("diesel_a_price") == "diesel_a_price"
+
+
+def test_validate_fuel_column_invalid():
+    with pytest.raises(ValueError, match="Invalid fuel column"):
+        _validate_fuel_column("DROP TABLE; --")
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_rejects_invalid_fuel_column(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    with pytest.raises(ValueError, match="Invalid fuel column"):
+        query_cheapest_by_zip("28001", "malicious_column", 3)

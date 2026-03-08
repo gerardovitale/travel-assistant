@@ -4,6 +4,7 @@ from typing import Dict
 
 from api.schemas import FuelType
 from api.schemas import TrendPeriod
+from config import settings
 from fastapi import FastAPI
 from nicegui import ui
 from services.station_service import get_best_by_address
@@ -37,6 +38,18 @@ from ui.view_models import zone_kpis
 from data.cache import is_data_ready
 
 logger = logging.getLogger(__name__)
+
+
+def _make_set_status(container: ui.column):
+    def set_status(status: str, message: str) -> None:
+        container.clear()
+        with container:
+            if status == "loading":
+                loading_state(message)
+            else:
+                status_banner(status, message)
+
+    return set_status
 
 
 def init_ui(app: FastAPI) -> None:
@@ -108,13 +121,7 @@ def _build_search_panel() -> None:
         summary_container = ui.column().classes("w-full")
         results_container = ui.column().classes("w-full")
 
-    def set_status(status: str, message: str) -> None:
-        status_container.clear()
-        with status_container:
-            if status == "loading":
-                loading_state(message)
-            else:
-                status_banner(status, message)
+    set_status = _make_set_status(status_container)
 
     def on_search() -> None:
         summary_container.clear()
@@ -162,6 +169,9 @@ def _build_search_panel() -> None:
                 kpi_row(search_summary_cards(summary, current_mode))
             with results_container:
                 station_results_table(stations, current_mode)
+        except ValueError as exc:
+            logger.warning("Search validation error: %s", exc)
+            set_status("warning", str(exc))
         except Exception:
             logger.exception("Search error")
             set_status("error", "No se pudo completar la busqueda. Revisa los datos e intentalo de nuevo.")
@@ -184,7 +194,9 @@ def _render_query_inputs(mode: ui.select, container: ui.column, state: Dict[str,
         state["query_input"] = query_input
         state["radius_input"] = None
         if metadata.requires_radius:
-            state["radius_input"] = ui.number(label="Radio (km)", value=5.0, min=0.1, max=50.0).classes("w-36")
+            state["radius_input"] = ui.number(
+                label="Radio (km)", value=settings.default_radius_km, min=0.1, max=50.0
+            ).classes("w-36")
 
 
 def _build_trends_panel() -> None:
@@ -202,13 +214,7 @@ def _build_trends_panel() -> None:
         summary_container = ui.column().classes("w-full")
         chart_container = ui.column().classes("w-full")
 
-    def set_status(status: str, message: str) -> None:
-        status_container.clear()
-        with status_container:
-            if status == "loading":
-                loading_state(message)
-            else:
-                status_banner(status, message)
+    set_status = _make_set_status(status_container)
 
     def on_load_trend() -> None:
         summary_container.clear()
@@ -249,6 +255,9 @@ def _build_trends_panel() -> None:
                 fig = build_trend_chart(trend_data, fuel_type.value, zip_code)
                 ui.plotly(fig).classes("w-full")
             set_status("success", f"Tendencia cargada para {zip_code}.")
+        except ValueError as exc:
+            logger.warning("Trend validation error: %s", exc)
+            set_status("warning", str(exc))
         except Exception:
             logger.exception("Trend error")
             set_status("error", "No se pudo cargar la tendencia. Intentalo de nuevo.")
@@ -276,13 +285,7 @@ def _build_zones_panel() -> None:
             mainland_only = ui.checkbox("Solo peninsula").classes("self-center")
         detail_map_container = ui.column().classes("w-full")
 
-    def set_status(status: str, message: str) -> None:
-        status_container.clear()
-        with status_container:
-            if status == "loading":
-                loading_state(message)
-            else:
-                status_banner(status, message)
+    set_status = _make_set_status(status_container)
 
     def _render_preloaded_map() -> None:
         preloaded_map_container.clear()
@@ -352,6 +355,9 @@ def _build_zones_panel() -> None:
                     ui.label("Vista por distritos solo disponible para Madrid").classes("text-sm text-gray-500 italic")
 
             set_status("success", f"Comparativa cargada para {province}.")
+        except ValueError as exc:
+            logger.warning("Zone validation error: %s", exc)
+            set_status("warning", str(exc))
         except Exception:
             logger.exception("Zone error")
             set_status("error", "No se pudo cargar la comparativa de zonas. Intentalo de nuevo.")
