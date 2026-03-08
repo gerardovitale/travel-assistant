@@ -3,6 +3,7 @@
 *cred*
 
 # Local Data folder
+**/output/
 ext/
 ext/transformer_output/
 *.duckdb

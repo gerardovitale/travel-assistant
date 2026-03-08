@@ -1,19 +1,16 @@
+import json
 import logging
+import subprocess
 import time
 from datetime import datetime
 from datetime import timezone
 
 import pandas as pd
 import pytz
-import requests
 from entity import get_expected_columns
 from entity import get_float_columns
 from entity import get_renaming_map
 from google.cloud import storage
-from requests.adapters import HTTPAdapter
-from requests.exceptions import ConnectionError as RequestsConnectionError
-from requests.exceptions import Timeout as RequestsTimeout
-from urllib3.util.retry import Retry
 
 DATA_SOURCE_URL = (
     "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
@@ -26,33 +23,40 @@ logger = logging.getLogger(__name__)
 
 
 def extract_fuel_prices_raw_data() -> dict:
+    """Fetch fuel price data from the Spanish government API using curl.
+
+    Python's ssl module (OpenSSL 3.x) is blocked by the server's TLS fingerprinting,
+    while curl's TLS handshake is accepted. We use subprocess + curl to bypass this.
+    """
     logger.info(f"Getting fuel price raw data from {DATA_SOURCE_URL}")
-    retry_strategy = Retry(
-        total=3,
-        backoff_factor=2,
-        status_forcelist=[500, 502, 503, 504],
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session = requests.Session()
-    session.headers.update(
-        {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Connection": "keep-alive",
-        }
-    )
-    session.mount("https://", adapter)
 
     max_attempts = 3
     retry_delay = 10
     for attempt in range(1, max_attempts + 1):
         try:
-            response = session.get(DATA_SOURCE_URL, timeout=(10, 60))
+            result = subprocess.run(
+                [
+                    "curl",
+                    "-s",
+                    "-f",
+                    "--connect-timeout",
+                    "10",
+                    "--max-time",
+                    "120",
+                    "--tlsv1.2",
+                    "--tls-max",
+                    "1.2",
+                    "-H",
+                    "Accept: application/json",
+                    DATA_SOURCE_URL,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=130,
+            )
             break
-        except (RequestsConnectionError, RequestsTimeout) as exc:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             if attempt < max_attempts:
                 logger.warning(f"Attempt {attempt}/{max_attempts} failed: {exc}. Retrying in {retry_delay}s...")
                 time.sleep(retry_delay)
@@ -60,14 +64,7 @@ def extract_fuel_prices_raw_data() -> dict:
                 logger.error(f"All {max_attempts} attempts failed. Last error: {exc}")
                 raise
 
-    if response.status_code != 200:
-        logger.error(f"Error getting fuel price raw data with code: {response.status_code}")
-        logger.error(f"Error message: {response.json()}")
-        raise requests.exceptions.HTTPError
-
-    logger.info("Response code: {0}".format(response.status_code))
-    logger.info("Response headers: {0}".format(response.headers))
-    raw_data = response.json()
+    raw_data = json.loads(result.stdout)
     logger.info("Response status: {0}".format(raw_data.get("ResultadoConsulta")))
     return raw_data
 

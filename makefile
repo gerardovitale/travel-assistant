@@ -12,6 +12,14 @@ test: fuel-ingestor.test fuel-dashboard.test
 fuel-ingestor.test:
 	./scripts/run-docker-test.sh fuel-ingestor
 
+fuel-ingestor.local:
+	cd fuel-ingestor && docker buildx build -t fuel-ingestor . && \
+	mkdir -p output && \
+	docker run --rm \
+		-v $(PWD)/fuel-ingestor/output:/output \
+		--entrypoint python3 \
+		fuel-ingestor local_run.py
+
 
 # FUEL DASHBOARD
 fuel-dashboard.test:

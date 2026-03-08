@@ -1,8 +1,10 @@
+import json
+import subprocess
 from unittest import TestCase
+from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
-import requests
 from entity import get_expected_columns
 from spain_fuel_price import create_spain_fuel_dataframe
 from spain_fuel_price import extract_fuel_prices_raw_data
@@ -12,45 +14,38 @@ from tests.fixture import get_response_raw_data
 class TestFuelPrice(TestCase):
 
     def setUp(self):
-        requests_patch = patch("spain_fuel_price.requests")
-        self.addCleanup(requests_patch.stop)
-        self.mock_requests = requests_patch.start()
-
         logger_patch = patch("spain_fuel_price.logger")
         self.addCleanup(logger_patch.stop)
         self.mock_logger = logger_patch.start()
 
-    def test_extract_fuel_prices_raw_data(self):
-        mock_session = self.mock_requests.Session.return_value
-        mock_session.get.return_value.status_code = 200
-        _ = extract_fuel_prices_raw_data()
-        mock_session.mount.assert_called_once()
-        mock_session.get.assert_called_once()
-        mock_session.get().json.assert_called_once()
+    @patch("spain_fuel_price.subprocess.run")
+    def test_extract_fuel_prices_raw_data(self, mock_run):
+        expected_data = {"ResultadoConsulta": "OK", "ListaEESSPrecio": []}
+        mock_run.return_value = MagicMock(stdout=json.dumps(expected_data))
+        result = extract_fuel_prices_raw_data()
+        mock_run.assert_called_once()
+        self.assertEqual(result, expected_data)
 
     @patch("spain_fuel_price.time.sleep")
-    def test_extract_fuel_prices_raw_data_retries_on_connection_error(self, mock_sleep):
-        mock_session = self.mock_requests.Session.return_value
-        mock_response = mock_session.get.return_value
-        mock_response.status_code = 200
-
-        mock_session.get.side_effect = [
-            requests.exceptions.ConnectionError("SSL EOF"),
-            mock_response,
+    @patch("spain_fuel_price.subprocess.run")
+    def test_extract_fuel_prices_raw_data_retries_on_error(self, mock_run, mock_sleep):
+        expected_data = {"ResultadoConsulta": "OK", "ListaEESSPrecio": []}
+        mock_run.side_effect = [
+            subprocess.CalledProcessError(22, "curl"),
+            MagicMock(stdout=json.dumps(expected_data)),
         ]
         result = extract_fuel_prices_raw_data()
-        self.assertEqual(mock_session.get.call_count, 2)
+        self.assertEqual(mock_run.call_count, 2)
         mock_sleep.assert_called_once_with(10)
-        self.assertEqual(result, mock_response.json())
+        self.assertEqual(result, expected_data)
 
     @patch("spain_fuel_price.time.sleep")
-    def test_extract_fuel_prices_raw_data_raises_after_all_retries_exhausted(self, mock_sleep):
-        mock_session = self.mock_requests.Session.return_value
-        mock_session.get.side_effect = requests.exceptions.ConnectionError("SSL EOF")
-
-        with self.assertRaises(requests.exceptions.ConnectionError):
+    @patch("spain_fuel_price.subprocess.run")
+    def test_extract_fuel_prices_raw_data_raises_after_all_retries_exhausted(self, mock_run, mock_sleep):
+        mock_run.side_effect = subprocess.CalledProcessError(22, "curl")
+        with self.assertRaises(subprocess.CalledProcessError):
             extract_fuel_prices_raw_data()
-        self.assertEqual(mock_session.get.call_count, 3)
+        self.assertEqual(mock_run.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 2)
 
     def test_create_spain_fuel_dataframe(self):

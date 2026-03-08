@@ -9,7 +9,7 @@ RUN python -m pip install --upgrade pip && \
 
 FROM python:3.13-slim AS final
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=python-build /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
