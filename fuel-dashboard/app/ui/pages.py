@@ -371,5 +371,6 @@ def _build_zones_panel() -> None:
 
     zones_button.on("click", lambda _: on_load_zones())
     mainland_only.on_value_change(lambda _: _render_preloaded_map())
+    fuel.on_value_change(lambda _: _render_preloaded_map())
     set_status("info", "Carga una provincia para ver el ranking y detalle por distritos.")
     _render_preloaded_map()

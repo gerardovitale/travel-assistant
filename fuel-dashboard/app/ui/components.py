@@ -15,7 +15,9 @@ from ui.view_models import TREND_PERIOD_LABELS
 
 def fuel_type_select(label: str = "Tipo de combustible", on_change: Optional[Callable] = None) -> ui.select:
     options = {ft.value: FUEL_DISPLAY_NAMES.get(ft.value, ft.value.replace("_", " ").title()) for ft in FuelType}
-    return ui.select(options, value=FuelType.diesel_a_price.value, label=label, on_change=on_change).classes("w-72")
+    return ui.select(options, value=FuelType.gasoline_95_e5_price.value, label=label, on_change=on_change).classes(
+        "w-72"
+    )
 
 
 def trend_period_select(label: str = "Periodo", on_change: Optional[Callable] = None) -> ui.select:
