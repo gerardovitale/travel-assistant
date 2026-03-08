@@ -1,5 +1,4 @@
 import logging
-import ssl
 import time
 from datetime import datetime
 from datetime import timezone
@@ -15,7 +14,6 @@ from requests.adapters import HTTPAdapter
 from requests.exceptions import ConnectionError as RequestsConnectionError
 from requests.exceptions import Timeout as RequestsTimeout
 from urllib3.util.retry import Retry
-from urllib3.util.ssl_ import create_urllib3_context
 
 DATA_SOURCE_URL = (
     "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"
@@ -27,34 +25,32 @@ DATA_DESTINATION_BUCKET = "travel-assistant-spain-fuel-prices"
 logger = logging.getLogger(__name__)
 
 
-class TLSv12Adapter(HTTPAdapter):
-    """HTTPS adapter that forces TLS 1.2 for servers that don't support TLS 1.3."""
-
-    def init_poolmanager(self, *args, **kwargs):
-        ctx = create_urllib3_context()
-        ctx.maximum_version = ssl.TLSVersion.TLSv1_2
-        ctx.load_default_certs()
-        kwargs["ssl_context"] = ctx
-        return super().init_poolmanager(*args, **kwargs)
-
-
 def extract_fuel_prices_raw_data() -> dict:
     logger.info(f"Getting fuel price raw data from {DATA_SOURCE_URL}")
     retry_strategy = Retry(
-        total=5,
-        backoff_factor=3,
+        total=3,
+        backoff_factor=2,
         status_forcelist=[500, 502, 503, 504],
     )
-    adapter = TLSv12Adapter(max_retries=retry_strategy)
+    adapter = HTTPAdapter(max_retries=retry_strategy)
     session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; FuelPriceBot/1.0)"})
+    session.headers.update(
+        {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+        }
+    )
     session.mount("https://", adapter)
 
     max_attempts = 3
-    retry_delay = 30
+    retry_delay = 10
     for attempt in range(1, max_attempts + 1):
         try:
-            response = session.get(DATA_SOURCE_URL, timeout=30)
+            response = session.get(DATA_SOURCE_URL, timeout=(10, 60))
             break
         except (RequestsConnectionError, RequestsTimeout) as exc:
             if attempt < max_attempts:
@@ -63,10 +59,12 @@ def extract_fuel_prices_raw_data() -> dict:
             else:
                 logger.error(f"All {max_attempts} attempts failed. Last error: {exc}")
                 raise
+
     if response.status_code != 200:
         logger.error(f"Error getting fuel price raw data with code: {response.status_code}")
         logger.error(f"Error message: {response.json()}")
         raise requests.exceptions.HTTPError
+
     logger.info("Response code: {0}".format(response.status_code))
     logger.info("Response headers: {0}".format(response.headers))
     raw_data = response.json()

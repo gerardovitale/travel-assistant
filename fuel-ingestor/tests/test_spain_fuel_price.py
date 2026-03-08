@@ -40,7 +40,7 @@ class TestFuelPrice(TestCase):
         ]
         result = extract_fuel_prices_raw_data()
         self.assertEqual(mock_session.get.call_count, 2)
-        mock_sleep.assert_called_once_with(30)
+        mock_sleep.assert_called_once_with(10)
         self.assertEqual(result, mock_response.json())
 
     @patch("spain_fuel_price.time.sleep")
