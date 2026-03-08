@@ -98,7 +98,7 @@ def get_best_by_address(address: str, fuel_type: FuelType, radius_km: float = No
     return _df_to_station_results(df, fuel_type.value)
 
 
-def get_provinces() -> List[str]:
+def get_provinces() -> dict[str, str]:
     return get_distinct_provinces()
 
 

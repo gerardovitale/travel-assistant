@@ -157,7 +157,8 @@ def query_stations_by_province(province: str, fuel_type: str) -> pd.DataFrame:
     ).fetchdf()
 
 
-def get_distinct_provinces() -> List[str]:
+def get_distinct_provinces() -> dict[str, str]:
     conn = get_connection()
     result = conn.execute("SELECT DISTINCT province FROM latest_stations ORDER BY province").fetchdf()
-    return result["province"].tolist()
+    provinces = result["province"].tolist()
+    return {p: p.title() for p in provinces}
