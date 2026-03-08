@@ -143,6 +143,20 @@ def query_avg_price_by_province(fuel_type: str) -> pd.DataFrame:
     ).fetchdf()
 
 
+def query_stations_by_province(province: str, fuel_type: str) -> pd.DataFrame:
+    conn = get_connection()
+    return conn.execute(
+        f"""
+        SELECT latitude, longitude, {fuel_type} AS price
+        FROM latest_stations
+        WHERE province = $1
+            AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
+            AND latitude IS NOT NULL AND longitude IS NOT NULL
+        """,
+        [province],
+    ).fetchdf()
+
+
 def get_distinct_provinces() -> List[str]:
     conn = get_connection()
     result = conn.execute("SELECT DISTINCT province FROM latest_stations ORDER BY province").fetchdf()

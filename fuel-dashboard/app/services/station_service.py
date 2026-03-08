@@ -1,7 +1,11 @@
+import json
 import logging
+from pathlib import Path
 from typing import List
+from typing import Optional
 
 import pandas as pd
+from api.schemas import DistrictPriceResult
 from api.schemas import FuelType
 from api.schemas import ProvincePriceResult
 from api.schemas import StationResult
@@ -10,6 +14,7 @@ from api.schemas import TrendPeriod
 from api.schemas import TrendPoint
 from api.schemas import ZoneResult
 from config import settings
+from services.geo_utils import assign_districts
 from services.geocoding import geocode_address
 
 from data.duckdb_engine import get_distinct_provinces
@@ -18,10 +23,14 @@ from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_price_trends
+from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
 from data.gcs_client import list_parquet_files
 
 logger = logging.getLogger(__name__)
+
+_GEOJSON_DIR = Path(__file__).resolve().parent.parent / "data" / "geojson"
+_madrid_districts_geojson: Optional[dict] = None
 
 
 def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResult]:
@@ -116,6 +125,38 @@ def get_province_price_map(fuel_type: FuelType) -> List[ProvincePriceResult]:
         )
         for _, row in df.iterrows()
     ]
+
+
+def _load_madrid_districts() -> dict:
+    global _madrid_districts_geojson
+    if _madrid_districts_geojson is None:
+        path = _GEOJSON_DIR / "distritos-madrid.geojson"
+        with open(path, encoding="utf-8") as f:
+            _madrid_districts_geojson = json.load(f)
+    return _madrid_districts_geojson
+
+
+def get_district_price_map(province: str, fuel_type: FuelType) -> List[DistrictPriceResult]:
+    geojson = _load_madrid_districts()
+    df = query_stations_by_province(province, fuel_type.value)
+    if df.empty:
+        return []
+    aggregated = assign_districts(
+        df["latitude"].tolist(),
+        df["longitude"].tolist(),
+        df["price"].tolist(),
+        geojson["features"],
+    )
+    results = []
+    for district, data in aggregated.items():
+        results.append(
+            DistrictPriceResult(
+                district=district,
+                avg_price=data["total_price"] / data["count"],
+                station_count=int(data["count"]),
+            )
+        )
+    return sorted(results, key=lambda r: r.avg_price)
 
 
 def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:

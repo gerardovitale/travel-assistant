@@ -68,6 +68,12 @@ class ProvincePriceResult(BaseModel):
     station_count: int
 
 
+class DistrictPriceResult(BaseModel):
+    district: str
+    avg_price: float
+    station_count: int
+
+
 class StationListResponse(BaseModel):
     stations: List[StationResult]
     fuel_type: str

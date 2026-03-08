@@ -10,10 +10,12 @@ from services.station_service import get_best_by_address
 from services.station_service import get_cheapest_by_address
 from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
+from services.station_service import get_district_price_map
 from services.station_service import get_nearest_by_address
 from services.station_service import get_price_trends
 from services.station_service import get_province_price_map
 from services.station_service import get_provinces
+from ui.charts import build_district_choropleth
 from ui.charts import build_province_choropleth
 from ui.charts import build_trend_chart
 from ui.components import empty_state
@@ -265,12 +267,14 @@ def _build_zones_panel() -> None:
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 province_input = ui.select(options=provinces, label="Provincia", with_input=True).classes("w-56")
                 fuel = fuel_type_select()
-                mainland_only = ui.checkbox("Solo peninsula").classes("self-center")
                 zones_button = ui.button("Cargar zonas").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
-        map_container = ui.column().classes("w-full")
+        preloaded_map_container = ui.column().classes("w-full")
+        with ui.row().classes("w-full items-center"):
+            mainland_only = ui.checkbox("Solo peninsula").classes("self-center")
+        detail_map_container = ui.column().classes("w-full")
 
     def set_status(status: str, message: str) -> None:
         status_container.clear()
@@ -280,26 +284,44 @@ def _build_zones_panel() -> None:
             else:
                 status_banner(status, message)
 
+    def _render_preloaded_map() -> None:
+        preloaded_map_container.clear()
+        try:
+            fuel_type = FuelType(fuel.value)
+            province_prices = get_province_price_map(fuel_type)
+            if province_prices:
+                with preloaded_map_container:
+                    map_fig = build_province_choropleth(
+                        province_prices,
+                        "",
+                        fuel_type.value,
+                        mainland_only.value,
+                    )
+                    ui.plotly(map_fig).classes("w-full")
+        except Exception:
+            logger.exception("Preload map error")
+
     def on_load_zones() -> None:
         summary_container.clear()
-        map_container.clear()
+        detail_map_container.clear()
+        preloaded_map_container.clear()
         province = province_input.value
         if not province:
             set_status("warning", "Selecciona una provincia para cargar zonas.")
             return
 
         set_status("loading", "Cargando comparativa de zonas...")
-        with map_container:
+        with detail_map_container:
             with ui.column().classes("w-full items-center py-8"):
                 ui.spinner(size="lg").classes("text-primary")
         zones_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
             zones = get_cheapest_zones(province, fuel_type)
-            map_container.clear()
+            detail_map_container.clear()
             if not zones:
                 set_status("empty", "No hay datos de zonas para esta provincia.")
-                with map_container:
+                with detail_map_container:
                     empty_state("Prueba otra provincia o tipo de combustible.")
                 return
 
@@ -314,16 +336,20 @@ def _build_zones_panel() -> None:
                     ]
                 )
 
-            province_prices = get_province_price_map(fuel_type)
-            if province_prices:
-                with map_container:
-                    map_fig = build_province_choropleth(
-                        province_prices,
-                        province,
-                        fuel_type.value,
-                        mainland_only.value,
-                    )
-                    ui.plotly(map_fig).classes("w-full")
+            is_madrid = province.strip().upper() == "MADRID"
+
+            if is_madrid:
+                district_prices = get_district_price_map(province, fuel_type)
+                if district_prices:
+                    with detail_map_container:
+                        map_fig = build_district_choropleth(district_prices, fuel_type.value)
+                        ui.plotly(map_fig).classes("w-full")
+                else:
+                    _render_detail_province_map(province, fuel_type)
+            else:
+                _render_detail_province_map(province, fuel_type)
+                with detail_map_container:
+                    ui.label("Vista por distritos solo disponible para Madrid").classes("text-sm text-gray-500 italic")
 
             set_status("success", f"Comparativa cargada para {province}.")
         except Exception:
@@ -332,5 +358,18 @@ def _build_zones_panel() -> None:
         finally:
             zones_button.enable()
 
+    def _render_detail_province_map(province: str, fuel_type: FuelType) -> None:
+        province_prices = get_province_price_map(fuel_type)
+        if province_prices:
+            with detail_map_container:
+                map_fig = build_province_choropleth(
+                    province_prices,
+                    province,
+                    fuel_type.value,
+                )
+                ui.plotly(map_fig).classes("w-full")
+
     zones_button.on("click", lambda _: on_load_zones())
-    set_status("info", "Carga una provincia para ver el ranking y detalle por codigo postal.")
+    mainland_only.on_value_change(lambda _: _render_preloaded_map())
+    set_status("info", "Carga una provincia para ver el ranking y detalle por distritos.")
+    _render_preloaded_map()

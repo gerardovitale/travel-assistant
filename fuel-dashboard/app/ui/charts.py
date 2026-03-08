@@ -6,6 +6,7 @@ from typing import List
 from typing import Optional
 
 import plotly.graph_objects as go
+from api.schemas import DistrictPriceResult
 from api.schemas import ProvincePriceResult
 from api.schemas import TrendPoint
 from api.schemas import ZoneResult
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 _GEOJSON_DIR = Path(__file__).resolve().parent.parent / "data" / "geojson"
 _provinces_geojson: Optional[dict] = None
 _provinces_name_lookup: Optional[Dict[str, str]] = None
+_districts_geojson: Optional[dict] = None
 
 # API province names (lowercased) that don't match GeoJSON by simple case folding.
 # Format: "api name" -> "GeoJSON name"
@@ -58,6 +60,54 @@ def _load_provinces_geojson() -> dict:
 def _get_geojson_name(data_province: str) -> Optional[str]:
     _load_provinces_geojson()
     return _provinces_name_lookup.get(data_province.lower())
+
+
+def _load_districts_geojson() -> dict:
+    global _districts_geojson
+    if _districts_geojson is None:
+        path = _GEOJSON_DIR / "distritos-madrid.geojson"
+        with open(path, encoding="utf-8") as f:
+            _districts_geojson = json.load(f)
+    return _districts_geojson
+
+
+def build_district_choropleth(
+    district_prices: List[DistrictPriceResult],
+    fuel_type: str,
+) -> go.Figure:
+    geojson = _load_districts_geojson()
+    fuel_name = fuel_label(fuel_type)
+
+    districts = [dp.district for dp in district_prices]
+    avg_prices = [round(dp.avg_price, 4) for dp in district_prices]
+    station_counts = [dp.station_count for dp in district_prices]
+
+    fig = go.Figure(
+        go.Choroplethmapbox(
+            geojson=geojson,
+            locations=districts,
+            z=avg_prices,
+            featureidkey="properties.nombre",
+            colorscale=[[0, "#2166ac"], [0.5, "#f7f7f7"], [1, "#b2182b"]],
+            colorbar=dict(title="EUR/L", tickformat=".3f"),
+            marker_opacity=0.7,
+            marker_line_width=1,
+            customdata=station_counts,
+            hovertemplate=("%{location}<br>" "Promedio: %{z:.3f} EUR/L<br>" "Estaciones: %{customdata}<extra></extra>"),
+        )
+    )
+
+    fig.update_layout(
+        title=f"Precio promedio por distrito (Madrid): {fuel_name}",
+        mapbox=dict(
+            style="open-street-map",
+            center=dict(lat=40.42, lon=-3.70),
+            zoom=10,
+        ),
+        height=550,
+        margin=dict(l=0, r=0, t=50, b=0),
+    )
+    return fig
 
 
 def build_trend_chart(trend_data: List[TrendPoint], fuel_type: str, zip_code: str) -> go.Figure:
