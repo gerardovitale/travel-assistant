@@ -29,13 +29,13 @@ from ui.components import search_mode_select
 from ui.components import station_results_table
 from ui.components import status_banner
 from ui.components import trend_period_select
-from ui.view_models import format_delta
-from ui.view_models import format_price
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
 from ui.view_models import trend_kpis
+from ui.view_models import trend_summary_cards
 from ui.view_models import zone_kpis
+from ui.view_models import zone_summary_cards
 
 from data.cache import is_data_ready
 
@@ -267,14 +267,7 @@ def _build_trends_panel() -> None:
 
             metrics = trend_kpis(trend_data)
             with summary_container:
-                kpi_row(
-                    [
-                        {"label": "Promedio actual", "value": format_price(metrics["current_avg_price"])},
-                        {"label": "Minimo del periodo", "value": format_price(metrics["min_price"])},
-                        {"label": "Maximo del periodo", "value": format_price(metrics["max_price"])},
-                        {"label": "Variacion promedio", "value": format_delta(metrics["delta_avg_price"])},
-                    ]
-                )
+                kpi_row(trend_summary_cards(metrics))
 
             with chart_container:
                 fig = build_trend_chart(trend_data, fuel_type.value, zip_code)
@@ -355,14 +348,7 @@ def _build_zones_panel() -> None:
 
             metrics = zone_kpis(zones)
             with summary_container:
-                kpi_row(
-                    [
-                        {"label": "Zonas analizadas", "value": str(metrics["zone_count"])},
-                        {"label": "CP mas barato", "value": metrics["cheapest_zip"] or "-"},
-                        {"label": "Mejor promedio", "value": format_price(metrics["cheapest_avg_price"])},
-                        {"label": "Promedio provincial", "value": format_price(metrics["province_avg_price"])},
-                    ]
-                )
+                kpi_row(zone_summary_cards(metrics))
 
             is_madrid = province.strip().upper() == "MADRID"
 

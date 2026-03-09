@@ -56,9 +56,21 @@ def empty_state(message: str = "No hay datos para mostrar.") -> None:
 def kpi_row(kpis: List[Dict[str, str]]) -> None:
     with ui.row().classes("w-full gap-3 flex-wrap"):
         for kpi in kpis:
-            with ui.card().classes("p-3 min-w-44 flex-1"):
+            with ui.card().classes("p-3 min-w-44 flex-1").style("flex-basis:0; min-height:5.5rem"):
                 ui.label(kpi["label"]).classes("text-xs text-gray-500 uppercase")
-                ui.label(kpi["value"]).classes("text-lg font-semibold")
+                value_color = kpi.get("color", "")
+                ui.label(kpi["value"]).classes(f"text-lg font-semibold {value_color}")
+                delta = kpi.get("delta")
+                if delta:
+                    delta_color = kpi.get("delta_color", "text-gray-500")
+                    delta_icon = kpi.get("delta_icon")
+                    with ui.row().classes("items-center gap-1"):
+                        if delta_icon:
+                            ui.icon(delta_icon).classes(f"text-sm {delta_color}")
+                        ui.label(delta).classes(f"text-xs {delta_color}")
+                description = kpi.get("description")
+                if description:
+                    ui.label(description).classes("text-xs text-gray-400")
 
 
 def station_results_table(stations: List[StationResult], mode: str) -> None:
