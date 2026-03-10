@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import List
+from typing import Optional
 
 import pandas as pd
 from api.schemas import DistrictPriceResult
@@ -24,6 +25,7 @@ from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
 from data.gcs_client import list_parquet_files
 from data.geojson_loader import load_madrid_districts
+from data.geojson_loader import load_postal_code_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,11 @@ def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResu
             )
         )
     return results
+
+
+def get_zip_code_boundary(zip_code: str) -> Optional[dict]:
+    _validate_zip_code(zip_code)
+    return load_postal_code_boundary(zip_code)
 
 
 def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 3) -> List[StationResult]:

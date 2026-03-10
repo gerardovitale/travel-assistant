@@ -8,6 +8,9 @@ _GEOJSON_DIR = Path(__file__).resolve().parent / "geojson"
 _provinces_geojson: Optional[dict] = None
 _provinces_name_lookup: Optional[Dict[str, str]] = None
 _districts_geojson: Optional[dict] = None
+_postal_code_index: Optional[Dict[str, dict]] = None
+
+ZIP_CODE_PROPERTY = "COD_POSTAL"
 
 _DATA_TO_GEOJSON_OVERRIDES: Dict[str, str] = {
     "coruña (a)": "A Coruña",
@@ -48,6 +51,23 @@ def load_provinces_geojson() -> dict:
 def get_geojson_province_name(data_province: str) -> Optional[str]:
     load_provinces_geojson()
     return _provinces_name_lookup.get(data_province.lower())
+
+
+def load_postal_code_boundary(zip_code: str) -> Optional[dict]:
+    global _postal_code_index
+    if _postal_code_index is None:
+        path = _GEOJSON_DIR / "spain-postal-codes.geojson"
+        if not path.exists():
+            _postal_code_index = {}
+            return None
+        with open(path, encoding="utf-8") as f:
+            geojson = json.load(f)
+        _postal_code_index = {}
+        for feature in geojson["features"]:
+            code = str(feature["properties"].get(ZIP_CODE_PROPERTY, "")).strip()
+            if code:
+                _postal_code_index[code] = feature
+    return _postal_code_index.get(zip_code)
 
 
 def load_madrid_districts() -> dict:

@@ -17,6 +17,7 @@ from services.station_service import get_nearest_by_address
 from services.station_service import get_price_trends
 from services.station_service import get_province_price_map
 from services.station_service import get_provinces
+from services.station_service import get_zip_code_boundary
 from ui.charts import build_district_choropleth
 from ui.charts import build_province_choropleth
 from ui.charts import build_station_map
@@ -155,11 +156,14 @@ def _build_search_panel() -> None:
             search_lat = None
             search_lon = None
 
+            zip_boundary = None
+
             if current_mode == "cheapest_by_zip":
                 coords = geocode_address(f"{query_value}, Spain")
                 if coords:
                     search_lat, search_lon = coords
                 stations = get_cheapest_by_zip(query_value, fuel_type, limit)
+                zip_boundary = get_zip_code_boundary(query_value)
             elif current_mode in ("nearest_by_address", "cheapest_by_address", "best_by_address"):
                 coords = geocode_address(query_value)
                 if coords is None:
@@ -192,7 +196,7 @@ def _build_search_panel() -> None:
             with results_container:
                 station_results_table(stations, current_mode)
             with map_container:
-                fig = build_station_map(stations, search_lat, search_lon, query_value)
+                fig = build_station_map(stations, search_lat, search_lon, query_value, zip_boundary=zip_boundary)
                 ui.plotly(fig).classes("w-full")
         except ValueError as exc:
             logger.warning("Search validation error: %s", exc)

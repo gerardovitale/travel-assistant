@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 from api.schemas import FuelType
 from api.schemas import TrendPeriod
 from tests.fixture import make_stations_df
@@ -82,3 +83,30 @@ def test_get_price_trends(mock_list, mock_query):
     results = get_price_trends("28001", FuelType.diesel_a_price, TrendPeriod.week)
     assert len(results) == 2
     assert results[0].date == "2025-01-01"
+
+
+@patch("services.station_service.load_postal_code_boundary")
+def test_get_zip_code_boundary_valid(mock_load):
+    from services.station_service import get_zip_code_boundary
+
+    mock_load.return_value = {"type": "Feature", "properties": {"COD_POSTAL": "28001"}, "geometry": {}}
+    result = get_zip_code_boundary("28001")
+    assert result is not None
+    assert result["properties"]["COD_POSTAL"] == "28001"
+    mock_load.assert_called_once_with("28001")
+
+
+@patch("services.station_service.load_postal_code_boundary")
+def test_get_zip_code_boundary_not_found(mock_load):
+    from services.station_service import get_zip_code_boundary
+
+    mock_load.return_value = None
+    result = get_zip_code_boundary("99999")
+    assert result is None
+
+
+def test_get_zip_code_boundary_invalid_zip():
+    from services.station_service import get_zip_code_boundary
+
+    with pytest.raises(ValueError):
+        get_zip_code_boundary("abc")

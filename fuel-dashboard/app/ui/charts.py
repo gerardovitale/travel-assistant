@@ -189,13 +189,49 @@ def build_province_choropleth(
     return fig
 
 
+def _extract_boundary_coords(geometry: dict) -> list:
+    """Extract coordinate rings from a Polygon or MultiPolygon geometry."""
+    geom_type = geometry["type"]
+    coords = geometry["coordinates"]
+    if geom_type == "Polygon":
+        return [coords[0]]
+    elif geom_type == "MultiPolygon":
+        return [polygon[0] for polygon in coords]
+    return []
+
+
 def build_station_map(
     stations: List[StationResult],
     search_lat: Optional[float],
     search_lon: Optional[float],
     search_label: str,
+    zip_boundary: Optional[dict] = None,
 ) -> go.Figure:
     fig = go.Figure()
+
+    all_lats: list = []
+    all_lons: list = []
+
+    if zip_boundary is not None:
+        rings = _extract_boundary_coords(zip_boundary["geometry"])
+        for ring in rings:
+            boundary_lons = [c[0] for c in ring]
+            boundary_lats = [c[1] for c in ring]
+            fig.add_trace(
+                go.Scattermapbox(
+                    lat=boundary_lats,
+                    lon=boundary_lons,
+                    mode="lines",
+                    fill="toself",
+                    fillcolor="rgba(220, 38, 38, 0.1)",
+                    line=dict(width=2, color="#dc2626"),
+                    name="Zona CP",
+                    hoverinfo="skip",
+                    showlegend=(ring is rings[0]),
+                )
+            )
+            all_lats.extend(boundary_lats)
+            all_lons.extend(boundary_lons)
 
     st_lats = [s.latitude for s in stations]
     st_lons = [s.longitude for s in stations]
@@ -213,8 +249,8 @@ def build_station_map(
         )
     )
 
-    all_lats = list(st_lats)
-    all_lons = list(st_lons)
+    all_lats.extend(st_lats)
+    all_lons.extend(st_lons)
 
     if search_lat is not None and search_lon is not None:
         fig.add_trace(
