@@ -1,19 +1,15 @@
-FROM python:3.13-slim AS python-build
+FROM python:3.13-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:0.6 /uv /uvx /bin/
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN python -m pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
-
-FROM python:3.13-slim AS final
+FROM python:3.13-slim
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=python-build /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=python-build /usr/local/bin /usr/local/bin
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/.venv /app/.venv
 COPY ./app/ ./
+ENV PATH="/app/.venv/bin:$PATH"
 EXPOSE 8080
 ENTRYPOINT ["python3", "main.py"]

@@ -24,6 +24,16 @@ Both follow the same pipeline: fetch JSON from Spain's fuel prices REST API → 
 ## Common Commands
 
 ```bash
+# Install deps locally (uv)
+make sync
+
+# Fast local tests without Docker
+make test-local
+
+# Add a dependency
+cd <service> && uv add <package>
+cd <service> && uv add --group dev <package>
+
 # Run fuel-ingestor tests (Docker-based)
 make fuel-ingestor.test
 

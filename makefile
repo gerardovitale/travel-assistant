@@ -13,11 +13,29 @@ notebook:
 		quay.io/jupyter/scipy-notebook:latest
 
 
+# LOCAL DEV (uv)
+fuel-ingestor.sync:
+	cd fuel-ingestor && uv sync --no-install-project
+
+fuel-dashboard.sync:
+	cd fuel-dashboard && uv sync --no-install-project
+
+sync: fuel-ingestor.sync fuel-dashboard.sync
+
+fuel-ingestor.test-local:
+	cd fuel-ingestor && uv run pytest --durations=5 -vv tests/
+
+fuel-dashboard.test-local:
+	cd fuel-dashboard && uv run pytest --durations=5 -vv tests/
+
+test-local: fuel-ingestor.test-local fuel-dashboard.test-local
+
+
 # CLOUD RUN JOB
 fuel-ingestor.test:
 	./scripts/run-docker-test.sh fuel-ingestor
 
-fuel-ingestor.local:
+fuel-ingestor.run:
 	cd fuel-ingestor && docker buildx build -t fuel-ingestor . && \
 	mkdir -p output && \
 	docker run --rm \
@@ -56,4 +74,4 @@ backend.run: backend.init backend.plan backend.apply
 
 # DATA
 data.download:
-	fuel-dashboard/venv/bin/python3 scripts/download_fuel_data.py
+	cd fuel-dashboard && uv run python ../scripts/download_fuel_data.py

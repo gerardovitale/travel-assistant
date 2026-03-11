@@ -1,0 +1,18 @@
+[project]
+name = "fuel-ingestor"
+version = "0.1.0"
+description = "Spanish fuel price ingestion pipeline"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas==2.2.3",
+    "google-cloud-storage==2.18.2",
+    "requests==2.32.3",
+    "pytz==2025.2",
+    "pyarrow==18.1.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["app"]
+
+[dependency-groups]
+dev = ["pytest"]

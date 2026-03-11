@@ -29,7 +29,7 @@ jobs:
         uses: actions/cache@v4.2.3
         with:
           path: /tmp/.buildx-cache-${{ matrix.service }}
-          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ hashFiles(format('{0}/Dockerfile.test', matrix.service)) }}
+          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ hashFiles(format('{0}/Dockerfile.test', matrix.service), format('{0}/uv.lock', matrix.service)) }}
           restore-keys: ${{ runner.os }}-buildx-${{ matrix.service }}-
 
       - name: Build Test Container
@@ -62,7 +62,7 @@ jobs:
         uses: actions/cache@v4.2.3
         with:
           path: /tmp/.buildx-cache-${{ matrix.service }}
-          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ hashFiles(format('{0}/Dockerfile', matrix.service)) }}
+          key: ${{ runner.os }}-buildx-${{ matrix.service }}-${{ hashFiles(format('{0}/Dockerfile', matrix.service), format('{0}/uv.lock', matrix.service)) }}
           restore-keys: ${{ runner.os }}-buildx-${{ matrix.service }}-
 
       - name: Log in to Docker Registry
