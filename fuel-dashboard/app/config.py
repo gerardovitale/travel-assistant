@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     geocoding_user_agent: str = "spain-fuel-dashboard"
     default_radius_km: float = 5.0
-    default_limit: int = 3
+    default_limit: int = 5
     price_weight: float = 0.6
     distance_weight: float = 0.4
 

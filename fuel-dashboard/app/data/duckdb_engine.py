@@ -45,7 +45,7 @@ def refresh_latest_snapshot() -> None:
     logger.info(f"Loaded {count} stations into latest_stations table")
 
 
-def query_cheapest_by_zip(zip_code: str, fuel_type: str, limit: int = 3) -> pd.DataFrame:
+def query_cheapest_by_zip(zip_code: str, fuel_type: str, limit: int = 5) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(
@@ -82,7 +82,7 @@ def query_stations_within_radius(lat: float, lon: float, fuel_type: str, radius_
     ).fetchdf()
 
 
-def query_nearest_stations(lat: float, lon: float, fuel_type: str, limit: int = 3) -> pd.DataFrame:
+def query_nearest_stations(lat: float, lon: float, fuel_type: str, limit: int = 5) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     conn = get_connection()
     return conn.execute(

@@ -7,6 +7,11 @@ export
 
 test: fuel-ingestor.test fuel-dashboard.test
 
+notebook:
+	docker run -it --rm -p 8888:8888 \
+		-v "${PWD}":/home/jovyan/work \
+		quay.io/jupyter/scipy-notebook:latest
+
 
 # CLOUD RUN JOB
 fuel-ingestor.test:
@@ -47,3 +52,8 @@ backend.destroy:
 	cd infra/backend_support/ && terraform destroy -auto-approve
 
 backend.run: backend.init backend.plan backend.apply
+
+
+# DATA
+data.download:
+	fuel-dashboard/venv/bin/python3 scripts/download_fuel_data.py

@@ -35,7 +35,7 @@ def test_get_best_by_address(mock_query):
 
     mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 5)
     results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0)
-    assert len(results) == 3  # default limit
+    assert len(results) == 5  # default limit
     assert all(r.score is not None for r in results)
 
 

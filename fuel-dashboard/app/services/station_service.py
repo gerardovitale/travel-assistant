@@ -61,19 +61,19 @@ def get_zip_code_boundary(zip_code: str) -> Optional[dict]:
     return load_postal_code_boundary(zip_code)
 
 
-def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 3) -> List[StationResult]:
+def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 5) -> List[StationResult]:
     _validate_zip_code(zip_code)
     df = query_cheapest_by_zip(zip_code, fuel_type.value, limit)
     return _df_to_station_results(df, fuel_type.value)
 
 
-def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: int = 3) -> List[StationResult]:
+def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: int = 5) -> List[StationResult]:
     df = query_nearest_stations(lat, lon, fuel_type.value, limit)
     return _df_to_station_results(df, fuel_type.value)
 
 
 def get_cheapest_by_address(
-    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 3
+    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 5
 ) -> List[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km
@@ -85,7 +85,7 @@ def get_cheapest_by_address(
 
 
 def get_best_by_address(
-    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 3
+    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 5
 ) -> List[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km

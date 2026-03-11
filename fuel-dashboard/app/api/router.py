@@ -3,6 +3,7 @@ from api.schemas import StationListResponse
 from api.schemas import TrendPeriod
 from api.schemas import TrendResponse
 from api.schemas import ZoneListResponse
+from config import settings
 from fastapi import APIRouter
 from fastapi import HTTPException
 from fastapi import Query
@@ -21,7 +22,7 @@ router = APIRouter()
 def cheapest_by_zip(
     zip_code: str = Query(..., pattern=r"^\d{5}$", description="Zip code to search"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
-    limit: int = Query(3, ge=1, le=20, description="Max results"),
+    limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
 ):
     stations = get_cheapest_by_zip(zip_code, fuel_type, limit)
     return StationListResponse(stations=stations, fuel_type=fuel_type.value, query_type="cheapest_by_zip")
@@ -31,7 +32,7 @@ def cheapest_by_zip(
 def nearest_by_address(
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
-    limit: int = Query(3, ge=1, le=20, description="Max results"),
+    limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
 ):
     coords = geocode_address(address)
     if coords is None:
@@ -48,7 +49,7 @@ def cheapest_by_address(
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
-    limit: int = Query(3, ge=1, le=20, description="Max results"),
+    limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
 ):
     coords = geocode_address(address)
     if coords is None:
@@ -65,7 +66,7 @@ def best_by_address(
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
-    limit: int = Query(3, ge=1, le=20, description="Max results"),
+    limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
 ):
     coords = geocode_address(address)
     if coords is None:
