@@ -126,7 +126,7 @@ def query_price_trends(blob_names: List[str], zip_code: str, fuel_type: str) -> 
     if not blob_names:
         return pd.DataFrame()
     df = download_parquets_as_df(blob_names)  # noqa: F841
-    conn = get_connection()
+    conn = duckdb.connect(":memory:")
     return conn.execute(
         f"""
         SELECT

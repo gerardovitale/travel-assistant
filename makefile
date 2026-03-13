@@ -5,6 +5,10 @@ ENV := $(PWD)/.env
 include $(ENV)
 export
 
+setup:
+	cd fuel-ingestor && uv sync --dev
+	cd fuel-dashboard && uv sync --dev
+
 test: fuel-ingestor.test fuel-dashboard.test
 
 notebook:

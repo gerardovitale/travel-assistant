@@ -6,6 +6,7 @@ from api.schemas import FuelType
 from api.schemas import TrendPeriod
 from config import settings
 from fastapi import FastAPI
+from nicegui import run
 from nicegui import ui
 from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
@@ -129,7 +130,7 @@ def _build_search_panel() -> None:
 
     set_status = _make_set_status(status_container)
 
-    def on_search() -> None:
+    async def on_search() -> None:
         summary_container.clear()
         results_container.clear()
         map_container.clear()
@@ -159,24 +160,28 @@ def _build_search_panel() -> None:
             zip_boundary = None
 
             if current_mode == "cheapest_by_zip":
-                coords = geocode_address(f"{query_value}, Spain")
+                coords = await run.io_bound(geocode_address, f"{query_value}, Spain")
                 if coords:
                     search_lat, search_lon = coords
-                stations = get_cheapest_by_zip(query_value, fuel_type, limit)
-                zip_boundary = get_zip_code_boundary(query_value)
+                stations = await run.io_bound(get_cheapest_by_zip, query_value, fuel_type, limit)
+                zip_boundary = await run.io_bound(get_zip_code_boundary, query_value)
             elif current_mode in ("nearest_by_address", "cheapest_by_address", "best_by_address"):
-                coords = geocode_address(query_value)
+                coords = await run.io_bound(geocode_address, query_value)
                 if coords is None:
                     results_container.clear()
                     set_status("warning", "No se pudo geocodificar la direccion proporcionada.")
                     return
                 search_lat, search_lon = coords
                 if current_mode == "nearest_by_address":
-                    stations = get_nearest_by_address(search_lat, search_lon, fuel_type, limit)
+                    stations = await run.io_bound(get_nearest_by_address, search_lat, search_lon, fuel_type, limit)
                 elif current_mode == "cheapest_by_address":
-                    stations = get_cheapest_by_address(search_lat, search_lon, fuel_type, radius_km, limit)
+                    stations = await run.io_bound(
+                        get_cheapest_by_address, search_lat, search_lon, fuel_type, radius_km, limit
+                    )
                 elif current_mode == "best_by_address":
-                    stations = get_best_by_address(search_lat, search_lon, fuel_type, radius_km, limit)
+                    stations = await run.io_bound(
+                        get_best_by_address, search_lat, search_lon, fuel_type, radius_km, limit
+                    )
                 else:
                     stations = []
             else:
@@ -245,7 +250,7 @@ def _build_trends_panel() -> None:
 
     set_status = _make_set_status(status_container)
 
-    def on_load_trend() -> None:
+    async def on_load_trend() -> None:
         summary_container.clear()
         chart_container.clear()
         zip_code = (zip_input.value or "").strip()
@@ -261,7 +266,7 @@ def _build_trends_panel() -> None:
         try:
             fuel_type = FuelType(fuel.value)
             trend_period = TrendPeriod(period.value)
-            trend_data = get_price_trends(zip_code, fuel_type, trend_period)
+            trend_data = await run.io_bound(get_price_trends, zip_code, fuel_type, trend_period)
             chart_container.clear()
             if not trend_data:
                 set_status("empty", "No hay datos de tendencia para esta combinacion.")
@@ -309,11 +314,11 @@ def _build_zones_panel() -> None:
 
     set_status = _make_set_status(status_container)
 
-    def _render_preloaded_map() -> None:
+    async def _render_preloaded_map() -> None:
         preloaded_map_container.clear()
         try:
             fuel_type = FuelType(fuel.value)
-            province_prices = get_province_price_map(fuel_type)
+            province_prices = await run.io_bound(get_province_price_map, fuel_type)
             if province_prices:
                 with preloaded_map_container:
                     map_fig = build_province_choropleth(
@@ -326,7 +331,7 @@ def _build_zones_panel() -> None:
         except Exception:
             logger.exception("Preload map error")
 
-    def on_load_zones() -> None:
+    async def on_load_zones() -> None:
         summary_container.clear()
         detail_map_container.clear()
         preloaded_map_container.clear()
@@ -342,7 +347,7 @@ def _build_zones_panel() -> None:
         zones_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
-            zones = get_cheapest_zones(province, fuel_type)
+            zones = await run.io_bound(get_cheapest_zones, province, fuel_type)
             detail_map_container.clear()
             if not zones:
                 set_status("empty", "No hay datos de zonas para esta provincia.")
@@ -357,15 +362,15 @@ def _build_zones_panel() -> None:
             is_madrid = province.strip().upper() == "MADRID"
 
             if is_madrid:
-                district_prices = get_district_price_map(province, fuel_type)
+                district_prices = await run.io_bound(get_district_price_map, province, fuel_type)
                 if district_prices:
                     with detail_map_container:
                         map_fig = build_district_choropleth(district_prices, fuel_type.value)
                         ui.plotly(map_fig).classes("w-full")
                 else:
-                    _render_detail_province_map(province, fuel_type)
+                    await _render_detail_province_map(province, fuel_type)
             else:
-                _render_detail_province_map(province, fuel_type)
+                await _render_detail_province_map(province, fuel_type)
                 with detail_map_container:
                     ui.label("Vista por distritos solo disponible para Madrid").classes("text-sm text-gray-500 italic")
 
@@ -379,8 +384,8 @@ def _build_zones_panel() -> None:
         finally:
             zones_button.enable()
 
-    def _render_detail_province_map(province: str, fuel_type: FuelType) -> None:
-        province_prices = get_province_price_map(fuel_type)
+    async def _render_detail_province_map(province: str, fuel_type: FuelType) -> None:
+        province_prices = await run.io_bound(get_province_price_map, fuel_type)
         if province_prices:
             with detail_map_container:
                 map_fig = build_province_choropleth(
