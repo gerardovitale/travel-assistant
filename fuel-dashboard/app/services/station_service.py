@@ -14,6 +14,7 @@ from api.schemas import TrendPoint
 from api.schemas import ZoneResult
 from config import settings
 from services.geo_utils import assign_districts
+from services.routing import get_road_distances
 
 from data.duckdb_engine import get_distinct_provinces
 from data.duckdb_engine import query_avg_price_by_province
@@ -56,6 +57,20 @@ def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResu
     return results
 
 
+def _enrich_with_road_distances(lat: float, lon: float, df: pd.DataFrame) -> pd.DataFrame:
+    if not settings.osrm_enabled or df.empty:
+        return df
+    destinations = list(zip(df["latitude"].tolist(), df["longitude"].tolist()))
+    distances = get_road_distances((lat, lon), destinations)
+    if distances is None:
+        logger.warning("OSRM enrichment failed, keeping Haversine distances")
+        return df
+    df = df.copy()
+    df["distance_km"] = distances
+    df = df.dropna(subset=["distance_km"])
+    return df
+
+
 def get_zip_code_boundary(zip_code: str) -> Optional[dict]:
     _validate_zip_code(zip_code)
     return load_postal_code_boundary(zip_code)
@@ -68,7 +83,10 @@ def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 5) -> L
 
 
 def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: int = 5) -> List[StationResult]:
-    df = query_nearest_stations(lat, lon, fuel_type.value, limit)
+    oversample = limit * 3 if settings.osrm_enabled else limit
+    df = query_nearest_stations(lat, lon, fuel_type.value, oversample)
+    df = _enrich_with_road_distances(lat, lon, df)
+    df = df.sort_values("distance_km").head(limit)
     return _df_to_station_results(df, fuel_type.value)
 
 
@@ -77,9 +95,14 @@ def get_cheapest_by_address(
 ) -> List[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km
-    df = query_stations_within_radius(lat, lon, fuel_type.value, radius_km)
+    fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
+    df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius)
     if df.empty:
         return []
+    df = _enrich_with_road_distances(lat, lon, df)
+    if df.empty:
+        return []
+    df = df[df["distance_km"] <= radius_km]
     df = df.sort_values(fuel_type.value).head(limit)
     return _df_to_station_results(df, fuel_type.value)
 
@@ -89,9 +112,14 @@ def get_best_by_address(
 ) -> List[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km
-    df = query_stations_within_radius(lat, lon, fuel_type.value, radius_km)
+    fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
+    df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius)
     if df.empty:
         return []
+    df = _enrich_with_road_distances(lat, lon, df)
+    if df.empty:
+        return []
+    df = df[df["distance_km"] <= radius_km]
     df["price_rank"] = df[fuel_type.value].rank(method="min")
     df["distance_rank"] = df["distance_km"].rank(method="min")
     df["score"] = settings.price_weight * df["price_rank"] + settings.distance_weight * df["distance_rank"]

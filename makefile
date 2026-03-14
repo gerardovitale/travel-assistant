@@ -10,6 +10,7 @@ setup:
 	cd fuel-dashboard && uv sync --dev
 
 test: fuel-ingestor.test fuel-dashboard.test
+test-local: fuel-ingestor.test-local fuel-dashboard.test-local
 
 notebook:
 	docker run -it --rm -p 8888:8888 \

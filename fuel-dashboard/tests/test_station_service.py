@@ -19,34 +19,43 @@ def test_get_cheapest_by_zip(mock_query):
     mock_query.assert_called_once_with("28001", SAMPLE_FUEL_TYPE, 3)
 
 
+@patch("services.station_service.get_road_distances")
 @patch("services.station_service.query_nearest_stations")
-def test_get_nearest_by_address(mock_query):
+def test_get_nearest_by_address(mock_query, mock_road):
     from services.station_service import get_nearest_by_address
 
-    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 3)
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 9)
+    mock_road.return_value = [1.2, 0.8, 2.5, 1.0, 3.1, 2.0, 4.0, 1.5, 0.9]
     results = get_nearest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 3)
     assert len(results) == 3
-    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 3)
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 9)
+    mock_road.assert_called_once()
 
 
+@patch("services.station_service.get_road_distances")
 @patch("services.station_service.query_stations_within_radius")
-def test_get_best_by_address(mock_query):
+def test_get_best_by_address(mock_query, mock_road):
     from services.station_service import get_best_by_address
 
     mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 5)
+    mock_road.return_value = [1.0, 1.5, 2.0, 2.5, 3.0]
     results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0)
     assert len(results) == 5  # default limit
     assert all(r.score is not None for r in results)
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5)
 
 
+@patch("services.station_service.get_road_distances")
 @patch("services.station_service.query_stations_within_radius")
-def test_get_cheapest_by_address(mock_query):
+def test_get_cheapest_by_address(mock_query, mock_road):
     from services.station_service import get_cheapest_by_address
 
     mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 5)
+    mock_road.return_value = [1.0, 1.5, 2.0, 2.5, 3.0]
     results = get_cheapest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 3)
     assert len(results) == 3
     assert results[0].price <= results[1].price
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5)
 
 
 @patch("services.station_service.query_cheapest_zones")
@@ -103,6 +112,19 @@ def test_get_zip_code_boundary_not_found(mock_load):
     mock_load.return_value = None
     result = get_zip_code_boundary("99999")
     assert result is None
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_nearest_stations")
+def test_get_nearest_by_address_osrm_fallback(mock_query, mock_road):
+    from services.station_service import get_nearest_by_address
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 9)
+    mock_road.return_value = None  # OSRM failure
+    results = get_nearest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 3)
+    assert len(results) == 3
+    # Falls back to Haversine distances
+    assert results[0].distance_km == 1.0
 
 
 def test_get_zip_code_boundary_invalid_zip():
