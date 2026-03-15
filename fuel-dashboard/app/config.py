@@ -7,14 +7,20 @@ class Settings(BaseSettings):
 
     gcp_project_id: str = "travel-assistant-417315"
     gcs_bucket_name: str = "travel-assistant-spain-fuel-prices"
+
     cache_ttl_seconds: int = 86400
+
     port: int = 8080
     host: str = "0.0.0.0"
+
     geocoding_user_agent: str = "spain-fuel-dashboard"
+
     default_radius_km: float = 5.0
     default_limit: int = 5
+
     price_weight: float = 0.6
     distance_weight: float = 0.4
+
     osrm_base_url: str = "https://router.project-osrm.org"
     osrm_timeout: float = 5.0
     osrm_enabled: bool = True

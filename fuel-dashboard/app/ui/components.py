@@ -1,3 +1,4 @@
+import json
 from typing import Callable
 from typing import Dict
 from typing import List
@@ -73,10 +74,16 @@ def kpi_row(kpis: List[Dict[str, str]]) -> None:
                     ui.label(description).classes("text-xs text-gray-400")
 
 
-def station_results_table(stations: List[StationResult], mode: str) -> None:
+def station_results_table(
+    stations: List[StationResult],
+    mode: str,
+    plotly_element_id: Optional[str] = None,
+    stations_trace_idx: Optional[int] = None,
+    highlight_trace_idx: Optional[int] = None,
+) -> Optional[ui.table]:
     if not stations:
         empty_state("No se encontraron estaciones para esta busqueda.")
-        return
+        return None
 
     has_distance = any(s.distance_km is not None for s in stations)
     has_score = any(s.score is not None for s in stations)
@@ -119,6 +126,71 @@ def station_results_table(stations: List[StationResult], mode: str) -> None:
     table.props("dense flat bordered separator=cell wrap-cells")
     if mode in ("nearest_by_address", "best_by_address"):
         table.props("rows-per-page-options=[3,5,10]")
+
+    if plotly_element_id is not None and stations_trace_idx is not None and highlight_trace_idx is not None:
+        station_lookup = {}
+        for s in stations:
+            station_lookup[s.label] = {
+                "lat": s.latitude,
+                "lon": s.longitude,
+                "text": f"{s.label}<br>{s.price:.3f} EUR/L<br>{s.address}",
+            }
+        lookup_json = json.dumps(station_lookup, ensure_ascii=True)
+
+        col_slots = " ".join(
+            f'<q-td key="{c["name"]}" :props="props">{{{{ props.row.{c["field"]} }}}}</q-td>' for c in columns
+        )
+
+        # Use slot only to add data-label attribute to rows.
+        # JS event handlers go via run_javascript (global scope) because
+        # Vue 3 template expressions block access to globals like Plotly/window.
+        table.add_slot(
+            "body",
+            f"""
+            <q-tr :props="props" :data-label="props.row.label">
+                {col_slots}
+            </q-tr>
+            """,
+        )
+
+        table_dom_id = f"c{table.id}"
+        # Use requestAnimationFrame to ensure the table DOM element is rendered
+        # before attaching event listeners (NiceGUI batches UI updates over WebSocket).
+        ui.run_javascript(
+            f"""
+            requestAnimationFrame(function() {{
+                var lookup = {lookup_json};
+                var tableEl = document.getElementById('{table_dom_id}');
+                if (!tableEl) return;
+                var lastTr = null;
+                tableEl.addEventListener('mouseover', function(e) {{
+                    var tr = e.target.closest('tr[data-label]');
+                    if (!tr || tr === lastTr) return;
+                    lastTr = tr;
+                    var info = lookup[tr.getAttribute('data-label')];
+                    if (!info || typeof Plotly === 'undefined') return;
+                    Plotly.restyle('{plotly_element_id}',
+                        {{lat: [[info.lat]], lon: [[info.lon]], text: [[info.text]]}},
+                        [{highlight_trace_idx}]);
+                    Plotly.restyle('{plotly_element_id}',
+                        {{'marker.opacity': 0.4}}, [{stations_trace_idx}]);
+                }});
+                tableEl.addEventListener('mouseout', function(e) {{
+                    var related = e.relatedTarget;
+                    if (related && related.closest && related.closest('tr[data-label]') === lastTr) return;
+                    lastTr = null;
+                    if (typeof Plotly === 'undefined') return;
+                    Plotly.restyle('{plotly_element_id}',
+                        {{lat: [[null]], lon: [[null]], text: [[null]]}},
+                        [{highlight_trace_idx}]);
+                    Plotly.restyle('{plotly_element_id}',
+                        {{'marker.opacity': 1}}, [{stations_trace_idx}]);
+                }});
+            }});
+            """
+        )
+
+    return table
 
 
 def zone_results_table(zones: List[ZoneResult]) -> None:

@@ -22,4 +22,8 @@ dependencies = [
 pythonpath = ["app"]
 
 [dependency-groups]
-dev = ["pytest", "httpx"]
+dev = [
+    "pytest",
+    "httpx",
+    "jupyter>=1.1.1",
+]

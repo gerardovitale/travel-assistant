@@ -43,11 +43,14 @@ def test_build_station_map_without_boundary():
     from ui.charts import build_station_map
 
     stations = _make_stations()
-    fig = build_station_map(stations, 40.42, -3.70, "28001")
-    # stations trace + search marker trace
-    assert len(fig.data) == 2
+    fig, stations_idx, highlight_idx = build_station_map(stations, 40.42, -3.70, "28001")
+    # stations trace + highlight trace + search marker trace
+    assert len(fig.data) == 3
     assert fig.data[0].name == "Estaciones"
-    assert fig.data[1].name == "Ubicacion buscada"
+    assert fig.data[1].name == "Seleccion"
+    assert fig.data[2].name == "Ubicacion buscada"
+    assert stations_idx == 0
+    assert highlight_idx == 1
 
 
 def test_build_station_map_with_polygon_boundary():
@@ -62,11 +65,13 @@ def test_build_station_map_with_polygon_boundary():
             "coordinates": [[[-3.72, 40.40], [-3.68, 40.40], [-3.68, 40.44], [-3.72, 40.44], [-3.72, 40.40]]],
         },
     }
-    fig = build_station_map(stations, 40.42, -3.70, "28001", zip_boundary=boundary)
-    # boundary trace + stations trace + search marker trace
-    assert len(fig.data) == 3
+    fig, stations_idx, highlight_idx = build_station_map(stations, 40.42, -3.70, "28001", zip_boundary=boundary)
+    # boundary trace + stations trace + highlight trace + search marker trace
+    assert len(fig.data) == 4
     assert fig.data[0].name == "Zona CP"
     assert fig.data[0].fill == "toself"
+    assert stations_idx == 1
+    assert highlight_idx == 2
 
 
 def test_build_station_map_with_multipolygon_boundary():
@@ -84,8 +89,10 @@ def test_build_station_map_with_multipolygon_boundary():
             ],
         },
     }
-    fig = build_station_map(stations, 41.38, 2.17, "08001", zip_boundary=boundary)
-    # 2 boundary traces + stations trace + search marker trace
-    assert len(fig.data) == 4
+    fig, stations_idx, highlight_idx = build_station_map(stations, 41.38, 2.17, "08001", zip_boundary=boundary)
+    # 2 boundary traces + stations trace + highlight trace + search marker trace
+    assert len(fig.data) == 5
     assert fig.data[0].name == "Zona CP"
     assert fig.data[1].name == "Zona CP"
+    assert stations_idx == 2
+    assert highlight_idx == 3

@@ -198,11 +198,20 @@ def _build_search_panel() -> None:
             set_status("success", f"{summary['count']} estaciones encontradas.")
             with summary_container:
                 kpi_row(search_summary_cards(summary, current_mode))
-            with results_container:
-                station_results_table(stations, current_mode)
             with map_container:
-                fig = build_station_map(stations, search_lat, search_lon, query_value, zip_boundary=zip_boundary)
-                ui.plotly(fig).classes("w-full")
+                fig, stations_trace_idx, highlight_trace_idx = build_station_map(
+                    stations, search_lat, search_lon, query_value, zip_boundary=zip_boundary
+                )
+                plotly_el = ui.plotly(fig).classes("w-full")
+                plotly_id = f"c{plotly_el.id}"
+            with results_container:
+                station_results_table(
+                    stations,
+                    current_mode,
+                    plotly_element_id=plotly_id,
+                    stations_trace_idx=stations_trace_idx,
+                    highlight_trace_idx=highlight_trace_idx,
+                )
         except ValueError as exc:
             logger.warning("Search validation error: %s", exc)
             set_status("warning", str(exc))

@@ -2,6 +2,7 @@ import logging
 import math
 from typing import List
 from typing import Optional
+from typing import Tuple
 
 import plotly.graph_objects as go
 from api.schemas import DistrictPriceResult
@@ -206,7 +207,7 @@ def build_station_map(
     search_lon: Optional[float],
     search_label: str,
     zip_boundary: Optional[dict] = None,
-) -> go.Figure:
+) -> Tuple[go.Figure, int, int]:
     fig = go.Figure()
 
     all_lats: list = []
@@ -237,6 +238,7 @@ def build_station_map(
     st_lons = [s.longitude for s in stations]
     st_texts = [f"{s.label}<br>{s.price:.3f} EUR/L<br>{s.address}" for s in stations]
 
+    stations_trace_idx = len(fig.data)
     fig.add_trace(
         go.Scattermapbox(
             lat=st_lats,
@@ -246,6 +248,20 @@ def build_station_map(
             text=st_texts,
             hoverinfo="text",
             name="Estaciones",
+        )
+    )
+
+    highlight_trace_idx = len(fig.data)
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=[None],
+            lon=[None],
+            mode="markers",
+            marker=dict(size=20, color="#f59e0b"),
+            text=[None],
+            hoverinfo="text",
+            name="Seleccion",
+            showlegend=False,
         )
     )
 
@@ -293,7 +309,7 @@ def build_station_map(
         margin=dict(l=0, r=0, t=0, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0.0),
     )
-    return fig
+    return fig, stations_trace_idx, highlight_trace_idx
 
 
 def _flatten_coordinates(coords):
