@@ -40,9 +40,109 @@ def test_get_best_by_address(mock_query, mock_road):
     mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 5)
     mock_road.return_value = [1.0, 1.5, 2.0, 2.5, 3.0]
     results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0)
-    assert len(results) == 5  # default limit
+    assert len(results) == 5
     assert all(r.score is not None for r in results)
+    assert all(0 <= r.score <= 10 for r in results)
+    assert all(r.estimated_total_cost is not None for r in results)
+    assert results[0].score >= results[-1].score  # sorted descending by score
+    assert results[0].estimated_total_cost <= results[-1].estimated_total_cost  # lowest cost first
     mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5)
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
+def test_get_best_by_address_total_cost_calculation(mock_query, mock_road):
+    """Verify the total cost formula: price * (tank + 2 * dist * consumption / 100)."""
+    from services.station_service import get_best_by_address
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 1)
+    mock_road.return_value = [5.0]
+    results = get_best_by_address(
+        40.4168, -3.7038, FuelType.diesel_a_price, 10.0, 5, consumption_lper100km=7.0, tank_liters=40.0
+    )
+    # station_0: price=1.50, distance=5.0km
+    # trip_liters = 2 * 5.0 * 7.0 / 100 = 0.7
+    # total_cost = 1.50 * (40.0 + 0.7) = 1.50 * 40.7 = 61.05
+    assert len(results) == 1
+    assert results[0].estimated_total_cost == 61.05
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
+def test_get_best_by_address_high_consumption_favors_cheapest(mock_query, mock_road):
+    from services.station_service import get_best_by_address
+
+    df = make_stations_df(SAMPLE_FUEL_TYPE, 2)
+    # station_0: price=1.50, station_1: price=1.55
+    mock_query.return_value = df
+    mock_road.return_value = [3.0, 1.0]
+    # High consumption: driving far costs a lot, but large tank makes price diff matter more
+    results = get_best_by_address(
+        40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 2, consumption_lper100km=12.0, tank_liters=60.0
+    )
+    # station_0: 1.50 * (60 + 2*3*12/100) = 1.50 * 60.72 = 91.08
+    # station_1: 1.55 * (60 + 2*1*12/100) = 1.55 * 60.24 = 93.37
+    # Cheapest station wins despite being farther
+    assert results[0].price == 1.50
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
+def test_get_best_by_address_small_tank_favors_closest(mock_query, mock_road):
+    from services.station_service import get_best_by_address
+
+    df = make_stations_df(SAMPLE_FUEL_TYPE, 2)
+    # station_0: price=1.50, station_1: price=1.55
+    mock_query.return_value = df
+    mock_road.return_value = [10.0, 1.0]
+    # Small tank: price diff yields little savings, but trip cost to far station is high
+    results = get_best_by_address(
+        40.4168, -3.7038, FuelType.diesel_a_price, 15.0, 2, consumption_lper100km=10.0, tank_liters=10.0
+    )
+    # station_0: 1.50 * (10 + 2*10*10/100) = 1.50 * 12.0 = 18.00
+    # station_1: 1.55 * (10 + 2*1*10/100)  = 1.55 * 10.2 = 15.81
+    # Closer station wins despite higher price per liter
+    assert results[0].distance_km == 1.0
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
+def test_get_best_by_address_equal_prices(mock_query, mock_road):
+    from services.station_service import get_best_by_address
+
+    df = make_stations_df(SAMPLE_FUEL_TYPE, 3)
+    df[SAMPLE_FUEL_TYPE] = 1.50  # all same price
+    mock_query.return_value = df
+    mock_road.return_value = [2.0, 1.0, 3.0]
+    results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 3)
+    # Same price -> total cost differs only by trip fuel -> closest first
+    assert results[0].distance_km == 1.0
+    assert results[-1].distance_km == 3.0
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
+def test_get_best_by_address_equal_distances(mock_query, mock_road):
+    from services.station_service import get_best_by_address
+
+    df = make_stations_df(SAMPLE_FUEL_TYPE, 3)
+    mock_query.return_value = df
+    mock_road.return_value = [2.0, 2.0, 2.0]  # all same distance
+    results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 3)
+    # Same distance -> total cost differs only by price -> cheapest first
+    assert results[0].price <= results[1].price <= results[2].price
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
+def test_get_best_by_address_single_station(mock_query, mock_road):
+    from services.station_service import get_best_by_address
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 1)
+    mock_road.return_value = [1.0]
+    results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 5)
+    assert len(results) == 1
+    assert results[0].score == 10.0
 
 
 @patch("services.station_service.get_road_distances")

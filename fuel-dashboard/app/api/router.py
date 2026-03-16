@@ -67,12 +67,14 @@ def best_by_address(
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
+    consumption_lper100km: float = Query(7.0, ge=1.0, le=30.0, description="Fuel consumption in l/100km"),
+    tank_liters: float = Query(40.0, ge=5.0, le=120.0, description="Liters to fill"),
 ):
     coords = geocode_address(address)
     if coords is None:
         raise HTTPException(status_code=404, detail="Address could not be geocoded")
     lat, lon = coords
-    stations = get_best_by_address(lat, lon, fuel_type, radius_km, limit)
+    stations = get_best_by_address(lat, lon, fuel_type, radius_km, limit, consumption_lper100km, tank_liters)
     if not stations:
         raise HTTPException(status_code=404, detail="No stations found within radius")
     return StationListResponse(stations=stations, fuel_type=fuel_type.value, query_type="best_by_address")

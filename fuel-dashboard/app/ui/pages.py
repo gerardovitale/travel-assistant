@@ -31,6 +31,7 @@ from ui.components import search_mode_select
 from ui.components import station_results_table
 from ui.components import status_banner
 from ui.components import trend_period_select
+from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
@@ -101,7 +102,13 @@ def init_ui(app: FastAPI) -> None:
 
 
 def _build_search_panel() -> None:
-    state: Dict[str, Any] = {"query_input": None, "radius_input": None, "dynamic_container": None}
+    state: Dict[str, Any] = {
+        "query_input": None,
+        "radius_input": None,
+        "consumption_input": None,
+        "tank_input": None,
+        "dynamic_container": None,
+    }
     mode = None
     search_button = None
     limit_input = None
@@ -179,8 +186,12 @@ def _build_search_panel() -> None:
                         get_cheapest_by_address, search_lat, search_lon, fuel_type, radius_km, limit
                     )
                 elif current_mode == "best_by_address":
+                    consumption_input = state.get("consumption_input")
+                    consumption = consumption_input.value if consumption_input else None
+                    tank_input = state.get("tank_input")
+                    tank = tank_input.value if tank_input else None
                     stations = await run.io_bound(
-                        get_best_by_address, search_lat, search_lon, fuel_type, radius_km, limit
+                        get_best_by_address, search_lat, search_lon, fuel_type, radius_km, limit, consumption, tank
                     )
                 else:
                     stations = []
@@ -236,10 +247,25 @@ def _render_query_inputs(mode: ui.select, container: ui.column, state: Dict[str,
         ui.label(metadata.helper_text).classes("text-xs text-gray-500")
         state["query_input"] = query_input
         state["radius_input"] = None
+        state["consumption_input"] = None
+        state["tank_input"] = None
         if metadata.requires_radius:
             state["radius_input"] = ui.number(
                 label="Radio (km)", value=settings.default_radius_km, min=0.1, max=50.0
             ).classes("w-36")
+        if metadata.requires_consumption:
+            state["consumption_input"] = ui.number(
+                label="Consumo (l/100km)", value=settings.default_consumption_lper100km, min=1.0, max=30.0, step=0.5
+            ).classes("w-40")
+            state["tank_input"] = ui.number(
+                label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
+            ).classes("w-40")
+            with ui.expansion("Como se calcula la puntuacion?").classes("w-full text-sm").props("dense"):
+                for line in SCORE_METHODOLOGY_LINES:
+                    if line:
+                        ui.label(line).classes("text-xs text-gray-600")
+                    else:
+                        ui.separator().classes("my-1")
 
 
 def _build_trends_panel() -> None:

@@ -31,7 +31,7 @@ SEARCH_MODE_OPTIONS: Dict[str, str] = {
     "cheapest_by_zip": "Mas barato por codigo postal",
     "nearest_by_address": "Mas cercano por direccion",
     "cheapest_by_address": "Mas barato cerca de direccion",
-    "best_by_address": "Mejor opcion (precio + distancia)",
+    "best_by_address": "Mejor opcion",
 }
 
 TREND_PERIOD_LABELS: Dict[str, str] = {
@@ -48,6 +48,7 @@ class SearchModeMeta:
     helper_text: str
     requires_radius: bool
     success_metric_label: str
+    requires_consumption: bool = False
 
 
 SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
@@ -75,11 +76,31 @@ SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
     "best_by_address": SearchModeMeta(
         query_label="Direccion o referencia",
         query_placeholder="Ejemplo: Atocha, Madrid",
-        helper_text="Combina precio y distancia para recomendar la mejor opcion.",
+        helper_text="Calcula el coste total (repostaje + viaje ida y vuelta) para encontrar la opcion mas barata.",
         requires_radius=True,
         success_metric_label="Mejor puntuacion",
+        requires_consumption=True,
     ),
 }
+
+
+SCORE_METHODOLOGY_LINES: List[str] = [
+    "La puntuacion (0-10) se basa en el coste total real de repostar en cada estacion:",
+    "",
+    "Coste total = precio x (litros del deposito + combustible del viaje ida y vuelta)",
+    "",
+    "El combustible del viaje = 2 x distancia (km) x consumo (l/100km) / 100.",
+    "Esto incluye el coste real de ir a la estacion y volver.",
+    "",
+    "La estacion con menor coste total recibe un 10; la de mayor coste un 0.",
+    "No hay pesos arbitrarios: tu consumo y la distancia determinan",
+    "automaticamente cuando compensa ir mas lejos por un precio mas bajo.",
+    "",
+    "Ejemplo: con 7 l/100km y deposito de 40L, una estacion a 5 km",
+    "gasta 1.05 EUR extra en combustible del viaje (ida y vuelta).",
+    "Si su precio es 0.03 EUR/L mas barato, ahorras 1.20 EUR en el deposito,",
+    "con un ahorro neto de 0.15 EUR.",
+]
 
 
 def fuel_label(fuel_type: str) -> str:
@@ -117,10 +138,12 @@ def station_summary(stations: Sequence[StationResult]) -> Dict[str, Any]:
             "min_distance_km": None,
             "max_distance_km": None,
             "best_score": None,
+            "best_estimated_cost": None,
         }
 
     distances = [s.distance_km for s in stations if s.distance_km is not None]
     scores = [s.score for s in stations if s.score is not None]
+    costs = [s.estimated_total_cost for s in stations if s.estimated_total_cost is not None]
     prices = [s.price for s in stations]
     best_station = min(stations, key=lambda s: s.price)
     return {
@@ -130,7 +153,8 @@ def station_summary(stations: Sequence[StationResult]) -> Dict[str, Any]:
         "best_station_label": best_station.label,
         "min_distance_km": min(distances) if distances else None,
         "max_distance_km": max(distances) if distances else None,
-        "best_score": min(scores) if scores else None,
+        "best_score": max(scores) if scores else None,
+        "best_estimated_cost": min(costs) if costs else None,
     }
 
 
@@ -280,7 +304,6 @@ def _truncate(text: Optional[str], max_len: int = 30) -> str:
 
 
 def search_summary_cards(summary: Dict[str, Any], mode: str) -> List[Dict[str, str]]:
-    mode_meta = search_mode_metadata(mode)
     count = summary["count"]
     cards: List[Dict[str, str]] = [
         {
@@ -300,9 +323,15 @@ def search_summary_cards(summary: Dict[str, Any], mode: str) -> List[Dict[str, s
         },
     ]
     if mode == "best_by_address":
+        best_cost = summary["best_estimated_cost"]
         best_score = summary["best_score"]
         cards.append(
-            {"label": mode_meta.success_metric_label, "value": "-" if best_score is None else f"{best_score:.2f}"}
+            {
+                "label": "Mejor coste total",
+                "value": "-" if best_cost is None else f"{best_cost:.2f} EUR",
+                "color": "text-green-600",
+                "description": "-" if best_score is None else f"Puntuacion: {best_score:.1f}/10",
+            }
         )
     else:
         cards.append({"label": "Distancia minima", "value": format_distance(summary["min_distance_km"])})

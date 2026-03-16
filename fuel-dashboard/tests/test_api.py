@@ -60,6 +60,38 @@ def test_cheapest_zones_endpoint(mock_service):
     assert len(data["zones"]) == 1
 
 
+@patch("api.router.geocode_address")
+@patch("api.router.get_best_by_address")
+def test_best_by_address_with_consumption_and_tank(mock_service, mock_geocode):
+    mock_geocode.return_value = (40.4168, -3.7038)
+    mock_service.return_value = [
+        StationResult(
+            label="station_1",
+            address="calle 1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.4168,
+            longitude=-3.7038,
+            price=1.45,
+            distance_km=1.2,
+            score=8.5,
+            estimated_total_cost=59.12,
+        )
+    ]
+    client = _get_client()
+    response = client.get(
+        "/api/v1/stations/best-by-address?address=Madrid&fuel_type=diesel_a_price"
+        "&consumption_lper100km=4.5&tank_liters=50"
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query_type"] == "best_by_address"
+    assert len(data["stations"]) == 1
+    assert data["stations"][0]["estimated_total_cost"] == 59.12
+    mock_service.assert_called_once_with(40.4168, -3.7038, mock_service.call_args[0][2], 5.0, 5, 4.5, 50.0)
+
+
 @patch("api.router.get_price_trends")
 def test_price_trends_endpoint(mock_service):
     from api.schemas import TrendPoint

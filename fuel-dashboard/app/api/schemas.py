@@ -46,6 +46,7 @@ class StationResult(BaseModel):
     price: float
     distance_km: Optional[float] = None
     score: Optional[float] = None
+    estimated_total_cost: Optional[float] = None
 
 
 class ZoneResult(BaseModel):

@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     default_radius_km: float = 5.0
     default_limit: int = 5
 
-    price_weight: float = 0.6
-    distance_weight: float = 0.4
+    default_consumption_lper100km: float = 7.0
+    default_tank_liters: float = 40.0
 
     osrm_base_url: str = "https://router.project-osrm.org"
     osrm_timeout: float = 5.0

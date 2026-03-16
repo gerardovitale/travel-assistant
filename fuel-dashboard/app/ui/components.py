@@ -87,6 +87,7 @@ def station_results_table(
 
     has_distance = any(s.distance_km is not None for s in stations)
     has_score = any(s.score is not None for s in stations)
+    has_cost = any(s.estimated_total_cost is not None for s in stations)
     columns = [
         {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
         {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
@@ -100,6 +101,16 @@ def station_results_table(
                 "name": "distance_km",
                 "label": "Distancia (km)",
                 "field": "distance_km",
+                "align": "right",
+                "sortable": True,
+            }
+        )
+    if has_cost:
+        columns.append(
+            {
+                "name": "estimated_total_cost",
+                "label": "Coste total (EUR)",
+                "field": "estimated_total_cost",
                 "align": "right",
                 "sortable": True,
             }
@@ -118,8 +129,10 @@ def station_results_table(
         }
         if station.distance_km is not None:
             row["distance_km"] = round(station.distance_km, 2)
+        if station.estimated_total_cost is not None:
+            row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
         if station.score is not None:
-            row["score"] = round(station.score, 2)
+            row["score"] = round(station.score, 1)
         rows.append(row)
 
     table = ui.table(columns=columns, rows=rows, row_key="label").classes("w-full")

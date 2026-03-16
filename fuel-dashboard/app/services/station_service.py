@@ -52,6 +52,7 @@ def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResu
                 price=row[fuel_type],
                 distance_km=row.get("distance_km"),
                 score=row.get("score"),
+                estimated_total_cost=row.get("estimated_total_cost"),
             )
         )
     return results
@@ -108,10 +109,42 @@ def get_cheapest_by_address(
 
 
 def get_best_by_address(
-    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 5
+    lat: float,
+    lon: float,
+    fuel_type: FuelType,
+    radius_km: Optional[float] = None,
+    limit: int = 5,
+    consumption_lper100km: Optional[float] = None,
+    tank_liters: Optional[float] = None,
 ) -> List[StationResult]:
+    """Rank stations by estimated total cost on a 0-10 scale (10 = cheapest).
+
+    Total cost model
+    ----------------
+    The score answers: "Which station costs me the least overall, including the
+    fuel I burn driving there and back?"
+
+    ``total_cost = price * (tank_liters + 2 * distance_km * consumption / 100)``
+
+    - **price**: station fuel price (EUR/L).
+    - **tank_liters**: how many liters the user plans to fill.
+    - **2 * distance_km**: round-trip distance to the station.
+    - **consumption / 100**: liters burned per km of driving.
+
+    The score maps total-cost savings to a 0-10 scale:
+
+    ``score = round(10 * (max_cost - cost) / (max_cost - min_cost), 1)``
+
+    10 = cheapest total cost, 0 = most expensive.  A single-station result
+    always receives 10.0.  No arbitrary weights — the physics of fuel
+    consumption determines how price and distance trade off.
+    """
     if radius_km is None:
         radius_km = settings.default_radius_km
+    if consumption_lper100km is None:
+        consumption_lper100km = settings.default_consumption_lper100km
+    if tank_liters is None:
+        tank_liters = settings.default_tank_liters
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
     df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius)
     if df.empty:
@@ -120,10 +153,20 @@ def get_best_by_address(
     if df.empty:
         return []
     df = df[df["distance_km"] <= radius_km]
-    df["price_rank"] = df[fuel_type.value].rank(method="min")
-    df["distance_rank"] = df["distance_km"].rank(method="min")
-    df["score"] = settings.price_weight * df["price_rank"] + settings.distance_weight * df["distance_rank"]
-    df = df.sort_values("score").head(limit)
+    if df.empty:
+        return []
+
+    price_col = fuel_type.value
+    trip_liters = 2.0 * df["distance_km"] * consumption_lper100km / 100.0
+    df["estimated_total_cost"] = (df[price_col] * (tank_liters + trip_liters)).round(2)
+
+    cost_range = df["estimated_total_cost"].max() - df["estimated_total_cost"].min()
+    if cost_range > 0:
+        df["score"] = ((df["estimated_total_cost"].max() - df["estimated_total_cost"]) / cost_range * 10.0).round(1)
+    else:
+        df["score"] = 10.0
+
+    df = df.sort_values("score", ascending=False).head(limit)
     return _df_to_station_results(df, fuel_type.value)
 
 
