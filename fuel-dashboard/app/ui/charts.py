@@ -238,6 +238,19 @@ def build_station_map(
     st_lons = [s.longitude for s in stations]
     st_texts = [f"{s.label}<br>{s.price:.3f} EUR/L<br>{s.address}" for s in stations]
 
+    route_trace_idx = len(fig.data)
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=[None],
+            lon=[None],
+            mode="lines",
+            line=dict(width=4, color="#6366f1"),
+            hoverinfo="skip",
+            name="Ruta",
+            showlegend=False,
+        )
+    )
+
     stations_trace_idx = len(fig.data)
     fig.add_trace(
         go.Scattermapbox(
@@ -261,19 +274,6 @@ def build_station_map(
             text=[None],
             hoverinfo="text",
             name="Seleccion",
-            showlegend=False,
-        )
-    )
-
-    route_trace_idx = len(fig.data)
-    fig.add_trace(
-        go.Scattermapbox(
-            lat=[None],
-            lon=[None],
-            mode="lines",
-            line=dict(width=4, color="#6366f1"),
-            hoverinfo="skip",
-            name="Ruta",
             showlegend=False,
         )
     )

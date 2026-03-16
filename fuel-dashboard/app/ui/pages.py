@@ -209,7 +209,11 @@ def _build_search_panel() -> None:
                 return
 
             summary = station_summary(stations)
-            set_status("success", f"{summary['count']} estaciones encontradas.")
+            fetch_routes = current_mode != "cheapest_by_zip" and search_lat is not None and search_lon is not None
+            if fetch_routes:
+                set_status("success", f"{summary['count']} estaciones encontradas. Cargando rutas en el mapa...")
+            else:
+                set_status("success", f"{summary['count']} estaciones encontradas.")
             with summary_container:
                 kpi_row(search_summary_cards(summary, current_mode))
             with map_container:
@@ -232,8 +236,9 @@ def _build_search_panel() -> None:
                     route_trace_idx=route_trace_idx,
                 )
 
-            if current_mode != "cheapest_by_zip" and search_lat is not None and search_lon is not None:
+            if fetch_routes:
                 route_geometries = await get_route_geometries_for_stations(search_lat, search_lon, stations)
+                set_status("success", f"{summary['count']} estaciones encontradas.")
                 if route_geometries and table is not None:
                     lookup_key = f"__stationLookup_c{table.id}"
                     route_updates = {}

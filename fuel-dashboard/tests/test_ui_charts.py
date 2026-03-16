@@ -44,15 +44,15 @@ def test_build_station_map_without_boundary():
 
     stations = _make_stations()
     fig, stations_idx, highlight_idx, route_idx = build_station_map(stations, 40.42, -3.70, "28001")
-    # stations trace + highlight trace + route trace + search marker trace
+    # route trace + stations trace + highlight trace + search marker trace
     assert len(fig.data) == 4
-    assert fig.data[0].name == "Estaciones"
-    assert fig.data[1].name == "Seleccion"
-    assert fig.data[2].name == "Ruta"
+    assert fig.data[0].name == "Ruta"
+    assert fig.data[1].name == "Estaciones"
+    assert fig.data[2].name == "Seleccion"
     assert fig.data[3].name == "Ubicacion buscada"
-    assert stations_idx == 0
-    assert highlight_idx == 1
-    assert route_idx == 2
+    assert route_idx == 0
+    assert stations_idx == 1
+    assert highlight_idx == 2
 
 
 def test_build_station_map_with_polygon_boundary():
@@ -70,13 +70,13 @@ def test_build_station_map_with_polygon_boundary():
     fig, stations_idx, highlight_idx, route_idx = build_station_map(
         stations, 40.42, -3.70, "28001", zip_boundary=boundary
     )
-    # boundary trace + stations trace + highlight trace + route trace + search marker trace
+    # boundary trace + route trace + stations trace + highlight trace + search marker trace
     assert len(fig.data) == 5
     assert fig.data[0].name == "Zona CP"
     assert fig.data[0].fill == "toself"
-    assert stations_idx == 1
-    assert highlight_idx == 2
-    assert route_idx == 3
+    assert route_idx == 1
+    assert stations_idx == 2
+    assert highlight_idx == 3
 
 
 def test_build_station_map_with_multipolygon_boundary():
@@ -97,13 +97,13 @@ def test_build_station_map_with_multipolygon_boundary():
     fig, stations_idx, highlight_idx, route_idx = build_station_map(
         stations, 41.38, 2.17, "08001", zip_boundary=boundary
     )
-    # 2 boundary traces + stations trace + highlight trace + route trace + search marker trace
+    # 2 boundary traces + route trace + stations trace + highlight trace + search marker trace
     assert len(fig.data) == 6
     assert fig.data[0].name == "Zona CP"
     assert fig.data[1].name == "Zona CP"
-    assert stations_idx == 2
-    assert highlight_idx == 3
-    assert route_idx == 4
+    assert route_idx == 2
+    assert stations_idx == 3
+    assert highlight_idx == 4
 
 
 def test_build_station_map_route_trace_is_lines():
