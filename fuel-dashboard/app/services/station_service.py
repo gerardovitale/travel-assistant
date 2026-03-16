@@ -15,6 +15,7 @@ from api.schemas import TrendPoint
 from api.schemas import ZoneResult
 from config import settings
 from services.geo_utils import assign_districts
+from services.geo_utils import point_in_multipolygon
 from services.routing import get_road_distances
 from services.routing import get_route_geometries
 
@@ -22,13 +23,17 @@ from data.duckdb_engine import get_distinct_provinces
 from data.duckdb_engine import query_avg_price_by_province
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
+from data.duckdb_engine import query_cheapest_zones_by_municipality
+from data.duckdb_engine import query_municipalities_by_province
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_price_trends
 from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
+from data.duckdb_engine import query_zip_codes_by_district
 from data.gcs_client import list_parquet_files
 from data.geojson_loader import load_madrid_districts
 from data.geojson_loader import load_postal_code_boundary
+from data.geojson_loader import load_postal_codes_for_zip_list
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +239,59 @@ def get_district_price_map(province: str, fuel_type: FuelType) -> List[DistrictP
             )
         )
     return sorted(results, key=lambda r: r.avg_price)
+
+
+def get_municipalities(province: str) -> List[str]:
+    return query_municipalities_by_province(province)
+
+
+def get_zip_code_price_map_by_municipality(province: str, fuel_type: FuelType, municipality: str) -> List[ZoneResult]:
+    df = query_cheapest_zones_by_municipality(province, fuel_type.value, municipality)
+    return [
+        ZoneResult(
+            zip_code=str(row["zip_code"]),
+            avg_price=row["avg_price"],
+            min_price=row["min_price"],
+            station_count=row["station_count"],
+        )
+        for _, row in df.iterrows()
+    ]
+
+
+def get_zip_codes_for_district(province: str, fuel_type: FuelType, district_name: str) -> List[str]:
+    """Get zip codes that fall within a Madrid district by assigning stations to districts."""
+    geojson = load_madrid_districts()
+    df = query_zip_codes_by_district(province, fuel_type.value)
+    if df.empty:
+        return []
+    aggregated = assign_districts(
+        df["latitude"].tolist(),
+        df["longitude"].tolist(),
+        df["price"].tolist(),
+        geojson["features"],
+    )
+    if district_name not in aggregated:
+        return []
+    # Collect zip codes for stations that were assigned to the target district
+    target_zips: set = set()
+    for feature in geojson["features"]:
+        if feature["properties"]["nombre"] == district_name:
+            for _, row in df.iterrows():
+                if point_in_multipolygon(row["latitude"], row["longitude"], feature["geometry"]):
+                    target_zips.add(str(row["zip_code"]))
+            break
+    return sorted(target_zips)
+
+
+def get_zip_code_price_map_for_zips(province: str, fuel_type: FuelType, zip_codes: List[str]) -> List[ZoneResult]:
+    """Get per-zip-code prices filtered to a specific set of zip codes."""
+    all_zones = get_cheapest_zones(province, fuel_type)
+    zip_set = set(zip_codes)
+    return [z for z in all_zones if z.zip_code in zip_set]
+
+
+def get_postal_code_geojson(zip_codes: List[str]) -> dict:
+    return load_postal_codes_for_zip_list(zip_codes)
 
 
 def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:

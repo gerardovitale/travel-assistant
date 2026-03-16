@@ -183,6 +183,53 @@ def query_stations_by_province(province: str, fuel_type: str) -> pd.DataFrame:
         ).fetchdf()
 
 
+def query_cheapest_zones_by_municipality(province: str, municipality: str, fuel_type: str) -> pd.DataFrame:
+    fuel_type = _validate_fuel_column(fuel_type)
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            SELECT zip_code,
+                AVG({fuel_type}) AS avg_price,
+                MIN({fuel_type}) AS min_price,
+                COUNT(*) AS station_count
+            FROM latest_stations
+            WHERE province = $1 AND municipality = $2
+                AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
+            GROUP BY zip_code
+            ORDER BY avg_price ASC
+            """,
+            [province, municipality],
+        ).fetchdf()
+
+
+def query_municipalities_by_province(province: str) -> List[str]:
+    with _lock:
+        conn = get_connection()
+        result = conn.execute(
+            "SELECT DISTINCT municipality FROM latest_stations WHERE province = $1 ORDER BY municipality",
+            [province],
+        ).fetchdf()
+    return result["municipality"].tolist()
+
+
+def query_zip_codes_by_district(province: str, fuel_type: str) -> pd.DataFrame:
+    """Query stations in a province with their zip codes (for district-to-zip mapping)."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            SELECT latitude, longitude, zip_code, {fuel_type} AS price
+            FROM latest_stations
+            WHERE province = $1
+                AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+            """,
+            [province],
+        ).fetchdf()
+
+
 def get_distinct_provinces() -> dict[str, str]:
     with _lock:
         conn = get_connection()

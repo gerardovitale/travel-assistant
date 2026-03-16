@@ -9,12 +9,14 @@ from api.schemas import DistrictPriceResult
 from api.schemas import ProvincePriceResult
 from api.schemas import StationResult
 from api.schemas import TrendPoint
+from api.schemas import ZoneResult
 from ui.view_models import fuel_label
 
 from data.geojson_loader import _NON_MAINLAND_PROVINCES
 from data.geojson_loader import get_geojson_province_name
 from data.geojson_loader import load_madrid_districts
 from data.geojson_loader import load_provinces_geojson
+from data.geojson_loader import ZIP_CODE_PROPERTY
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,65 @@ def build_district_choropleth(
             style="open-street-map",
             center=dict(lat=40.42, lon=-3.70),
             zoom=10,
+        ),
+        height=550,
+        margin=dict(l=0, r=0, t=50, b=0),
+    )
+    return fig
+
+
+def build_zip_code_choropleth(
+    zip_code_prices: List[ZoneResult],
+    geojson: dict,
+    title: str,
+    fuel_type: str,
+) -> go.Figure:
+    fuel_name = fuel_label(fuel_type)
+
+    zip_codes = [zp.zip_code for zp in zip_code_prices]
+    avg_prices = [round(zp.avg_price, 4) for zp in zip_code_prices]
+    station_counts = [zp.station_count for zp in zip_code_prices]
+
+    fig = go.Figure(
+        go.Choroplethmapbox(
+            geojson=geojson,
+            locations=zip_codes,
+            z=avg_prices,
+            featureidkey=f"properties.{ZIP_CODE_PROPERTY}",
+            colorscale=[[0, "#2166ac"], [0.5, "#f7f7f7"], [1, "#b2182b"]],
+            colorbar=dict(title="EUR/L", tickformat=".3f"),
+            marker_opacity=0.7,
+            marker_line_width=1,
+            customdata=station_counts,
+            hovertemplate=(
+                "CP %{location}<br>" "Promedio: %{z:.3f} EUR/L<br>" "Estaciones: %{customdata}<extra></extra>"
+            ),
+        )
+    )
+
+    center = dict(lat=40.0, lon=-3.7)
+    zoom = 11
+    all_coords = _flatten_coordinates([f["geometry"]["coordinates"] for f in geojson.get("features", [])])
+    if all_coords:
+        lats = [c[1] for c in all_coords]
+        lons = [c[0] for c in all_coords]
+        center = dict(
+            lat=(min(lats) + max(lats)) / 2,
+            lon=(min(lons) + max(lons)) / 2,
+        )
+        lat_span = (max(lats) - min(lats)) or 0.01
+        lon_span = (max(lons) - min(lons)) or 0.01
+        zoom_lat = math.log2(180 / lat_span)
+        zoom_lon = math.log2(360 / lon_span)
+        zoom = min(zoom_lat, zoom_lon)
+        zoom = max(8, min(zoom, 15))
+
+    fig.update_layout(
+        title=f"{title}: {fuel_name}",
+        mapbox=dict(
+            style="open-street-map",
+            center=center,
+            zoom=zoom,
         ),
         height=550,
         margin=dict(l=0, r=0, t=50, b=0),

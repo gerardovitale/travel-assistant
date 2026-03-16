@@ -15,16 +15,22 @@ from services.station_service import get_cheapest_by_address
 from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
 from services.station_service import get_district_price_map
+from services.station_service import get_municipalities
 from services.station_service import get_nearest_by_address
+from services.station_service import get_postal_code_geojson
 from services.station_service import get_price_trends
 from services.station_service import get_province_price_map
 from services.station_service import get_provinces
 from services.station_service import get_route_geometries_for_stations
 from services.station_service import get_zip_code_boundary
+from services.station_service import get_zip_code_price_map_by_municipality
+from services.station_service import get_zip_code_price_map_for_zips
+from services.station_service import get_zip_codes_for_district
 from ui.charts import build_district_choropleth
 from ui.charts import build_province_choropleth
 from ui.charts import build_station_map
 from ui.charts import build_trend_chart
+from ui.charts import build_zip_code_choropleth
 from ui.components import empty_state
 from ui.components import fuel_type_select
 from ui.components import kpi_row
@@ -380,6 +386,13 @@ def _build_trends_panel() -> None:
 
 
 def _build_zones_panel() -> None:
+    zones_state: Dict[str, Any] = {
+        "province": None,
+        "fuel_type": None,
+        "is_madrid": False,
+        "detail_button": None,
+    }
+
     with ui.column().classes("w-full gap-3"):
         with ui.card().classes("w-full p-4"):
             ui.label("Compara zonas por precio promedio de combustible.").classes("text-sm text-gray-600")
@@ -395,6 +408,9 @@ def _build_zones_panel() -> None:
         with ui.row().classes("w-full items-center"):
             mainland_only = ui.checkbox("Solo peninsula").classes("self-center")
         detail_map_container = ui.column().classes("w-full")
+        subregion_container = ui.column().classes("w-full")
+        postal_map_container = ui.column().classes("w-full")
+        postal_kpi_container = ui.column().classes("w-full")
 
     set_status = _make_set_status(status_container)
 
@@ -419,6 +435,9 @@ def _build_zones_panel() -> None:
         summary_container.clear()
         detail_map_container.clear()
         preloaded_map_container.clear()
+        subregion_container.clear()
+        postal_map_container.clear()
+        postal_kpi_container.clear()
         province = province_input.value
         if not province:
             set_status("warning", "Selecciona una provincia para cargar zonas.")
@@ -431,6 +450,9 @@ def _build_zones_panel() -> None:
         zones_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
+            zones_state["province"] = province
+            zones_state["fuel_type"] = fuel_type
+
             zones = await run.io_bound(get_cheapest_zones, province, fuel_type)
             detail_map_container.clear()
             if not zones:
@@ -444,6 +466,7 @@ def _build_zones_panel() -> None:
                 kpi_row(zone_summary_cards(metrics))
 
             is_madrid = province.strip().upper() == "MADRID"
+            zones_state["is_madrid"] = is_madrid
 
             if is_madrid:
                 district_prices = await run.io_bound(get_district_price_map, province, fuel_type)
@@ -451,12 +474,16 @@ def _build_zones_panel() -> None:
                     with detail_map_container:
                         map_fig = build_district_choropleth(district_prices, fuel_type.value)
                         ui.plotly(map_fig).classes("w-full")
+                    subregion_options = {dp.district: dp.district for dp in district_prices}
+                    _render_subregion_card(subregion_options, "Distrito")
                 else:
                     await _render_detail_province_map(province, fuel_type)
             else:
                 await _render_detail_province_map(province, fuel_type)
-                with detail_map_container:
-                    ui.label("Vista por distritos solo disponible para Madrid").classes("text-sm text-gray-500 italic")
+                municipalities = await run.io_bound(get_municipalities, province)
+                if municipalities:
+                    subregion_options = {m: m.title() for m in municipalities}
+                    _render_subregion_card(subregion_options, "Municipio")
 
             set_status("success", f"Comparativa cargada para {province}.")
         except ValueError as exc:
@@ -467,6 +494,78 @@ def _build_zones_panel() -> None:
             set_status("error", "No se pudo cargar la comparativa de zonas. Intentalo de nuevo.")
         finally:
             zones_button.enable()
+
+    def _render_subregion_card(options: Dict[str, str], label: str) -> None:
+        with subregion_container:
+            with ui.card().classes("w-full p-4"):
+                ui.label(f"Selecciona un {label.lower()} para ver detalle por codigo postal").classes(
+                    "text-sm text-gray-600"
+                )
+                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                    subregion_select = ui.select(options=options, label=label, with_input=True).classes("w-56")
+                    detail_button = ui.button("Cargar detalle").props("unelevated color=primary")
+                zones_state["detail_button"] = detail_button
+                detail_button.on("click", lambda _: _on_load_subregion_detail(subregion_select))
+
+    async def _on_load_subregion_detail(subregion_select: ui.select) -> None:
+        postal_map_container.clear()
+        postal_kpi_container.clear()
+        subregion = subregion_select.value
+        if not subregion:
+            return
+
+        province = zones_state["province"]
+        fuel_type = zones_state["fuel_type"]
+        is_madrid = zones_state["is_madrid"]
+        detail_button = zones_state["detail_button"]
+
+        with postal_map_container:
+            with ui.column().classes("w-full items-center py-8"):
+                ui.spinner(size="lg").classes("text-primary")
+        detail_button.disable()
+
+        try:
+            if is_madrid:
+                zip_codes = await run.io_bound(get_zip_codes_for_district, province, fuel_type, subregion)
+                if not zip_codes:
+                    postal_map_container.clear()
+                    with postal_map_container:
+                        empty_state("No se encontraron codigos postales para este distrito.")
+                    return
+                zip_prices = await run.io_bound(get_zip_code_price_map_for_zips, province, fuel_type, zip_codes)
+                title = f"Precio por CP en {subregion} (Madrid)"
+            else:
+                zip_prices = await run.io_bound(get_zip_code_price_map_by_municipality, province, fuel_type, subregion)
+                zip_codes = [zp.zip_code for zp in zip_prices]
+                title = f"Precio por CP en {subregion.title()}"
+
+            postal_map_container.clear()
+            if not zip_prices:
+                with postal_map_container:
+                    empty_state("No hay datos de codigos postales para esta zona.")
+                return
+
+            geojson = await run.io_bound(get_postal_code_geojson, zip_codes)
+            if not geojson.get("features"):
+                with postal_map_container:
+                    empty_state("No se encontraron limites geograficos para estos codigos postales.")
+                return
+
+            with postal_map_container:
+                map_fig = build_zip_code_choropleth(zip_prices, geojson, title, fuel_type.value)
+                ui.plotly(map_fig).classes("w-full")
+
+            metrics = zone_kpis(zip_prices)
+            with postal_kpi_container:
+                kpi_row(zone_summary_cards(metrics))
+
+        except Exception:
+            logger.exception("Subregion detail error")
+            postal_map_container.clear()
+            with postal_map_container:
+                empty_state("Error al cargar el detalle. Intentalo de nuevo.")
+        finally:
+            detail_button.enable()
 
     async def _render_detail_province_map(province: str, fuel_type: FuelType) -> None:
         province_prices = await run.io_bound(get_province_price_map, fuel_type)
@@ -482,5 +581,5 @@ def _build_zones_panel() -> None:
     zones_button.on("click", lambda _: on_load_zones())
     mainland_only.on_value_change(lambda _: _render_preloaded_map())
     fuel.on_value_change(lambda _: _render_preloaded_map())
-    set_status("info", "Carga una provincia para ver el ranking y detalle por distritos.")
+    set_status("info", "Carga una provincia para ver el ranking y detalle por distritos o municipios.")
     ui.timer(0, _render_preloaded_map, once=True)

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Dict
+from typing import List
 from typing import Optional
 
 _GEOJSON_DIR = Path(__file__).resolve().parent / "geojson"
@@ -53,13 +54,13 @@ def get_geojson_province_name(data_province: str) -> Optional[str]:
     return _provinces_name_lookup.get(data_province.lower())
 
 
-def load_postal_code_boundary(zip_code: str) -> Optional[dict]:
+def _ensure_postal_index() -> Dict[str, dict]:
     global _postal_code_index
     if _postal_code_index is None:
         path = _GEOJSON_DIR / "spain-postal-codes.geojson"
         if not path.exists():
             _postal_code_index = {}
-            return None
+            return _postal_code_index
         with open(path, encoding="utf-8") as f:
             geojson = json.load(f)
         _postal_code_index = {}
@@ -67,7 +68,23 @@ def load_postal_code_boundary(zip_code: str) -> Optional[dict]:
             code = str(feature["properties"].get(ZIP_CODE_PROPERTY, "")).strip()
             if code:
                 _postal_code_index[code] = feature
-    return _postal_code_index.get(zip_code)
+    return _postal_code_index
+
+
+def load_postal_code_boundary(zip_code: str) -> Optional[dict]:
+    index = _ensure_postal_index()
+    return index.get(zip_code)
+
+
+def load_postal_codes_for_zip_list(zip_codes: List[str]) -> dict:
+    """Return a GeoJSON FeatureCollection containing only features matching the given zip codes."""
+    index = _ensure_postal_index()
+    features = []
+    for zc in zip_codes:
+        feature = index.get(zc)
+        if feature is not None:
+            features.append(feature)
+    return {"type": "FeatureCollection", "features": features}
 
 
 def load_madrid_districts() -> dict:
