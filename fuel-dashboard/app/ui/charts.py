@@ -207,7 +207,7 @@ def build_station_map(
     search_lon: Optional[float],
     search_label: str,
     zip_boundary: Optional[dict] = None,
-) -> Tuple[go.Figure, int, int]:
+) -> Tuple[go.Figure, int, int, int]:
     fig = go.Figure()
 
     all_lats: list = []
@@ -265,6 +265,19 @@ def build_station_map(
         )
     )
 
+    route_trace_idx = len(fig.data)
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=[None],
+            lon=[None],
+            mode="lines",
+            line=dict(width=4, color="#6366f1"),
+            hoverinfo="skip",
+            name="Ruta",
+            showlegend=False,
+        )
+    )
+
     all_lats.extend(st_lats)
     all_lons.extend(st_lons)
 
@@ -309,7 +322,7 @@ def build_station_map(
         margin=dict(l=0, r=0, t=0, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0.0),
     )
-    return fig, stations_trace_idx, highlight_trace_idx
+    return fig, stations_trace_idx, highlight_trace_idx, route_trace_idx
 
 
 def _flatten_coordinates(coords):

@@ -1,5 +1,6 @@
 import logging
 import re
+from typing import Dict
 from typing import List
 from typing import Optional
 
@@ -15,6 +16,7 @@ from api.schemas import ZoneResult
 from config import settings
 from services.geo_utils import assign_districts
 from services.routing import get_road_distances
+from services.routing import get_route_geometries
 
 from data.duckdb_engine import get_distinct_provinces
 from data.duckdb_engine import query_avg_price_by_province
@@ -70,6 +72,18 @@ def _enrich_with_road_distances(lat: float, lon: float, df: pd.DataFrame) -> pd.
     df["distance_km"] = distances
     df = df.dropna(subset=["distance_km"])
     return df
+
+
+async def get_route_geometries_for_stations(
+    lat: float, lon: float, stations: List[StationResult]
+) -> Dict[str, Optional[List[List[float]]]]:
+    if not settings.osrm_enabled or not stations:
+        return {}
+    destinations = [(s.latitude, s.longitude) for s in stations]
+    geometries = await get_route_geometries((lat, lon), destinations)
+    if geometries is None:
+        return {}
+    return {s.label: geom for s, geom in zip(stations, geometries)}
 
 
 def get_zip_code_boundary(zip_code: str) -> Optional[dict]:

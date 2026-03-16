@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 from typing import Dict
@@ -18,6 +19,7 @@ from services.station_service import get_nearest_by_address
 from services.station_service import get_price_trends
 from services.station_service import get_province_price_map
 from services.station_service import get_provinces
+from services.station_service import get_route_geometries_for_stations
 from services.station_service import get_zip_code_boundary
 from ui.charts import build_district_choropleth
 from ui.charts import build_province_choropleth
@@ -211,19 +213,52 @@ def _build_search_panel() -> None:
             with summary_container:
                 kpi_row(search_summary_cards(summary, current_mode))
             with map_container:
-                fig, stations_trace_idx, highlight_trace_idx = build_station_map(
-                    stations, search_lat, search_lon, query_value, zip_boundary=zip_boundary
+                fig, stations_trace_idx, highlight_trace_idx, route_trace_idx = build_station_map(
+                    stations,
+                    search_lat,
+                    search_lon,
+                    query_value,
+                    zip_boundary=zip_boundary,
                 )
                 plotly_el = ui.plotly(fig).classes("w-full")
                 plotly_id = f"c{plotly_el.id}"
             with results_container:
-                station_results_table(
+                table = station_results_table(
                     stations,
                     current_mode,
                     plotly_element_id=plotly_id,
                     stations_trace_idx=stations_trace_idx,
                     highlight_trace_idx=highlight_trace_idx,
+                    route_trace_idx=route_trace_idx,
                 )
+
+            if current_mode != "cheapest_by_zip" and search_lat is not None and search_lon is not None:
+                route_geometries = await get_route_geometries_for_stations(search_lat, search_lon, stations)
+                if route_geometries and table is not None:
+                    lookup_key = f"__stationLookup_c{table.id}"
+                    route_updates = {}
+                    for label, geom in route_geometries.items():
+                        if geom:
+                            route_updates[label] = {
+                                "route_lat": [c[1] for c in geom],
+                                "route_lon": [c[0] for c in geom],
+                            }
+                    if route_updates:
+                        updates_json = json.dumps(route_updates, ensure_ascii=True)
+                        ui.run_javascript(
+                            f"""
+                            var lookup = window.{lookup_key};
+                            if (lookup) {{
+                                var updates = {updates_json};
+                                for (var label in updates) {{
+                                    if (lookup[label]) {{
+                                        lookup[label].route_lat = updates[label].route_lat;
+                                        lookup[label].route_lon = updates[label].route_lon;
+                                    }}
+                                }}
+                            }}
+                            """
+                        )
         except ValueError as exc:
             logger.warning("Search validation error: %s", exc)
             set_status("warning", str(exc))

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import List
 from typing import Optional
@@ -7,6 +8,53 @@ import httpx
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+
+async def _fetch_single_route(
+    client: httpx.AsyncClient,
+    origin_str: str,
+    lat: float,
+    lon: float,
+) -> Optional[List[List[float]]]:
+    dest_str = f"{lon},{lat}"
+    url = f"{settings.osrm_base_url}/route/v1/driving/{origin_str};{dest_str}" "?overview=full&geometries=geojson"
+    try:
+        response = await client.get(url)
+        if response.status_code != 200:
+            logger.warning("OSRM route returned status %d", response.status_code)
+            return None
+        data = response.json()
+        if data.get("code") != "Ok":
+            logger.warning("OSRM route response code: %s", data.get("code"))
+            return None
+        return data["routes"][0]["geometry"]["coordinates"]
+    except Exception:
+        logger.warning("OSRM route request failed", exc_info=True)
+        return None
+
+
+async def get_route_geometries(
+    origin: Tuple[float, float],
+    destinations: List[Tuple[float, float]],
+) -> List[Optional[List[List[float]]]]:
+    """Fetch route geometries from OSRM Route API in parallel.
+
+    Args:
+        origin: (lat, lon) of the starting point.
+        destinations: list of (lat, lon) for each station.
+
+    Returns:
+        List of coordinate lists (each a list of [lon, lat] pairs),
+        or None per destination on failure.
+    """
+    if not destinations:
+        return []
+
+    origin_str = f"{origin[1]},{origin[0]}"
+
+    async with httpx.AsyncClient(timeout=settings.osrm_timeout) as client:
+        tasks = [_fetch_single_route(client, origin_str, lat, lon) for lat, lon in destinations]
+        return list(await asyncio.gather(*tasks))
 
 
 def get_road_distances(

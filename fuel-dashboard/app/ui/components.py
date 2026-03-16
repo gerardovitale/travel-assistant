@@ -80,6 +80,7 @@ def station_results_table(
     plotly_element_id: Optional[str] = None,
     stations_trace_idx: Optional[int] = None,
     highlight_trace_idx: Optional[int] = None,
+    route_trace_idx: Optional[int] = None,
 ) -> Optional[ui.table]:
     if not stations:
         empty_state("No se encontraron estaciones para esta busqueda.")
@@ -172,10 +173,12 @@ def station_results_table(
         ui.run_javascript(
             f"""
             requestAnimationFrame(function() {{
-                var lookup = {lookup_json};
+                window.__stationLookup_{table_dom_id} = {lookup_json};
+                var lookup = window.__stationLookup_{table_dom_id};
                 var tableEl = document.getElementById('{table_dom_id}');
                 if (!tableEl) return;
                 var lastTr = null;
+                var routeIdx = {route_trace_idx if route_trace_idx is not None else 'null'};
                 tableEl.addEventListener('mouseover', function(e) {{
                     var tr = e.target.closest('tr[data-label]');
                     if (!tr || tr === lastTr) return;
@@ -187,6 +190,11 @@ def station_results_table(
                         [{highlight_trace_idx}]);
                     Plotly.restyle('{plotly_element_id}',
                         {{'marker.opacity': 0.4}}, [{stations_trace_idx}]);
+                    if (routeIdx !== null && info.route_lat) {{
+                        Plotly.restyle('{plotly_element_id}',
+                            {{lat: [info.route_lat], lon: [info.route_lon]}},
+                            [routeIdx]);
+                    }}
                 }});
                 tableEl.addEventListener('mouseout', function(e) {{
                     var related = e.relatedTarget;
@@ -198,6 +206,11 @@ def station_results_table(
                         [{highlight_trace_idx}]);
                     Plotly.restyle('{plotly_element_id}',
                         {{'marker.opacity': 1}}, [{stations_trace_idx}]);
+                    if (routeIdx !== null) {{
+                        Plotly.restyle('{plotly_element_id}',
+                            {{lat: [[null]], lon: [[null]]}},
+                            [routeIdx]);
+                    }}
                 }});
             }});
             """
