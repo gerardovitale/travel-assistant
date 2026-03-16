@@ -122,13 +122,14 @@ def _build_search_panel() -> None:
     with ui.column().classes("w-full gap-3"):
         with ui.card().classes("w-full p-4"):
             ui.label("Encuentra estaciones por codigo postal o direccion.").classes("text-sm text-gray-600")
-            with ui.row().classes("w-full items-start gap-4 flex-wrap"):
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 mode = search_mode_select(on_change=on_mode_change)
                 fuel = fuel_type_select()
-                dynamic_container = ui.column().classes("gap-1")
-                state["dynamic_container"] = dynamic_container
+            dynamic_container = ui.column().classes("w-full gap-2")
+            state["dynamic_container"] = dynamic_container
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 limit_input = ui.number(label="Numero de estaciones", value=5, min=1, max=20).classes("w-48")
-                search_button = ui.button("Buscar").props("unelevated color=primary").classes("self-end")
+                search_button = ui.button("Buscar").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
@@ -240,26 +241,34 @@ def _build_search_panel() -> None:
 def _render_query_inputs(mode: ui.select, container: ui.column, state: Dict[str, Any]) -> None:
     metadata = search_mode_metadata(mode.value)
     container.clear()
+    state["radius_input"] = None
+    state["consumption_input"] = None
+    state["tank_input"] = None
     with container:
         query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
-            "w-80 max-w-full"
+            "w-full max-w-lg"
         )
         ui.label(metadata.helper_text).classes("text-xs text-gray-500")
         state["query_input"] = query_input
-        state["radius_input"] = None
-        state["consumption_input"] = None
-        state["tank_input"] = None
-        if metadata.requires_radius:
-            state["radius_input"] = ui.number(
-                label="Radio (km)", value=settings.default_radius_km, min=0.1, max=50.0
-            ).classes("w-36")
+        has_params = metadata.requires_radius or metadata.requires_consumption
+        if has_params:
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                if metadata.requires_radius:
+                    state["radius_input"] = ui.number(
+                        label="Radio (km)", value=settings.default_radius_km, min=0.1, max=50.0
+                    ).classes("w-36")
+                if metadata.requires_consumption:
+                    state["consumption_input"] = ui.number(
+                        label="Consumo (l/100km)",
+                        value=settings.default_consumption_lper100km,
+                        min=1.0,
+                        max=30.0,
+                        step=0.5,
+                    ).classes("w-44")
+                    state["tank_input"] = ui.number(
+                        label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
+                    ).classes("w-40")
         if metadata.requires_consumption:
-            state["consumption_input"] = ui.number(
-                label="Consumo (l/100km)", value=settings.default_consumption_lper100km, min=1.0, max=30.0, step=0.5
-            ).classes("w-40")
-            state["tank_input"] = ui.number(
-                label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
-            ).classes("w-40")
             with ui.expansion("Como se calcula la puntuacion?").classes("w-full text-sm").props("dense"):
                 for line in SCORE_METHODOLOGY_LINES:
                     if line:
