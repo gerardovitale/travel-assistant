@@ -427,6 +427,26 @@ def build_trip_map(trip_plan: TripPlan) -> go.Figure:
             )
         )
 
+    # Top 5 cheapest stations (orange/gold)
+    if candidates:
+        top5 = sorted(candidates, key=lambda c: c.price)[:5]
+        fig.add_trace(
+            go.Scattermapbox(
+                lat=[c.latitude for c in top5],
+                lon=[c.longitude for c in top5],
+                mode="markers",
+                marker=dict(size=12, color="#f59e0b", opacity=0.9),
+                text=[
+                    f"Top {i + 1}: {c.label}<br>{c.price:.3f} EUR/L"
+                    + (f"<br>Km {c.route_km:.0f}" if c.route_km is not None else "")
+                    + (f" | Desvio {c.detour_minutes:.0f} min" if c.detour_minutes is not None else "")
+                    for i, c in enumerate(top5)
+                ],
+                hoverinfo="text",
+                name="Top 5 mas baratas",
+            )
+        )
+
     # Recommended stops (green, large)
     stops = trip_plan.stops
     if stops:

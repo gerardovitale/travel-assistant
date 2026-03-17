@@ -40,8 +40,10 @@ from ui.components import loading_state
 from ui.components import search_mode_select
 from ui.components import station_results_table
 from ui.components import status_banner
+from ui.components import top_cheapest_table
 from ui.components import trend_period_select
 from ui.components import trip_stops_table
+from ui.view_models import alternative_plan_cards
 from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_summary_cards
@@ -695,6 +697,20 @@ def _build_trip_panel() -> None:
             if trip_result.stops:
                 with table_container:
                     trip_stops_table(trip_result.stops)
+
+            if trip_result.candidate_stations:
+                with table_container:
+                    ui.label("Top 5 estaciones mas baratas en la ruta").classes("text-lg font-semibold mt-4")
+                    top_cheapest_table(trip_result.candidate_stations)
+
+            if trip_result.alternative_plans:
+                with table_container:
+                    with ui.expansion("Planes alternativos").classes("w-full mt-4"):
+                        for alt_plan in trip_result.alternative_plans:
+                            ui.label(alt_plan.strategy_name).classes("text-md font-semibold mt-2")
+                            ui.label(alt_plan.strategy_description).classes("text-sm text-gray-600")
+                            kpi_row(alternative_plan_cards(alt_plan))
+                            trip_stops_table(alt_plan.stops)
 
         except ValueError as exc:
             logger.warning("Trip planning validation error: %s", exc)

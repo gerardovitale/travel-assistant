@@ -94,7 +94,6 @@ def station_results_table(
         {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
         {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
         {"name": "address", "label": "Direccion", "field": "address", "align": "left"},
-        {"name": "municipality", "label": "Municipio", "field": "municipality", "align": "left"},
         {"name": "price", "label": "Precio (EUR/L)", "field": "price", "align": "right", "sortable": True},
     ]
     if has_distance:
@@ -125,8 +124,7 @@ def station_results_table(
         row = {
             "ranking": idx + 1,
             "label": station.label,
-            "address": station.address,
-            "municipality": station.municipality,
+            "address": f"{station.address}, {station.municipality}, {station.province}, {station.zip_code}",
             "price": round(station.price, 3),
         }
         if station.distance_km is not None:
@@ -259,20 +257,53 @@ def trip_stops_table(stops: List[TripStop]) -> None:
         {"name": "fuel_arrival", "label": "Combustible llegada", "field": "fuel_arrival", "align": "right"},
         {"name": "liters", "label": "Litros", "field": "liters", "align": "right"},
         {"name": "cost", "label": "Coste (EUR)", "field": "cost", "align": "right"},
+        {"name": "reasoning", "label": "Razon", "field": "reasoning", "align": "left"},
     ]
     rows = [
         {
             "ranking": i + 1,
             "label": stop.station.label,
-            "address": stop.station.address,
+            "address": (
+                f"{stop.station.address}, {stop.station.municipality}, {stop.station.province}, {stop.station.zip_code}"
+            ),
             "route_km": round(stop.route_km, 0),
             "detour": round(stop.detour_minutes, 1),
             "price": round(stop.station.price, 3),
             "fuel_arrival": f"{stop.fuel_at_arrival_pct:.0f}%",
             "liters": round(stop.liters_to_fill, 1),
             "cost": round(stop.cost_eur, 2),
+            "reasoning": stop.reasoning or "",
         }
         for i, stop in enumerate(stops)
+    ]
+    table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+    table.props("dense flat bordered separator=cell")
+
+
+def top_cheapest_table(candidates: List[StationResult], top_n: int = 5) -> None:
+    if not candidates:
+        empty_state("No hay estaciones candidatas.")
+        return
+
+    sorted_candidates = sorted(candidates, key=lambda c: c.price)[:top_n]
+    columns = [
+        {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
+        {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
+        {"name": "address", "label": "Direccion", "field": "address", "align": "left"},
+        {"name": "price", "label": "Precio (EUR/L)", "field": "price", "align": "right"},
+        {"name": "route_km", "label": "Km en ruta", "field": "route_km", "align": "right"},
+        {"name": "detour", "label": "Desvio (min)", "field": "detour", "align": "right"},
+    ]
+    rows = [
+        {
+            "ranking": i + 1,
+            "label": c.label,
+            "address": f"{c.address}, {c.municipality}, {c.province}, {c.zip_code}",
+            "price": round(c.price, 3),
+            "route_km": round(c.route_km, 0) if c.route_km is not None else "-",
+            "detour": round(c.detour_minutes, 1) if c.detour_minutes is not None else "-",
+        }
+        for i, c in enumerate(sorted_candidates)
     ]
     table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
     table.props("dense flat bordered separator=cell")

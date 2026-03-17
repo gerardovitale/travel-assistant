@@ -5,6 +5,7 @@ from typing import List
 from typing import Optional
 from typing import Sequence
 
+from api.schemas import AlternativePlan
 from api.schemas import StationResult
 from api.schemas import TrendPeriod
 from api.schemas import TrendPoint
@@ -349,6 +350,8 @@ def trip_kpis(trip_plan: TripPlan) -> Dict[str, Any]:
         "total_cost": f"{trip_plan.total_fuel_cost:.2f} EUR",
         "savings": f"{trip_plan.savings_eur:.2f} EUR",
         "total_liters": f"{trip_plan.total_fuel_liters:.1f} L",
+        "fuel_at_destination": f"{trip_plan.fuel_at_destination_pct:.0f}%",
+        "total_detour": f"{sum(s.detour_minutes for s in trip_plan.stops):.0f} min",
     }
 
 
@@ -375,5 +378,39 @@ def trip_summary_cards(trip_plan: TripPlan) -> List[Dict[str, str]]:
             "value": kpis["savings"],
             "color": "text-green-600",
             "description": "vs precio mediano de la ruta",
+        },
+        {
+            "label": "Desvio total",
+            "value": kpis["total_detour"],
+        },
+        {
+            "label": "Combustible en destino",
+            "value": kpis["fuel_at_destination"],
+        },
+    ]
+
+
+def alternative_plan_cards(plan: AlternativePlan) -> List[Dict[str, str]]:
+    return [
+        {
+            "label": "Paradas",
+            "value": str(plan.num_stops),
+        },
+        {
+            "label": "Coste total",
+            "value": f"{plan.total_fuel_cost:.2f} EUR",
+            "color": "text-blue-600",
+        },
+        {
+            "label": "Litros totales",
+            "value": f"{plan.total_fuel_liters:.1f} L",
+        },
+        {
+            "label": "Desvio total",
+            "value": f"{plan.total_detour_minutes:.0f} min",
+        },
+        {
+            "label": "Combustible en destino",
+            "value": f"{plan.fuel_at_destination_pct:.0f}%",
         },
     ]

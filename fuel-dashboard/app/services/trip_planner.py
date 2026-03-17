@@ -1,8 +1,10 @@
 import logging
 import math
+from typing import Callable
 from typing import List
 from typing import Tuple
 
+from api.schemas import AlternativePlan
 from api.schemas import StationResult
 from api.schemas import TripPlan
 from api.schemas import TripStop
@@ -70,15 +72,17 @@ def project_stations_onto_route(
     )
 
 
-def find_optimal_stops(
+def _find_stops_with_strategy(
     stations: List[dict],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
     fuel_pct: float,
+    pick_fn: Callable[[List[dict], float, float], dict],
     safety: float = 0.15,
+    reason_template: str = "Mas barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
 ) -> List[dict]:
-    """Greedy cheapest-in-reachable-window stop selection.
+    """Greedy stop selection with pluggable candidate picker.
 
     Args:
         stations: list of dicts with 'route_km', 'price', 'label', etc.
@@ -86,10 +90,11 @@ def find_optimal_stops(
         tank_liters: full tank capacity in liters.
         consumption_lper100km: fuel consumption in L/100km.
         fuel_pct: initial fuel level as percentage (0-100).
+        pick_fn: callable(candidates, window_start_km, window_end_km) -> best candidate dict.
         safety: safety margin fraction (default 15%).
 
     Returns:
-        list of stop dicts with added 'fuel_at_arrival_pct', 'liters_to_fill', 'cost_eur'.
+        list of stop dicts with added 'fuel_at_arrival_pct', 'liters_to_fill', 'cost_eur', 'reasoning'.
     """
     if not stations:
         return []
@@ -101,24 +106,21 @@ def find_optimal_stops(
     stops = []
     used_labels = set()
 
-    # Sort stations by route_km
     sorted_stations = sorted(stations, key=lambda s: s["route_km"])
 
     while current_km + current_range_km < total_km:
-        # Find candidates within reachable range (minus safety margin)
         effective_range = current_range_km - max_range_km * safety
         if effective_range <= 0:
-            # Can't even reach the safety margin — pick the nearest station
             effective_range = current_range_km * 0.9
 
+        window_start = current_km
+        window_end = current_km + effective_range
+
         candidates = [
-            s
-            for s in sorted_stations
-            if current_km < s["route_km"] <= current_km + effective_range and s["label"] not in used_labels
+            s for s in sorted_stations if window_start < s["route_km"] <= window_end and s["label"] not in used_labels
         ]
 
         if not candidates:
-            # No candidate in range — trip may not be feasible, break to avoid infinite loop
             logger.warning(
                 "No fuel station reachable at km %.1f with range %.1f km",
                 current_km,
@@ -126,10 +128,8 @@ def find_optimal_stops(
             )
             break
 
-        # Pick cheapest
-        best = min(candidates, key=lambda s: s["price"])
+        best = pick_fn(candidates, window_start, window_end)
 
-        # Calculate fuel state
         km_driven = best["route_km"] - current_km
         fuel_used_liters = km_driven * consumption_lper100km / 100
         fuel_remaining_liters = (current_range_km / max_range_km) * tank_liters - fuel_used_liters
@@ -141,14 +141,136 @@ def find_optimal_stops(
         stop["fuel_at_arrival_pct"] = round(fuel_at_arrival_pct, 1)
         stop["liters_to_fill"] = round(max(0, liters_to_fill), 1)
         stop["cost_eur"] = round(cost_eur, 2)
+        stop["reasoning"] = reason_template.format(n=len(candidates), a=window_start, b=window_end)
         stops.append(stop)
         used_labels.add(best["label"])
 
-        # After filling up: full tank
         current_km = best["route_km"]
         current_range_km = usable_range_km
 
     return stops
+
+
+def _pick_cheapest(candidates: List[dict], window_start: float, window_end: float) -> dict:
+    return min(candidates, key=lambda s: s["price"])
+
+
+def _pick_min_stops(candidates: List[dict], window_start: float, window_end: float) -> dict:
+    """Pick cheapest in the last third of the window to push stops farther apart."""
+    far_threshold = window_start + (window_end - window_start) * 2 / 3
+    far_candidates = [s for s in candidates if s["route_km"] >= far_threshold]
+    pool = far_candidates if far_candidates else candidates
+    return min(pool, key=lambda s: s["price"])
+
+
+def _pick_min_detour(candidates: List[dict], window_start: float, window_end: float) -> dict:
+    """Pick by minimum detour first, then by price as tiebreaker."""
+    return min(candidates, key=lambda s: (s.get("detour_minutes", 0), s["price"]))
+
+
+def find_optimal_stops(
+    stations: List[dict],
+    total_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_pct: float,
+    safety: float = 0.15,
+) -> List[dict]:
+    """Greedy cheapest-in-reachable-window stop selection."""
+    return _find_stops_with_strategy(
+        stations,
+        total_km,
+        tank_liters,
+        consumption_lper100km,
+        fuel_pct,
+        _pick_cheapest,
+        safety,
+        reason_template="Mas barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
+    )
+
+
+def find_min_stops(
+    stations: List[dict],
+    total_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_pct: float,
+    safety: float = 0.15,
+) -> List[dict]:
+    """Fewer stops by picking stations in the far zone of each window."""
+    return _find_stops_with_strategy(
+        stations,
+        total_km,
+        tank_liters,
+        consumption_lper100km,
+        fuel_pct,
+        _pick_min_stops,
+        safety,
+        reason_template="Mas lejana y barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
+    )
+
+
+def find_min_detour(
+    stations: List[dict],
+    total_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_pct: float,
+    safety: float = 0.15,
+) -> List[dict]:
+    """Prefer on-route stations with minimal detour."""
+    return _find_stops_with_strategy(
+        stations,
+        total_km,
+        tank_liters,
+        consumption_lper100km,
+        fuel_pct,
+        _pick_min_detour,
+        safety,
+        reason_template="Menor desvio de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
+    )
+
+
+def _fuel_at_destination_pct(
+    stops: List[TripStop],
+    total_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_level_pct: float,
+) -> float:
+    """Estimate the fuel level (%) when arriving at the destination."""
+    if stops:
+        last_km = stops[-1].route_km
+        remaining_km = total_km - last_km
+        fuel_used = remaining_km * consumption_lper100km / 100
+        fuel_remaining = tank_liters - fuel_used
+    else:
+        fuel_used = total_km * consumption_lper100km / 100
+        fuel_remaining = tank_liters * (fuel_level_pct / 100) - fuel_used
+    return round(max(0, fuel_remaining / tank_liters * 100), 1)
+
+
+def _build_trip_stop(stop_dict: dict) -> TripStop:
+    """Build a TripStop from a stop dict returned by the strategy functions."""
+    return TripStop(
+        station=StationResult(
+            label=stop_dict["label"],
+            address=stop_dict["address"],
+            municipality=stop_dict["municipality"],
+            province=stop_dict["province"],
+            zip_code=stop_dict["zip_code"],
+            latitude=stop_dict["latitude"],
+            longitude=stop_dict["longitude"],
+            price=stop_dict["price"],
+            distance_km=stop_dict.get("min_distance_km"),
+        ),
+        route_km=stop_dict["route_km"],
+        detour_minutes=stop_dict.get("detour_minutes", 0),
+        fuel_at_arrival_pct=stop_dict["fuel_at_arrival_pct"],
+        liters_to_fill=stop_dict["liters_to_fill"],
+        cost_eur=stop_dict["cost_eur"],
+        reasoning=stop_dict.get("reasoning"),
+    )
 
 
 def plan_trip(
@@ -191,6 +313,7 @@ def plan_trip(
 
     if stations_df.empty:
         # No stations found — return plan with no stops
+        dest_fuel = _fuel_at_destination_pct([], total_km, tank_liters, consumption_lper100km, fuel_level_pct)
         return TripPlan(
             stops=[],
             total_fuel_cost=0,
@@ -202,6 +325,7 @@ def plan_trip(
             candidate_stations=[],
             origin_coords=list(origin_coords),
             destination_coords=list(dest_coords),
+            fuel_at_destination_pct=dest_fuel,
         )
 
     # 5. Project stations onto route
@@ -230,6 +354,8 @@ def plan_trip(
                 longitude=row["longitude"],
                 price=row[fuel_type],
                 distance_km=row.get("min_distance_km"),
+                route_km=row["route_km"],
+                detour_minutes=row["detour_minutes"],
             )
         )
         station_dicts.append(
@@ -249,7 +375,6 @@ def plan_trip(
         )
 
     # 7. Greedy stop selection
-
     optimal_stops = find_optimal_stops(
         station_dicts,
         total_km,
@@ -259,28 +384,7 @@ def plan_trip(
     )
 
     # 8. Build TripStop list
-    trip_stops = []
-    for stop in optimal_stops:
-        trip_stops.append(
-            TripStop(
-                station=StationResult(
-                    label=stop["label"],
-                    address=stop["address"],
-                    municipality=stop["municipality"],
-                    province=stop["province"],
-                    zip_code=stop["zip_code"],
-                    latitude=stop["latitude"],
-                    longitude=stop["longitude"],
-                    price=stop["price"],
-                    distance_km=stop.get("min_distance_km"),
-                ),
-                route_km=stop["route_km"],
-                detour_minutes=stop.get("detour_minutes", 0),
-                fuel_at_arrival_pct=stop["fuel_at_arrival_pct"],
-                liters_to_fill=stop["liters_to_fill"],
-                cost_eur=stop["cost_eur"],
-            )
-        )
+    trip_stops = [_build_trip_stop(stop) for stop in optimal_stops]
 
     total_fuel_cost = sum(s.cost_eur for s in trip_stops)
     total_fuel_liters = sum(s.liters_to_fill for s in trip_stops)
@@ -294,6 +398,41 @@ def plan_trip(
     else:
         savings = 0
 
+    # 9. Generate alternative plans
+    recommended_labels = {s.station.label for s in trip_stops}
+    stop_args = (station_dicts, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
+    alternative_strategies = [
+        ("Menos paradas", "Prioriza estaciones lejanas para reducir el numero de paradas", find_min_stops),
+        ("Menor desvio", "Prioriza estaciones cercanas a la ruta para minimizar desvios", find_min_detour),
+    ]
+
+    alternative_plans = []
+    for name, description, strategy_fn in alternative_strategies:
+        alt_stops_raw = strategy_fn(*stop_args)
+        alt_trip_stops = [_build_trip_stop(s) for s in alt_stops_raw]
+        alt_labels = {s.station.label for s in alt_trip_stops}
+        if alt_labels == recommended_labels:
+            continue
+        alt_cost = sum(s.cost_eur for s in alt_trip_stops)
+        alt_liters = sum(s.liters_to_fill for s in alt_trip_stops)
+        alt_detour = sum(s.detour_minutes for s in alt_trip_stops)
+        alt_dest_fuel = _fuel_at_destination_pct(
+            alt_trip_stops, total_km, tank_liters, consumption_lper100km, fuel_level_pct
+        )
+        alternative_plans.append(
+            AlternativePlan(
+                strategy_name=name,
+                strategy_description=description,
+                stops=alt_trip_stops,
+                total_fuel_cost=round(alt_cost, 2),
+                total_fuel_liters=round(alt_liters, 1),
+                total_detour_minutes=round(alt_detour, 1),
+                fuel_at_destination_pct=alt_dest_fuel,
+            )
+        )
+
+    dest_fuel = _fuel_at_destination_pct(trip_stops, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
+
     return TripPlan(
         stops=trip_stops,
         total_fuel_cost=round(total_fuel_cost, 2),
@@ -305,4 +444,6 @@ def plan_trip(
         candidate_stations=candidate_stations,
         origin_coords=list(origin_coords),
         destination_coords=list(dest_coords),
+        fuel_at_destination_pct=dest_fuel,
+        alternative_plans=alternative_plans,
     )

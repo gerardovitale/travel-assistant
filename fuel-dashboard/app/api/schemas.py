@@ -47,6 +47,8 @@ class StationResult(BaseModel):
     distance_km: Optional[float] = None
     score: Optional[float] = None
     estimated_total_cost: Optional[float] = None
+    route_km: Optional[float] = None
+    detour_minutes: Optional[float] = None
 
 
 class ZoneResult(BaseModel):
@@ -82,6 +84,21 @@ class TripStop(BaseModel):
     fuel_at_arrival_pct: float
     liters_to_fill: float
     cost_eur: float
+    reasoning: Optional[str] = None
+
+
+class AlternativePlan(BaseModel):
+    strategy_name: str
+    strategy_description: str
+    stops: List[TripStop]
+    total_fuel_cost: float
+    total_fuel_liters: float
+    total_detour_minutes: float
+    fuel_at_destination_pct: float = 0.0
+
+    @property
+    def num_stops(self) -> int:
+        return len(self.stops)
 
 
 class TripPlan(BaseModel):
@@ -95,6 +112,8 @@ class TripPlan(BaseModel):
     candidate_stations: List[StationResult]
     origin_coords: List[float]
     destination_coords: List[float]
+    fuel_at_destination_pct: float = 0.0
+    alternative_plans: List[AlternativePlan] = []
 
 
 class StationListResponse(BaseModel):
