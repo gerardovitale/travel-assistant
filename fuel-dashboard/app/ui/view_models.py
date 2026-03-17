@@ -8,6 +8,7 @@ from typing import Sequence
 from api.schemas import StationResult
 from api.schemas import TrendPeriod
 from api.schemas import TrendPoint
+from api.schemas import TripPlan
 from api.schemas import ZoneResult
 
 FUEL_DISPLAY_NAMES: Dict[str, str] = {
@@ -336,3 +337,43 @@ def search_summary_cards(summary: Dict[str, Any], mode: str) -> List[Dict[str, s
     else:
         cards.append({"label": "Distancia minima", "value": format_distance(summary["min_distance_km"])})
     return cards
+
+
+def trip_kpis(trip_plan: TripPlan) -> Dict[str, Any]:
+    hours = int(trip_plan.duration_minutes // 60)
+    mins = int(trip_plan.duration_minutes % 60)
+    return {
+        "total_distance": f"{trip_plan.total_distance_km:.0f} km",
+        "duration": f"{hours}h {mins}min",
+        "num_stops": len(trip_plan.stops),
+        "total_cost": f"{trip_plan.total_fuel_cost:.2f} EUR",
+        "savings": f"{trip_plan.savings_eur:.2f} EUR",
+        "total_liters": f"{trip_plan.total_fuel_liters:.1f} L",
+    }
+
+
+def trip_summary_cards(trip_plan: TripPlan) -> List[Dict[str, str]]:
+    kpis = trip_kpis(trip_plan)
+    return [
+        {
+            "label": "Distancia total",
+            "value": kpis["total_distance"],
+            "description": kpis["duration"],
+        },
+        {
+            "label": "Paradas",
+            "value": str(kpis["num_stops"]),
+            "description": f"{kpis['total_liters']} a repostar",
+        },
+        {
+            "label": "Coste total combustible",
+            "value": kpis["total_cost"],
+            "color": "text-blue-600",
+        },
+        {
+            "label": "Ahorro estimado",
+            "value": kpis["savings"],
+            "color": "text-green-600",
+            "description": "vs precio mediano de la ruta",
+        },
+    ]

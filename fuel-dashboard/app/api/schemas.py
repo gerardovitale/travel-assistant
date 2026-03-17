@@ -75,6 +75,28 @@ class DistrictPriceResult(BaseModel):
     station_count: int
 
 
+class TripStop(BaseModel):
+    station: StationResult
+    route_km: float
+    detour_minutes: float
+    fuel_at_arrival_pct: float
+    liters_to_fill: float
+    cost_eur: float
+
+
+class TripPlan(BaseModel):
+    stops: List[TripStop]
+    total_fuel_cost: float
+    total_distance_km: float
+    duration_minutes: float
+    total_fuel_liters: float
+    savings_eur: float
+    route_coordinates: List[List[float]]
+    candidate_stations: List[StationResult]
+    origin_coords: List[float]
+    destination_coords: List[float]
+
+
 class StationListResponse(BaseModel):
     stations: List[StationResult]
     fuel_type: str

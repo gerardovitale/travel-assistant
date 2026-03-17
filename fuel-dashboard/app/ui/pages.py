@@ -26,10 +26,12 @@ from services.station_service import get_zip_code_boundary
 from services.station_service import get_zip_code_price_map_by_municipality
 from services.station_service import get_zip_code_price_map_for_zips
 from services.station_service import get_zip_codes_for_district
+from services.trip_planner import plan_trip
 from ui.charts import build_district_choropleth
 from ui.charts import build_province_choropleth
 from ui.charts import build_station_map
 from ui.charts import build_trend_chart
+from ui.charts import build_trip_map
 from ui.charts import build_zip_code_choropleth
 from ui.components import empty_state
 from ui.components import fuel_type_select
@@ -39,12 +41,14 @@ from ui.components import search_mode_select
 from ui.components import station_results_table
 from ui.components import status_banner
 from ui.components import trend_period_select
+from ui.components import trip_stops_table
 from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
 from ui.view_models import trend_kpis
 from ui.view_models import trend_summary_cards
+from ui.view_models import trip_summary_cards
 from ui.view_models import zone_kpis
 from ui.view_models import zone_summary_cards
 
@@ -82,6 +86,7 @@ def init_ui(app: FastAPI) -> None:
                     search_tab = ui.tab("Buscar estaciones")
                     trends_tab = ui.tab("Tendencias de precios")
                     zones_tab = ui.tab("Comparar zonas")
+                    trip_tab = ui.tab("Planificar viaje")
 
                 with ui.tab_panels(tabs, value=search_tab).classes("w-full"):
                     with ui.tab_panel(search_tab):
@@ -90,6 +95,8 @@ def init_ui(app: FastAPI) -> None:
                         _build_trends_panel()
                     with ui.tab_panel(zones_tab):
                         _build_zones_panel()
+                    with ui.tab_panel(trip_tab):
+                        _build_trip_panel()
 
         if is_data_ready():
             _render_dashboard()
@@ -583,3 +590,120 @@ def _build_zones_panel() -> None:
     fuel.on_value_change(lambda _: _render_preloaded_map())
     set_status("info", "Carga una provincia para ver el ranking y detalle por distritos o municipios.")
     ui.timer(0, _render_preloaded_map, once=True)
+
+
+def _build_trip_panel() -> None:
+    with ui.column().classes("w-full gap-3"):
+        with ui.card().classes("w-full p-4"):
+            ui.label("Planifica tu viaje y encuentra las paradas de repostaje mas baratas.").classes(
+                "text-sm text-gray-600"
+            )
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                origin_input = ui.input(label="Origen", placeholder="Ejemplo: Madrid").classes("w-56")
+                dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-56")
+                fuel = fuel_type_select()
+                detour_input = ui.number(
+                    label="Desviacion maxima (min)",
+                    value=settings.default_max_detour_minutes,
+                    min=1,
+                    max=30,
+                ).classes("w-48")
+
+            with ui.expansion("Vehiculo").classes("w-full"):
+                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                    consumption_input = ui.number(
+                        label="Consumo (l/100km)",
+                        value=settings.default_consumption_lper100km,
+                        min=1.0,
+                        max=30.0,
+                        step=0.5,
+                    ).classes("w-44")
+                    tank_input = ui.number(
+                        label="Deposito (L)",
+                        value=settings.default_tank_liters,
+                        min=5.0,
+                        max=120.0,
+                        step=5.0,
+                    ).classes("w-40")
+                    fuel_level_slider = ui.slider(
+                        min=5,
+                        max=100,
+                        value=settings.default_fuel_level_pct,
+                        step=5,
+                    ).classes("w-56")
+                    fuel_level_label = ui.label(f"Nivel actual: {int(settings.default_fuel_level_pct)}%").classes(
+                        "text-sm text-gray-600"
+                    )
+                    fuel_level_slider.on_value_change(
+                        lambda e: fuel_level_label.set_text(f"Nivel actual: {int(e.value)}%")
+                    )
+
+            plan_button = ui.button("Planificar ruta").props("unelevated color=primary")
+
+        status_container = ui.column().classes("w-full")
+        summary_container = ui.column().classes("w-full")
+        map_container = ui.column().classes("w-full")
+        table_container = ui.column().classes("w-full")
+
+    set_status = _make_set_status(status_container)
+
+    async def on_plan() -> None:
+        summary_container.clear()
+        map_container.clear()
+        table_container.clear()
+
+        origin = (origin_input.value or "").strip()
+        dest = (dest_input.value or "").strip()
+        if not origin or not dest:
+            set_status("warning", "Introduce una direccion de origen y destino.")
+            return
+
+        set_status("loading", "Planificando ruta...")
+        plan_button.disable()
+        try:
+            fuel_type = FuelType(fuel.value)
+            trip_result = await run.io_bound(
+                plan_trip,
+                origin,
+                dest,
+                fuel_type.value,
+                consumption_input.value,
+                tank_input.value,
+                fuel_level_slider.value,
+                detour_input.value,
+            )
+
+            if not trip_result.stops:
+                set_status(
+                    "success",
+                    f"Ruta de {trip_result.total_distance_km:.0f} km. "
+                    "No es necesario parar a repostar con el combustible actual.",
+                )
+            else:
+                set_status(
+                    "success",
+                    f"Ruta planificada: {len(trip_result.stops)} parada(s) recomendada(s).",
+                )
+
+            with summary_container:
+                kpi_row(trip_summary_cards(trip_result))
+
+            with map_container:
+                fig = build_trip_map(trip_result)
+                ui.plotly(fig).classes("w-full")
+
+            if trip_result.stops:
+                with table_container:
+                    trip_stops_table(trip_result.stops)
+
+        except ValueError as exc:
+            logger.warning("Trip planning validation error: %s", exc)
+            set_status("warning", str(exc))
+        except Exception:
+            logger.exception("Trip planning error")
+            set_status("error", "No se pudo planificar la ruta. Revisa los datos e intentalo de nuevo.")
+        finally:
+            plan_button.enable()
+
+    plan_button.on("click", lambda _: on_plan())
+    set_status("info", "Introduce origen, destino y parametros del vehiculo para planificar tu ruta.")

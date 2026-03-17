@@ -9,6 +9,7 @@ from api.schemas import DistrictPriceResult
 from api.schemas import ProvincePriceResult
 from api.schemas import StationResult
 from api.schemas import TrendPoint
+from api.schemas import TripPlan
 from api.schemas import ZoneResult
 from ui.view_models import fuel_label
 
@@ -384,6 +385,112 @@ def build_station_map(
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0.0),
     )
     return fig, stations_trace_idx, highlight_trace_idx, route_trace_idx
+
+
+def build_trip_map(trip_plan: TripPlan) -> go.Figure:
+    """Build a map showing the trip route, recommended stops, candidate stations, and origin/destination."""
+    fig = go.Figure()
+
+    route_coords = trip_plan.route_coordinates
+    all_lats = []
+    all_lons = []
+
+    # Route polyline
+    if route_coords:
+        route_lats = [c[1] for c in route_coords]
+        route_lons = [c[0] for c in route_coords]
+        fig.add_trace(
+            go.Scattermapbox(
+                lat=route_lats,
+                lon=route_lons,
+                mode="lines",
+                line=dict(width=4, color="#6366f1"),
+                hoverinfo="skip",
+                name="Ruta",
+            )
+        )
+        all_lats.extend(route_lats)
+        all_lons.extend(route_lons)
+
+    # Candidate stations (blue, small, semi-transparent)
+    candidates = trip_plan.candidate_stations
+    if candidates:
+        fig.add_trace(
+            go.Scattermapbox(
+                lat=[c.latitude for c in candidates],
+                lon=[c.longitude for c in candidates],
+                mode="markers",
+                marker=dict(size=8, color="#3b82f6", opacity=0.4),
+                text=[f"{c.label}<br>{c.price:.3f} EUR/L" for c in candidates],
+                hoverinfo="text",
+                name="Candidatas",
+            )
+        )
+
+    # Recommended stops (green, large)
+    stops = trip_plan.stops
+    if stops:
+        fig.add_trace(
+            go.Scattermapbox(
+                lat=[s.station.latitude for s in stops],
+                lon=[s.station.longitude for s in stops],
+                mode="markers",
+                marker=dict(size=16, color="#22c55e"),
+                text=[
+                    f"Parada {i + 1}: {s.station.label}<br>"
+                    f"{s.station.price:.3f} EUR/L<br>"
+                    f"Km {s.route_km:.0f} | Desvio {s.detour_minutes:.0f} min<br>"
+                    f"Repostar {s.liters_to_fill:.1f} L ({s.cost_eur:.2f} EUR)"
+                    for i, s in enumerate(stops)
+                ],
+                hoverinfo="text",
+                name="Paradas recomendadas",
+            )
+        )
+
+    # Origin + Destination (red, large)
+    origin = trip_plan.origin_coords
+    dest = trip_plan.destination_coords
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=[origin[0], dest[0]],
+            lon=[origin[1], dest[1]],
+            mode="markers",
+            marker=dict(size=18, color="#dc2626"),
+            text=["Origen", "Destino"],
+            hoverinfo="text",
+            name="Origen / Destino",
+        )
+    )
+    all_lats.extend([origin[0], dest[0]])
+    all_lons.extend([origin[1], dest[1]])
+
+    # Auto-zoom
+    if all_lats:
+        min_lat, max_lat = min(all_lats), max(all_lats)
+        min_lon, max_lon = min(all_lons), max(all_lons)
+        center_lat = (min_lat + max_lat) / 2
+        center_lon = (min_lon + max_lon) / 2
+        lat_span = (max_lat - min_lat) * 1.2 or 0.01
+        lon_span = (max_lon - min_lon) * 1.2 or 0.01
+        zoom_lat = math.log2(180 / lat_span)
+        zoom_lon = math.log2(360 / lon_span)
+        zoom = min(zoom_lat, zoom_lon)
+        zoom = max(2, min(zoom, 15))
+    else:
+        center_lat, center_lon, zoom = 40.0, -3.7, 6
+
+    fig.update_layout(
+        mapbox=dict(
+            style="open-street-map",
+            center=dict(lat=center_lat, lon=center_lon),
+            zoom=zoom,
+        ),
+        height=500,
+        margin=dict(l=0, r=0, t=0, b=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0.0),
+    )
+    return fig
 
 
 def _flatten_coordinates(coords):

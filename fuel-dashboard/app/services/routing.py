@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import List
 from typing import Optional
 from typing import Tuple
@@ -8,6 +9,64 @@ import httpx
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+_OSRM_RETRIES = 3
+_OSRM_RETRY_DELAY = 1.0
+
+
+def _osrm_get(url: str, timeout: float = 30.0) -> httpx.Response:
+    """GET with retries for transient connection errors.
+
+    Raises httpx.ConnectError after all retries are exhausted.
+    """
+    last_err: Optional[Exception] = None
+    for attempt in range(_OSRM_RETRIES):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                return client.get(url)
+
+        except httpx.ConnectError as exc:
+            last_err = exc
+            if attempt < _OSRM_RETRIES - 1:
+                logger.info("OSRM connect failed (attempt %d/%d), retrying...", attempt + 1, _OSRM_RETRIES)
+                time.sleep(_OSRM_RETRY_DELAY)
+
+    raise last_err  # type: ignore[misc]
+
+
+def get_full_route(
+    origin: Tuple[float, float],
+    destination: Tuple[float, float],
+) -> Optional[dict]:
+    """Fetch full route from OSRM with coordinates, distance, and duration.
+
+    Returns dict with 'coordinates' (list of [lon, lat]), 'distance_km', 'duration_minutes',
+    or None on failure.
+    """
+    origin_str = f"{origin[1]},{origin[0]}"
+    dest_str = f"{destination[1]},{destination[0]}"
+    url = f"{settings.osrm_base_url}/route/v1/driving/{origin_str};{dest_str}?overview=full&geometries=geojson"
+    try:
+        response = _osrm_get(url)
+        if response.status_code != 200:
+            logger.warning("OSRM full route returned status %d", response.status_code)
+            return None
+
+        data = response.json()
+        if data.get("code") != "Ok":
+            logger.warning("OSRM full route response code: %s", data.get("code"))
+            return None
+
+        route = data["routes"][0]
+        return {
+            "coordinates": route["geometry"]["coordinates"],
+            "distance_km": round(route["distance"] / 1000, 2),
+            "duration_minutes": round(route["duration"] / 60, 1),
+        }
+
+    except Exception:
+        logger.warning("OSRM full route request failed", exc_info=True)
+        return None
 
 
 async def _fetch_single_route(

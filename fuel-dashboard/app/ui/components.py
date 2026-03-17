@@ -7,6 +7,7 @@ from typing import Optional
 from api.schemas import FuelType
 from api.schemas import StationResult
 from api.schemas import TrendPeriod
+from api.schemas import TripStop
 from api.schemas import ZoneResult
 from nicegui import ui
 from ui.view_models import FUEL_DISPLAY_NAMES
@@ -240,4 +241,38 @@ def zone_results_table(zones: List[ZoneResult]) -> None:
         for zone in zones
     ]
     table = ui.table(columns=columns, rows=rows, row_key="zip_code").classes("w-full")
+    table.props("dense flat bordered separator=cell")
+
+
+def trip_stops_table(stops: List[TripStop]) -> None:
+    if not stops:
+        empty_state("No se necesitan paradas en esta ruta.")
+        return
+
+    columns = [
+        {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
+        {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
+        {"name": "address", "label": "Direccion", "field": "address", "align": "left"},
+        {"name": "route_km", "label": "Km", "field": "route_km", "align": "right"},
+        {"name": "detour", "label": "Desvio (min)", "field": "detour", "align": "right"},
+        {"name": "price", "label": "Precio (EUR/L)", "field": "price", "align": "right"},
+        {"name": "fuel_arrival", "label": "Combustible llegada", "field": "fuel_arrival", "align": "right"},
+        {"name": "liters", "label": "Litros", "field": "liters", "align": "right"},
+        {"name": "cost", "label": "Coste (EUR)", "field": "cost", "align": "right"},
+    ]
+    rows = [
+        {
+            "ranking": i + 1,
+            "label": stop.station.label,
+            "address": stop.station.address,
+            "route_km": round(stop.route_km, 0),
+            "detour": round(stop.detour_minutes, 1),
+            "price": round(stop.station.price, 3),
+            "fuel_arrival": f"{stop.fuel_at_arrival_pct:.0f}%",
+            "liters": round(stop.liters_to_fill, 1),
+            "cost": round(stop.cost_eur, 2),
+        }
+        for i, stop in enumerate(stops)
+    ]
+    table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
     table.props("dense flat bordered separator=cell")

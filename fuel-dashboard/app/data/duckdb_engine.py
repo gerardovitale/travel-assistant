@@ -1,4 +1,5 @@
 import logging
+import math
 import threading
 from typing import List
 from typing import Optional
@@ -228,6 +229,82 @@ def query_zip_codes_by_district(province: str, fuel_type: str) -> pd.DataFrame:
             """,
             [province],
         ).fetchdf()
+
+
+def query_stations_along_corridor(
+    waypoints: List[tuple],
+    fuel_type: str,
+    corridor_km: float,
+) -> pd.DataFrame:
+    """Query stations within a corridor around route waypoints.
+
+    Uses DuckDB cross join + Haversine to efficiently find the closest waypoint
+    per station and filter by corridor distance.
+
+    Args:
+        waypoints: list of (lat, lon, cumulative_km) tuples.
+        fuel_type: validated fuel column name.
+        corridor_km: max distance from any waypoint to include a station.
+
+    Returns:
+        DataFrame with station data + min_distance_km + closest_waypoint_idx.
+    """
+    fuel_type = _validate_fuel_column(fuel_type)
+    if not waypoints:
+        return pd.DataFrame()
+
+    lats = [w[0] for w in waypoints]
+    lons = [w[1] for w in waypoints]
+    avg_lat_rad = math.radians(sum(lats) / len(lats))
+    lon_degree_km = 111.0 * math.cos(avg_lat_rad)
+    lat_offset = corridor_km / 111.0
+    lon_offset = corridor_km / max(0.01, lon_degree_km)
+
+    min_lat = min(lats) - lat_offset
+    max_lat = max(lats) + lat_offset
+    min_lon = min(lons) - lon_offset
+    max_lon = max(lons) + lon_offset
+
+    wp_df = pd.DataFrame({"wp_idx": range(len(waypoints)), "wp_lat": lats, "wp_lon": lons})  # noqa: F841
+
+    with _lock:
+        conn = get_connection()
+        df = conn.execute(
+            f"""
+            WITH corridor_stations AS (
+                SELECT label, address, municipality, province, zip_code,
+                       latitude, longitude, {fuel_type}
+                FROM latest_stations
+                WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
+                    AND latitude IS NOT NULL AND longitude IS NOT NULL
+                    AND latitude BETWEEN $1 AND $2
+                    AND longitude BETWEEN $3 AND $4
+            ),
+            station_waypoint_distances AS (
+                SELECT s.*,
+                    w.wp_idx,
+                    2 * 6371 * ASIN(SQRT(
+                        POWER(SIN(RADIANS(s.latitude - w.wp_lat) / 2), 2) +
+                        COS(RADIANS(w.wp_lat)) * COS(RADIANS(s.latitude)) *
+                        POWER(SIN(RADIANS(s.longitude - w.wp_lon) / 2), 2)
+                    )) AS dist_km
+                FROM corridor_stations s
+                CROSS JOIN wp_df w
+            )
+            SELECT label, address, municipality, province, zip_code,
+                   latitude, longitude, {fuel_type},
+                   ROUND(MIN(dist_km), 2) AS min_distance_km,
+                   ARG_MIN(wp_idx, dist_km) AS closest_waypoint_idx
+            FROM station_waypoint_distances
+            GROUP BY label, address, municipality, province, zip_code,
+                     latitude, longitude, {fuel_type}
+            HAVING MIN(dist_km) <= $5
+            ORDER BY min_distance_km
+            """,
+            [min_lat, max_lat, min_lon, max_lon, corridor_km],
+        ).fetchdf()
+
+    return df
 
 
 def get_distinct_provinces() -> dict[str, str]:
