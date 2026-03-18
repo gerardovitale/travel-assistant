@@ -28,7 +28,7 @@ def trend_period_select(label: str = "Periodo", on_change: Optional[Callable] = 
 
 
 def search_mode_select(label: str = "Modo de busqueda", on_change: Optional[Callable] = None) -> ui.select:
-    return ui.select(SEARCH_MODE_OPTIONS, value="cheapest_by_zip", label=label, on_change=on_change).classes("w-72")
+    return ui.select(SEARCH_MODE_OPTIONS, value="best_by_address", label=label, on_change=on_change).classes("w-72")
 
 
 def status_banner(status: str, message: str) -> None:

@@ -415,7 +415,7 @@ def _build_zones_panel() -> None:
         summary_container = ui.column().classes("w-full")
         preloaded_map_container = ui.column().classes("w-full")
         with ui.row().classes("w-full items-center"):
-            mainland_only = ui.checkbox("Solo peninsula").classes("self-center")
+            mainland_only = ui.checkbox("Solo peninsula", value=True).classes("self-center")
         detail_map_container = ui.column().classes("w-full")
         subregion_container = ui.column().classes("w-full")
         postal_map_container = ui.column().classes("w-full")
