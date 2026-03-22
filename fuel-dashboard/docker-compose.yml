@@ -88,7 +88,7 @@ services:
         max-file: "2"
 
   watchtower:
-    image: containrrr/watchtower:1.7.1
+    image: containrrr/watchtower:latest
     container_name: watchtower
     restart: unless-stopped
     volumes:
@@ -96,6 +96,7 @@ services:
     environment:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=3600
+      - DOCKER_API_VERSION=1.40
     logging:
       driver: json-file
       options:
