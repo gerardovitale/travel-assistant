@@ -1,0 +1,28 @@
+# Default-deny build context. Re-include only what the current Dockerfiles copy.
+**
+
+# Build definitions and lockfiles used during dependency resolution.
+!Dockerfile
+!Dockerfile.test
+!pyproject.toml
+!uv.lock
+
+# Application source and bundled data needed by the runtime image.
+!app/
+!app/**
+
+# Test suite required by Dockerfile.test.
+!tests/
+!tests/**
+
+# Defense in depth: keep local-only artifacts and secrets out of the context.
+.venv/
+.pytest_cache/
+.ipynb_checkpoints/
+notebooks/
+docker-compose.yml
+gcs-fuel-dashboard-credentials.json
+.python-version
+.DS_Store
+**/__pycache__/
+**/*.py[cod]
