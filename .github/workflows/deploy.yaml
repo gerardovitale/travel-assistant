@@ -142,10 +142,33 @@ jobs:
         working-directory: ./infra
         run: terraform init
 
+      - name: Determine Docker image tags
+        id: tags
+        working-directory: ./infra
+        run: |
+          FORCE="${{ inputs.force_all }}"
+
+          current_tag() {
+            terraform output -raw "$1" 2>/dev/null || echo "${GITHUB_SHA::7}"
+          }
+
+          resolve_tag() {
+            local KEY="$1" CHANGED="$2"
+            if [[ "$CHANGED" == "true" || "$FORCE" == "true" ]]; then
+              echo "${GITHUB_SHA::7}"
+            else
+              current_tag "docker_image_tag_$(echo "$KEY" | tr '[:upper:]' '[:lower:]')"
+            fi
+          }
+
+          {
+            echo "tag_FUEL_INGESTOR=$(resolve_tag FUEL_INGESTOR '${{ needs.detect-changes.outputs.fuel-ingestor }}')"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Plan Terraform changes
         working-directory: ./infra
-        run: terraform plan -input=false -var "DOCKER_IMAGE_TAG=${GITHUB_SHA::7}"
+        run: terraform plan -input=false -var "DOCKER_IMAGE_TAG=${{ steps.tags.outputs.tag_FUEL_INGESTOR }}"
 
       - name: Apply Terraform changes
         working-directory: ./infra
-        run: terraform apply -auto-approve -input=false -var "DOCKER_IMAGE_TAG=${GITHUB_SHA::7}"
+        run: terraform apply -auto-approve -input=false -var "DOCKER_IMAGE_TAG=${{ steps.tags.outputs.tag_FUEL_INGESTOR }}"
