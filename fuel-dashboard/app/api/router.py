@@ -18,11 +18,6 @@ from services.station_service import get_price_trends
 router = APIRouter()
 
 
-@router.get("/health")
-def health():
-    return {"status": "ok"}
-
-
 @router.get("/stations/cheapest-by-zip", response_model=StationListResponse)
 def cheapest_by_zip(
     zip_code: str = Query(..., pattern=r"^\d{5}$", description="Zip code to search"),

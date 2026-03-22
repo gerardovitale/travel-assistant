@@ -8,11 +8,11 @@ services:
     environment:
       - DASHBOARD_GCP_PROJECT_ID=travel-assistant-417315
       - DASHBOARD_GCS_BUCKET_NAME=travel-assistant-spain-fuel-prices
-      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcs-credentials.json
+      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcs-fuel-dashboard-credentials.json
     volumes:
-      - ./gcs-credentials.json:/secrets/gcs-credentials.json:ro
+      - ./gcs-fuel-dashboard-credentials.json:/secrets/gcs-fuel-dashboard-credentials.json:ro
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/v1/health')"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 60s
       timeout: 10s
       retries: 3

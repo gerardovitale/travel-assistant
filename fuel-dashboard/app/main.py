@@ -22,6 +22,12 @@ async def lifespan(application: FastAPI):
 app = FastAPI(title="Spain Fuel Prices Dashboard", version="1.0.0", lifespan=lifespan)
 app.include_router(router, prefix="/api/v1")
 
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 init_ui(app)
 
 if __name__ == "__main__":
