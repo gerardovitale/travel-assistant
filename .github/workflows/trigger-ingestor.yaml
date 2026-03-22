@@ -5,18 +5,12 @@ on:
     - cron: "0 5 * * *"
   workflow_dispatch:
 
-env:
-  GCP_RUN_JOB_NAME: travass-fuel-ingestor-job
-  GCP_REGION: europe-southwest1
-
 jobs:
   trigger-ingestor:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v3
-        with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
-
-      - name: Trigger Ingestor Cloud Run Job
-        run: gcloud run jobs execute ${{ env.GCP_RUN_JOB_NAME }} --region ${{ env.GCP_REGION }} --wait
+    uses: gerardovitale/github-workflows/.github/workflows/trigger-cloud-run-job.yml@v1
+    with:
+      region: europe-southwest1
+      app_name: travass
+      component: fuel-ingestor-job
+    secrets:
+      gcp_credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
