@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from ui.pages import init_ui
 
 from data.cache import start_cache_refresh
+from data.geojson_loader import load_provinces_geojson
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -16,6 +17,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(application: FastAPI):
     logger.info("Starting cache refresh background task")
     start_cache_refresh()
+    logger.info("Preloading GeoJSON data")
+    load_provinces_geojson()
     yield
 
 

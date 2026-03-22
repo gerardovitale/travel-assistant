@@ -7,6 +7,7 @@ from typing import Optional
 import duckdb
 import pandas as pd
 from api.schemas import FuelType
+from config import settings
 
 from data.gcs_client import download_parquet_as_df
 from data.gcs_client import download_parquets_as_df
@@ -30,7 +31,13 @@ _lock = threading.Lock()
 def get_connection() -> duckdb.DuckDBPyConnection:
     global _connection
     if _connection is None:
-        _connection = duckdb.connect(":memory:")
+        _connection = duckdb.connect(
+            ":memory:",
+            config={
+                "threads": settings.duckdb_threads,
+                "memory_limit": settings.duckdb_memory_limit,
+            },
+        )
     return _connection
 
 
@@ -134,21 +141,26 @@ def query_price_trends(blob_names: List[str], zip_code: str, fuel_type: str) -> 
     if not blob_names:
         return pd.DataFrame()
     df = download_parquets_as_df(blob_names)  # noqa: F841
-    conn = duckdb.connect(":memory:")
-    return conn.execute(
-        f"""
-        SELECT
-            CAST(timestamp AS DATE) AS date,
-            AVG({fuel_type}) AS avg_price,
-            MIN({fuel_type}) AS min_price,
-            MAX({fuel_type}) AS max_price
-        FROM df
-        WHERE zip_code = $1 AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
-        GROUP BY CAST(timestamp AS DATE)
-        ORDER BY date ASC
-        """,
-        [zip_code],
-    ).fetchdf()
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _trend_data")
+        conn.execute("CREATE TEMP TABLE _trend_data AS SELECT * FROM df")
+        result = conn.execute(
+            f"""
+            SELECT
+                CAST(timestamp AS DATE) AS date,
+                AVG({fuel_type}) AS avg_price,
+                MIN({fuel_type}) AS min_price,
+                MAX({fuel_type}) AS max_price
+            FROM _trend_data
+            WHERE zip_code = $1 AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
+            GROUP BY CAST(timestamp AS DATE)
+            ORDER BY date ASC
+            """,
+            [zip_code],
+        ).fetchdf()
+        conn.execute("DROP TABLE IF EXISTS _trend_data")
+    return result
 
 
 def query_avg_price_by_province(fuel_type: str) -> pd.DataFrame:

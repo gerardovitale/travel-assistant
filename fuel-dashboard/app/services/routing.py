@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import logging
 import time
 from typing import List
@@ -13,17 +14,26 @@ logger = logging.getLogger(__name__)
 _OSRM_RETRIES = 3
 _OSRM_RETRY_DELAY = 1.0
 
+_sync_client: Optional[httpx.Client] = None
+
+
+def _get_sync_client() -> httpx.Client:
+    global _sync_client
+    if _sync_client is None or _sync_client.is_closed:
+        _sync_client = httpx.Client(timeout=30.0, limits=httpx.Limits(max_connections=10, max_keepalive_connections=5))
+    return _sync_client
+
 
 def _osrm_get(url: str, timeout: float = 30.0) -> httpx.Response:
     """GET with retries for transient connection errors.
 
     Raises httpx.ConnectError after all retries are exhausted.
     """
+    client = _get_sync_client()
     last_err: Optional[Exception] = None
     for attempt in range(_OSRM_RETRIES):
         try:
-            with httpx.Client(timeout=timeout) as client:
-                return client.get(url)
+            return client.get(url)
 
         except httpx.ConnectError as exc:
             last_err = exc
@@ -34,6 +44,7 @@ def _osrm_get(url: str, timeout: float = 30.0) -> httpx.Response:
     raise last_err  # type: ignore[misc]
 
 
+@functools.lru_cache(maxsize=128)
 def get_full_route(
     origin: Tuple[float, float],
     destination: Tuple[float, float],
@@ -147,8 +158,8 @@ def get_road_distances(
         "&annotations=distance"
     )
     try:
-        with httpx.Client(timeout=settings.osrm_timeout) as client:
-            response = client.get(url)
+        client = _get_sync_client()
+        response = client.get(url)
         if response.status_code != 200:
             logger.warning("OSRM returned status %d", response.status_code)
             return None

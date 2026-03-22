@@ -11,8 +11,14 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcs-fuel-dashboard-credentials.json
     volumes:
       - ./gcs-fuel-dashboard-credentials.json:/secrets/gcs-fuel-dashboard-credentials.json:ro
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -31,7 +37,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=300
+      - WATCHTOWER_POLL_INTERVAL=3600
     logging:
       driver: json-file
       options:

@@ -1,3 +1,4 @@
+import functools
 import logging
 from typing import Optional
 from typing import Tuple
@@ -17,6 +18,7 @@ def _get_geocoder() -> Nominatim:
     return _geocoder
 
 
+@functools.lru_cache(maxsize=256)
 def geocode_address(address: str) -> Optional[Tuple[float, float]]:
     """Convert an address string to (latitude, longitude) coordinates."""
     geocoder = _get_geocoder()

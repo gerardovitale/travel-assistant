@@ -67,7 +67,11 @@ def _ensure_postal_index() -> Dict[str, dict]:
         for feature in geojson["features"]:
             code = str(feature["properties"].get(ZIP_CODE_PROPERTY, "")).strip()
             if code:
-                _postal_code_index[code] = feature
+                _postal_code_index[code] = {
+                    "type": "Feature",
+                    "properties": {ZIP_CODE_PROPERTY: code},
+                    "geometry": feature["geometry"],
+                }
     return _postal_code_index
 
 

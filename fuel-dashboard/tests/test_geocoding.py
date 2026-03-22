@@ -6,6 +6,7 @@ from services.geocoding import geocode_address
 
 @patch("services.geocoding._get_geocoder")
 def test_geocode_address_success(mock_get_geocoder):
+    geocode_address.cache_clear()
     mock_geocoder = MagicMock()
     mock_location = MagicMock()
     mock_location.latitude = 40.4168
@@ -20,6 +21,7 @@ def test_geocode_address_success(mock_get_geocoder):
 
 @patch("services.geocoding._get_geocoder")
 def test_geocode_address_not_found(mock_get_geocoder):
+    geocode_address.cache_clear()
     mock_geocoder = MagicMock()
     mock_geocoder.geocode.return_value = None
     mock_get_geocoder.return_value = mock_geocoder

@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     gcs_bucket_name: str = "travel-assistant-spain-fuel-prices"
 
     cache_ttl_seconds: int = 86400
+    parquet_cache_dir: str = "/tmp/parquet_cache"
+    parquet_cache_max_age_hours: int = 2
+
+    duckdb_threads: int = 2
+    duckdb_memory_limit: str = "1GB"
 
     port: int = 8080
     host: str = "0.0.0.0"
