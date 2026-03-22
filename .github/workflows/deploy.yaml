@@ -3,24 +3,78 @@ name: Deploy
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      force_all:
+        description: "Force all jobs to run"
+        type: boolean
+        default: false
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Change detection
+  # ---------------------------------------------------------------------------
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      fuel-ingestor: ${{ steps.filter.outputs.fuel-ingestor }}
+      fuel-dashboard: ${{ steps.filter.outputs.fuel-dashboard }}
+      infra: ${{ steps.filter.outputs.infra }}
+      any-service: ${{ steps.filter.outputs.any-service }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+
+      - name: Detect file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            fuel-ingestor:
+              - 'fuel-ingestor/**'
+            fuel-dashboard:
+              - 'fuel-dashboard/**'
+            infra:
+              - 'infra/**'
+            any-service:
+              - 'fuel-ingestor/**'
+              - 'fuel-dashboard/**'
+
+  # ---------------------------------------------------------------------------
+  # Test jobs
+  # ---------------------------------------------------------------------------
   test-fuel-ingestor:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.fuel-ingestor == 'true' ||
+      inputs.force_all == true
     uses: gerardovitale/github-workflows/.github/workflows/test-service.yml@v1
     with:
       service: fuel-ingestor
 
   test-fuel-dashboard:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.fuel-dashboard == 'true' ||
+      inputs.force_all == true
     uses: gerardovitale/github-workflows/.github/workflows/test-service.yml@v1
     with:
       service: fuel-dashboard
 
+  # ---------------------------------------------------------------------------
+  # Build jobs
+  # ---------------------------------------------------------------------------
   build-fuel-ingestor:
-    needs: test-fuel-ingestor
+    needs: [detect-changes, test-fuel-ingestor]
+    if: >-
+      always() && !failure() && !cancelled() &&
+      (needs.detect-changes.outputs.fuel-ingestor == 'true' ||
+        inputs.force_all == true)
     uses: gerardovitale/github-workflows/.github/workflows/build-service.yml@v1
     with:
       service: fuel-ingestor
@@ -32,7 +86,11 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
   build-fuel-dashboard:
-    needs: test-fuel-dashboard
+    needs: [detect-changes, test-fuel-dashboard]
+    if: >-
+      always() && !failure() && !cancelled() &&
+      (needs.detect-changes.outputs.fuel-dashboard == 'true' ||
+        inputs.force_all == true)
     uses: gerardovitale/github-workflows/.github/workflows/build-service.yml@v1
     with:
       service: fuel-dashboard
@@ -43,9 +101,20 @@ jobs:
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
+  # ---------------------------------------------------------------------------
+  # Terraform deploy
+  # ---------------------------------------------------------------------------
   terraform-deploy:
     runs-on: ubuntu-latest
-    needs: [build-fuel-ingestor, build-fuel-dashboard]
+    needs:
+      - detect-changes
+      - build-fuel-ingestor
+      - build-fuel-dashboard
+    if: >-
+      always() && !failure() && !cancelled() &&
+      (needs.detect-changes.outputs.any-service == 'true' ||
+        needs.detect-changes.outputs.infra == 'true' ||
+        inputs.force_all == true)
     env:
       TF_VAR_APP_NAME: travass
       TF_VAR_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
