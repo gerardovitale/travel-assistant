@@ -522,3 +522,46 @@ def _flatten_coordinates(coords):
     for item in coords:
         result.extend(_flatten_coordinates(item))
     return result
+
+
+def build_day_of_week_chart(df, fuel_type: str) -> go.Figure:
+    """Vertical bar chart showing average price by day of week."""
+    from ui.view_models import SPANISH_DAY_NAMES
+
+    fuel_name = fuel_label(fuel_type)
+    day_names = [SPANISH_DAY_NAMES.get(int(d), "?") for d in df["day_of_week"]]
+    avg_prices = df["avg_price"].tolist()
+
+    # Highlight cheapest day in green, rest in blue
+    cheapest_idx = avg_prices.index(min(avg_prices)) if avg_prices else -1
+    colors = ["#22c55e" if i == cheapest_idx else "#2563eb" for i in range(len(avg_prices))]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=day_names,
+            y=avg_prices,
+            marker=dict(color=colors),
+            hovertemplate="Dia: %{x}<br>Precio medio: %{y:.4f} EUR/L<extra></extra>",
+        )
+    )
+    # Zoom y-axis to data range so small differences are visible
+    if avg_prices:
+        price_min, price_max = min(avg_prices), max(avg_prices)
+        padding = max((price_max - price_min) * 0.3, 0.002)
+        y_range = [price_min - padding, price_max + padding]
+    else:
+        y_range = None
+
+    fig.update_layout(
+        title=f"Patron semanal: {fuel_name}",
+        xaxis_title="Dia de la semana",
+        yaxis_title="Precio medio (EUR/L)",
+        yaxis_range=y_range,
+        template="plotly_white",
+        height=420,
+        margin=dict(l=50, r=30, t=50, b=50),
+        showlegend=False,
+    )
+    fig.update_yaxes(tickformat=".4f")
+    return fig

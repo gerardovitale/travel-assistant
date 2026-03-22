@@ -35,6 +35,19 @@ TREND_PERIOD_DAYS = {
 }
 
 
+class HistoricalPeriod(str, Enum):
+    quarter = "quarter"
+    half_year = "half_year"
+    year = "year"
+
+
+HISTORICAL_PERIOD_DAYS = {
+    HistoricalPeriod.quarter: 90,
+    HistoricalPeriod.half_year: 180,
+    HistoricalPeriod.year: 365,
+}
+
+
 class StationResult(BaseModel):
     label: str
     address: str

@@ -5,12 +5,14 @@ from typing import List
 from typing import Optional
 
 from api.schemas import FuelType
+from api.schemas import HistoricalPeriod
 from api.schemas import StationResult
 from api.schemas import TrendPeriod
 from api.schemas import TripStop
 from api.schemas import ZoneResult
 from nicegui import ui
 from ui.view_models import FUEL_DISPLAY_NAMES
+from ui.view_models import HISTORICAL_PERIOD_LABELS
 from ui.view_models import SEARCH_MODE_OPTIONS
 from ui.view_models import TREND_PERIOD_LABELS
 
@@ -25,6 +27,11 @@ def fuel_type_select(label: str = "Tipo de combustible", on_change: Optional[Cal
 def trend_period_select(label: str = "Periodo", on_change: Optional[Callable] = None) -> ui.select:
     options = {tp.value: TREND_PERIOD_LABELS[tp.value] for tp in TrendPeriod}
     return ui.select(options, value=TrendPeriod.month.value, label=label, on_change=on_change).classes("w-40")
+
+
+def historical_period_select(label: str = "Periodo", on_change: Optional[Callable] = None) -> ui.select:
+    options = {hp.value: HISTORICAL_PERIOD_LABELS[hp] for hp in HistoricalPeriod}
+    return ui.select(options, value=HistoricalPeriod.quarter.value, label=label, on_change=on_change).classes("w-40")
 
 
 def search_mode_select(label: str = "Modo de busqueda", on_change: Optional[Callable] = None) -> ui.select:

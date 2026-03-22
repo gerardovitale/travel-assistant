@@ -14,3 +14,25 @@ jobs:
       component: fuel-ingestor-job
     secrets:
       gcp_credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+  run-aggregation:
+    needs: trigger-ingestor
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install pandas google-cloud-storage pyarrow
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Run aggregation
+        working-directory: fuel-ingestor/app
+        run: python aggregator.py

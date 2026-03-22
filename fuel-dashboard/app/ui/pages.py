@@ -1,9 +1,13 @@
 import json
 import logging
+from datetime import date
+from datetime import timedelta
 from typing import Any
 from typing import Dict
 
 from api.schemas import FuelType
+from api.schemas import HISTORICAL_PERIOD_DAYS
+from api.schemas import HistoricalPeriod
 from api.schemas import TrendPeriod
 from config import settings
 from fastapi import FastAPI
@@ -14,12 +18,14 @@ from services.station_service import get_best_by_address
 from services.station_service import get_cheapest_by_address
 from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
+from services.station_service import get_day_of_week_pattern
 from services.station_service import get_district_price_map
 from services.station_service import get_municipalities
 from services.station_service import get_nearest_by_address
 from services.station_service import get_postal_code_geojson
 from services.station_service import get_price_trends
 from services.station_service import get_province_price_map
+from services.station_service import get_province_ranking
 from services.station_service import get_provinces
 from services.station_service import get_route_geometries_for_stations
 from services.station_service import get_zip_code_boundary
@@ -27,6 +33,7 @@ from services.station_service import get_zip_code_price_map_by_municipality
 from services.station_service import get_zip_code_price_map_for_zips
 from services.station_service import get_zip_codes_for_district
 from services.trip_planner import plan_trip
+from ui.charts import build_day_of_week_chart
 from ui.charts import build_district_choropleth
 from ui.charts import build_province_choropleth
 from ui.charts import build_station_map
@@ -35,6 +42,7 @@ from ui.charts import build_trip_map
 from ui.charts import build_zip_code_choropleth
 from ui.components import empty_state
 from ui.components import fuel_type_select
+from ui.components import historical_period_select
 from ui.components import kpi_row
 from ui.components import loading_state
 from ui.components import search_mode_select
@@ -44,6 +52,9 @@ from ui.components import top_cheapest_table
 from ui.components import trend_period_select
 from ui.components import trip_stops_table
 from ui.view_models import alternative_plan_cards
+from ui.view_models import day_of_week_kpis
+from ui.view_models import HISTORICAL_PERIOD_LABELS
+from ui.view_models import province_ranking_kpis
 from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_summary_cards
@@ -55,6 +66,7 @@ from ui.view_models import zone_kpis
 from ui.view_models import zone_summary_cards
 
 from data.cache import is_data_ready
+from data.geojson_loader import normalize_data_province_name
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +101,7 @@ def init_ui(app: FastAPI) -> None:
                     trends_tab = ui.tab("Tendencias de precios")
                     zones_tab = ui.tab("Comparar zonas")
                     trip_tab = ui.tab("Planificar viaje")
+                    historical_tab = ui.tab("Analisis historico")
 
                 with ui.tab_panels(tabs, value=search_tab).classes("w-full"):
                     with ui.tab_panel(search_tab):
@@ -99,6 +112,8 @@ def init_ui(app: FastAPI) -> None:
                         _build_zones_panel()
                     with ui.tab_panel(trip_tab):
                         _build_trip_panel()
+                    with ui.tab_panel(historical_tab):
+                        _build_historical_panel()
 
         if is_data_ready():
             _render_dashboard()
@@ -723,3 +738,187 @@ def _build_trip_panel() -> None:
 
     plan_button.on("click", lambda _: on_plan())
     set_status("info", "Introduce origen, destino y parametros del vehiculo para planificar tu ruta.")
+
+
+def _build_historical_panel() -> None:
+    with ui.column().classes("w-full gap-3"):
+        ui.label("Analisis basado en datos historicos precomputados.").classes("text-sm text-gray-600")
+
+        with ui.tabs().classes("w-full") as sub_tabs:
+            ranking_tab = ui.tab("Ranking de provincias")
+            dow_tab = ui.tab("Patron semanal")
+
+        with ui.tab_panels(sub_tabs, value=ranking_tab).classes("w-full"):
+            with ui.tab_panel(ranking_tab):
+                _build_province_ranking_subtab()
+            with ui.tab_panel(dow_tab):
+                _build_day_of_week_subtab()
+
+
+def _build_province_ranking_subtab() -> None:
+    with ui.column().classes("w-full gap-3"):
+        with ui.card().classes("w-full p-4"):
+            ui.label("Provincias ordenadas por precio medio de combustible.").classes("text-sm text-gray-600")
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                fuel = fuel_type_select()
+                period = historical_period_select()
+                mainland_only = ui.checkbox("Solo peninsula", value=True)
+                ranking_button = ui.button("Cargar ranking").props("unelevated color=primary")
+
+        status_container = ui.column().classes("w-full")
+        summary_container = ui.column().classes("w-full")
+        table_container = ui.column().classes("w-full")
+
+    set_status = _make_set_status(status_container)
+
+    async def on_load_ranking() -> None:
+        summary_container.clear()
+        table_container.clear()
+        set_status("loading", "Cargando ranking de provincias...")
+        ranking_button.disable()
+        try:
+            fuel_type = FuelType(fuel.value)
+            hist_period = HistoricalPeriod(period.value)
+            days_back = HISTORICAL_PERIOD_DAYS[hist_period]
+            df = await run.io_bound(get_province_ranking, fuel_type, days_back)
+
+            if df.empty:
+                set_status("empty", "No hay datos de ranking disponibles. Ejecuta el backfill primero.")
+                return
+
+            if mainland_only.value:
+                from data.geojson_loader import _NON_MAINLAND_DATA_NAMES
+
+                df = df[~df["province"].isin(_NON_MAINLAND_DATA_NAMES)].reset_index(drop=True)
+
+            with summary_container:
+                kpi_row(province_ranking_kpis(df))
+            with table_container:
+                columns = [
+                    {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
+                    {"name": "province", "label": "Provincia", "field": "province", "align": "left"},
+                    {
+                        "name": "avg_price",
+                        "label": "Precio medio (EUR/L)",
+                        "field": "avg_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "diff",
+                        "label": "Diff vs anterior",
+                        "field": "diff",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "min_price",
+                        "label": "Minimo (EUR/L)",
+                        "field": "min_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "max_price",
+                        "label": "Maximo (EUR/L)",
+                        "field": "max_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "total_observations",
+                        "label": "Observaciones",
+                        "field": "total_observations",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                ]
+                rows = []
+                prev_price = None
+                for idx, row in df.iterrows():
+                    avg = row["avg_price"]
+                    diff = f"+{avg - prev_price:.4f}" if prev_price is not None and avg >= prev_price else ""
+                    if prev_price is not None and avg < prev_price:
+                        diff = f"{avg - prev_price:.4f}"
+                    rows.append(
+                        {
+                            "ranking": idx + 1,
+                            "province": str(row["province"]).title(),
+                            "avg_price": f"{avg:.4f}",
+                            "diff": diff,
+                            "min_price": f"{row['min_price']:.4f}",
+                            "max_price": f"{row['max_price']:.4f}",
+                            "total_observations": int(row["total_observations"]),
+                        }
+                    )
+                    prev_price = avg
+                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+                table.props("dense flat bordered separator=cell")
+            date_to = date.today()
+            date_from = date_to - timedelta(days=days_back)
+            set_status(
+                "success",
+                f"Ranking cargado ({len(df)} provincias). "
+                f"Periodo: {date_from.strftime('%d/%m/%Y')} — {date_to.strftime('%d/%m/%Y')} "
+                f"({HISTORICAL_PERIOD_LABELS[hist_period]}).",
+            )
+        except Exception:
+            logger.exception("Province ranking error")
+            set_status("error", "No se pudo cargar el ranking. Intentalo de nuevo.")
+        finally:
+            ranking_button.enable()
+
+    ranking_button.on("click", lambda _: on_load_ranking())
+    set_status("info", "Selecciona tipo de combustible y periodo para ver el ranking de provincias.")
+
+
+def _build_day_of_week_subtab() -> None:
+    with ui.column().classes("w-full gap-3"):
+        with ui.card().classes("w-full p-4"):
+            ui.label("Precio medio por dia de la semana.").classes("text-sm text-gray-600")
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                fuel = fuel_type_select()
+                province_input = ui.input(label="Provincia (opcional)", placeholder="Toda Espana").classes("w-56")
+                mainland_only = ui.checkbox("Solo peninsula", value=True)
+                dow_button = ui.button("Cargar patron").props("unelevated color=primary")
+
+        status_container = ui.column().classes("w-full")
+        summary_container = ui.column().classes("w-full")
+        chart_container = ui.column().classes("w-full")
+
+    set_status = _make_set_status(status_container)
+
+    async def on_load_dow() -> None:
+        summary_container.clear()
+        chart_container.clear()
+        set_status("loading", "Cargando patron semanal...")
+        dow_button.disable()
+        try:
+            fuel_type = FuelType(fuel.value)
+            province = normalize_data_province_name(province_input.value)
+            exclude = None
+            if mainland_only.value and not province:
+                from data.geojson_loader import _NON_MAINLAND_DATA_NAMES
+
+                exclude = _NON_MAINLAND_DATA_NAMES
+            df = await run.io_bound(get_day_of_week_pattern, fuel_type, province, exclude)
+
+            if df.empty:
+                set_status("empty", "No hay datos de patron semanal disponibles.")
+                return
+
+            with summary_container:
+                kpi_row(day_of_week_kpis(df))
+            with chart_container:
+                fig = build_day_of_week_chart(df, fuel_type.value)
+                ui.plotly(fig).classes("w-full")
+            weeks = int(df["count_days"].iloc[0])
+            set_status("success", f"Patron semanal cargado. Datos acumulados de ~{weeks} semanas.")
+        except Exception:
+            logger.exception("Day of week pattern error")
+            set_status("error", "No se pudo cargar el patron semanal. Intentalo de nuevo.")
+        finally:
+            dow_button.enable()
+
+    dow_button.on("click", lambda _: on_load_dow())
+    set_status("info", "Descubre que dia de la semana es mas barato repostar.")

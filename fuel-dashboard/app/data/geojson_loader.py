@@ -34,6 +34,15 @@ _NON_MAINLAND_PROVINCES = {
     "Melilla",
 }
 
+# Reverse map: GeoJSON name → data name (lowercased, as stored in aggregates)
+_GEOJSON_TO_DATA: Dict[str, str] = {v: k for k, v in _DATA_TO_GEOJSON_OVERRIDES.items()}
+
+# Province names as they appear in the raw/aggregate data (lowercase)
+_NON_MAINLAND_DATA_NAMES = {_GEOJSON_TO_DATA.get(p, p).lower() for p in _NON_MAINLAND_PROVINCES}
+_LOWERCASE_GEOJSON_TO_DATA: Dict[str, str] = {
+    geojson_name.lower(): data_name for geojson_name, data_name in _GEOJSON_TO_DATA.items()
+}
+
 
 def load_provinces_geojson() -> dict:
     global _provinces_geojson, _provinces_name_lookup
@@ -52,6 +61,15 @@ def load_provinces_geojson() -> dict:
 def get_geojson_province_name(data_province: str) -> Optional[str]:
     load_provinces_geojson()
     return _provinces_name_lookup.get(data_province.lower())
+
+
+def normalize_data_province_name(province_name: Optional[str]) -> Optional[str]:
+    if province_name is None:
+        return None
+    normalized = province_name.strip().lower()
+    if not normalized:
+        return None
+    return _LOWERCASE_GEOJSON_TO_DATA.get(normalized, normalized)
 
 
 def _ensure_postal_index() -> Dict[str, dict]:

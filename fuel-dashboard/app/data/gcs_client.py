@@ -148,3 +148,38 @@ def download_parquets_as_df(blob_names: List[str]) -> pd.DataFrame:
         dfs = list(executor.map(_cached_download, blob_names))
 
     return pd.concat(dfs, ignore_index=True)
+
+
+def download_aggregate(name: str) -> Optional[pd.DataFrame]:
+    """Download a pre-computed aggregate parquet file from GCS.
+
+    Cached locally with a TTL of parquet_cache_max_age_hours (same as today's files).
+    """
+    blob_name = f"aggregates/{name}"
+    cache_dir = _get_cache_dir()
+    safe_name = blob_name.replace("/", "_")
+    cached_path = cache_dir / safe_name
+
+    if cached_path.exists():
+        age_hours = (time.time() - cached_path.stat().st_mtime) / 3600
+        if age_hours < settings.parquet_cache_max_age_hours:
+            logger.debug(f"Aggregate cache hit (fresh): {blob_name}")
+            return pd.read_parquet(cached_path)
+        logger.info(f"Aggregate cache stale ({age_hours:.1f}h old): {blob_name}")
+
+    bucket = _get_bucket()
+    blob = bucket.blob(blob_name)
+    if not blob.exists():
+        logger.warning(f"Aggregate file not found: {blob_name}")
+        return None
+
+    data = blob.download_as_bytes()
+    df = pd.read_parquet(io.BytesIO(data))
+
+    try:
+        df.to_parquet(cached_path)
+    except Exception:
+        logger.warning(f"Failed to write aggregate cache: {cached_path}", exc_info=True)
+
+    logger.info(f"Downloaded aggregate {blob_name} ({len(df)} rows)")
+    return df

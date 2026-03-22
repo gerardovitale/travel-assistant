@@ -6,6 +6,7 @@ from typing import Optional
 from typing import Sequence
 
 from api.schemas import AlternativePlan
+from api.schemas import HistoricalPeriod
 from api.schemas import StationResult
 from api.schemas import TrendPeriod
 from api.schemas import TrendPoint
@@ -412,5 +413,90 @@ def alternative_plan_cards(plan: AlternativePlan) -> List[Dict[str, str]]:
         {
             "label": "Combustible en destino",
             "value": f"{plan.fuel_at_destination_pct:.0f}%",
+        },
+    ]
+
+
+# --- Historical analytics ---
+
+SPANISH_DAY_NAMES = {
+    0: "Lunes",
+    1: "Martes",
+    2: "Miercoles",
+    3: "Jueves",
+    4: "Viernes",
+    5: "Sabado",
+    6: "Domingo",
+}
+
+HISTORICAL_PERIOD_LABELS = {
+    HistoricalPeriod.quarter: "90 dias",
+    HistoricalPeriod.half_year: "6 meses",
+    HistoricalPeriod.year: "12 meses",
+}
+
+
+def province_ranking_kpis(df) -> List[Dict[str, str]]:
+    if df.empty:
+        return []
+    cheapest = df.iloc[0]
+    most_expensive = df.iloc[-1]
+    diff = most_expensive["avg_price"] - cheapest["avg_price"]
+    return [
+        {
+            "label": "Provincia mas barata",
+            "value": str(cheapest["province"]).title(),
+            "color": "text-green-600",
+            "description": format_price(cheapest["avg_price"]),
+        },
+        {
+            "label": "Provincia mas cara",
+            "value": str(most_expensive["province"]).title(),
+            "color": "text-red-600",
+            "description": format_price(most_expensive["avg_price"]),
+        },
+        {
+            "label": "Diferencia max-min",
+            "value": f"{diff:.3f} EUR/L",
+            "description": "entre la mas barata y la mas cara",
+        },
+        {
+            "label": "Provincias analizadas",
+            "value": str(len(df)),
+        },
+    ]
+
+
+def day_of_week_kpis(df) -> List[Dict[str, str]]:
+    if df.empty:
+        return []
+    cheapest_idx = df["avg_price"].idxmin()
+    most_expensive_idx = df["avg_price"].idxmax()
+    cheapest = df.loc[cheapest_idx]
+    most_expensive = df.loc[most_expensive_idx]
+    diff = most_expensive["avg_price"] - cheapest["avg_price"]
+    weeks = int(df["count_days"].iloc[0]) if not df.empty else 0
+    return [
+        {
+            "label": "Dia mas barato",
+            "value": SPANISH_DAY_NAMES.get(int(cheapest["day_of_week"]), "?"),
+            "color": "text-green-600",
+            "description": format_price(cheapest["avg_price"]),
+        },
+        {
+            "label": "Dia mas caro",
+            "value": SPANISH_DAY_NAMES.get(int(most_expensive["day_of_week"]), "?"),
+            "color": "text-red-600",
+            "description": format_price(most_expensive["avg_price"]),
+        },
+        {
+            "label": "Ahorro potencial",
+            "value": f"{diff:.4f} EUR/L",
+            "color": "text-green-600",
+            "description": "entre el dia mas barato y el mas caro",
+        },
+        {
+            "label": "Semanas analizadas",
+            "value": str(weeks),
         },
     ]

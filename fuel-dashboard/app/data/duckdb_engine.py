@@ -325,3 +325,89 @@ def get_distinct_provinces() -> dict[str, str]:
         result = conn.execute("SELECT DISTINCT province FROM latest_stations ORDER BY province").fetchdf()
     provinces = result["province"].tolist()
     return {p: p.title() for p in provinces}
+
+
+def query_province_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back: int) -> pd.DataFrame:
+    """Query province ranking from pre-computed province_daily_stats aggregate."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    df = aggregate_df  # noqa: F841
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _province_agg")
+        conn.execute("CREATE TEMP TABLE _province_agg AS SELECT * FROM df")
+        result = conn.execute(
+            """
+            SELECT province,
+                AVG(avg_price) AS avg_price,
+                MIN(min_price) AS min_price,
+                MAX(max_price) AS max_price,
+                CAST(SUM(station_count) AS INTEGER) AS total_observations
+            FROM _province_agg
+            WHERE fuel_type = $1
+                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+            GROUP BY province
+            ORDER BY avg_price ASC
+            """,
+            [fuel_type, days_back],
+        ).fetchdf()
+        conn.execute("DROP TABLE IF EXISTS _province_agg")
+    return result
+
+
+def query_day_of_week_pattern(
+    aggregate_df: pd.DataFrame,
+    fuel_type: str,
+    province: Optional[str] = None,
+    exclude_provinces: Optional[set] = None,
+) -> pd.DataFrame:
+    """Query day-of-week price patterns from pre-computed day_of_week_stats aggregate."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    df = aggregate_df  # noqa: F841
+
+    # When a specific province is selected, use it directly
+    if province:
+        province_filter = province
+        use_aggregate = True
+    # When excluding provinces (mainland only), aggregate per-province rows
+    elif exclude_provinces:
+        use_aggregate = False
+    else:
+        province_filter = "__national__"
+        use_aggregate = True
+
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _dow_agg")
+        conn.execute("CREATE TEMP TABLE _dow_agg AS SELECT * FROM df")
+        if use_aggregate:
+            result = conn.execute(
+                """
+                SELECT day_of_week,
+                    sum_price / count_days AS avg_price,
+                    count_days,
+                    min_daily_avg,
+                    max_daily_avg
+                FROM _dow_agg
+                WHERE fuel_type = $1 AND province = $2
+                ORDER BY day_of_week ASC
+                """,
+                [fuel_type, province_filter],
+            ).fetchdf()
+        else:
+            exclude_list = list(exclude_provinces | {"__national__"})
+            result = conn.execute(
+                """
+                SELECT day_of_week,
+                    SUM(sum_price) / SUM(count_days) AS avg_price,
+                    MAX(count_days) AS count_days,
+                    MIN(min_daily_avg) AS min_daily_avg,
+                    MAX(max_daily_avg) AS max_daily_avg
+                FROM _dow_agg
+                WHERE fuel_type = $1 AND province NOT IN (SELECT UNNEST($2::VARCHAR[]))
+                GROUP BY day_of_week
+                ORDER BY day_of_week ASC
+                """,
+                [fuel_type, exclude_list],
+            ).fetchdf()
+        conn.execute("DROP TABLE IF EXISTS _dow_agg")
+    return result

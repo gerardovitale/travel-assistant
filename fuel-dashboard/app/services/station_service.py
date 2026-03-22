@@ -34,6 +34,7 @@ from data.gcs_client import list_parquet_files
 from data.geojson_loader import load_madrid_districts
 from data.geojson_loader import load_postal_code_boundary
 from data.geojson_loader import load_postal_codes_for_zip_list
+from data.geojson_loader import normalize_data_province_name
 
 logger = logging.getLogger(__name__)
 
@@ -308,3 +309,25 @@ def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) ->
         )
         for _, row in df.iterrows()
     ]
+
+
+def get_province_ranking(fuel_type: FuelType, days_back: int) -> pd.DataFrame:
+    from data.duckdb_engine import query_province_ranking
+    from data.gcs_client import download_aggregate
+
+    agg_df = download_aggregate("province_daily_stats.parquet")
+    if agg_df is None:
+        return pd.DataFrame()
+    return query_province_ranking(agg_df, fuel_type.value, days_back)
+
+
+def get_day_of_week_pattern(
+    fuel_type: FuelType, province: Optional[str] = None, exclude_provinces: Optional[set] = None
+) -> pd.DataFrame:
+    from data.duckdb_engine import query_day_of_week_pattern
+    from data.gcs_client import download_aggregate
+
+    agg_df = download_aggregate("day_of_week_stats.parquet")
+    if agg_df is None:
+        return pd.DataFrame()
+    return query_day_of_week_pattern(agg_df, fuel_type.value, normalize_data_province_name(province), exclude_provinces)
