@@ -1,16 +1,16 @@
-# # Service Account for Dashboard
-# resource "google_service_account" "fuel_dashboard_sa" {
-#   account_id   = "${var.APP_NAME}-fuel-dashboard"
-#   description  = "Fuel Dashboard Service Account created by terraform"
-#   display_name = "Cloud Run Service Account for Fuel Dashboard"
-# }
+# Service Account for Dashboard (Raspberry Pi deployment)
+resource "google_service_account" "fuel_dashboard_sa" {
+  account_id   = "${var.APP_NAME}-dashboard-reader"
+  description  = "Fuel Dashboard read-only Service Account created by terraform"
+  display_name = "Fuel Dashboard Reader (Raspberry Pi)"
+}
 
-# # Grant storage read access to fuel prices bucket
-# resource "google_storage_bucket_iam_member" "fuel_dashboard_bucket_viewer" {
-#   bucket = google_storage_bucket.fuel_prices_bucket.name
-#   role   = "roles/storage.objectViewer"
-#   member = "serviceAccount:${google_service_account.fuel_dashboard_sa.email}"
-# }
+# Grant storage read access to fuel prices bucket
+resource "google_storage_bucket_iam_member" "fuel_dashboard_bucket_viewer" {
+  bucket = google_storage_bucket.fuel_prices_bucket.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.fuel_dashboard_sa.email}"
+}
 
 # # Cloud Run Service
 # resource "google_cloud_run_v2_service" "fuel_dashboard" {
