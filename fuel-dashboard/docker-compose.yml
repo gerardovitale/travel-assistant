@@ -23,14 +23,72 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    labels:
+      kuma.fuel-dashboard.http.name: "Fuel Dashboard"
+      kuma.fuel-dashboard.http.url: "http://fuel-dashboard:8080/health"
+      kuma.fuel-dashboard.http.interval: "60"
+      kuma.fuel-dashboard.http.retryInterval: "30"
+      kuma.fuel-dashboard.http.maxretries: "3"
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
 
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - uptime-kuma-data:/app/data
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    labels:
+      kuma.fuel-ingestor-data.http.name: "Fuel Ingestor Data Freshness"
+      kuma.fuel-ingestor-data.http.url: "http://fuel-dashboard:8080/health/data"
+      kuma.fuel-ingestor-data.http.interval: "3600"
+      kuma.fuel-ingestor-data.http.retryInterval: "300"
+      kuma.fuel-ingestor-data.http.maxretries: "3"
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  autokuma:
+    image: ghcr.io/bigboot/autokuma:latest
+    container_name: autokuma
+    restart: unless-stopped
+    environment:
+      - AUTOKUMA__KUMA__URL=http://uptime-kuma:3001
+      - AUTOKUMA__KUMA__USERNAME=${UPTIME_KUMA_USERNAME}
+      - AUTOKUMA__KUMA__PASSWORD=${UPTIME_KUMA_PASSWORD}
+      - AUTOKUMA__DOCKER__SOCKET_PATH=/var/run/docker.sock
+      - AUTOKUMA__TAG=autokuma
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - uptime-kuma
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
   watchtower:
-    image: containrrr/watchtower
+    image: containrrr/watchtower:1.7.1
     container_name: watchtower
     restart: unless-stopped
     volumes:
@@ -43,3 +101,6 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+volumes:
+  uptime-kuma-data:
