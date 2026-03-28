@@ -26,12 +26,25 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: pip install pandas google-cloud-storage pyarrow
+        run: pip install pandas==2.2.3 google-cloud-storage==2.18.2 pyarrow==18.1.0
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Wait for ingestor data
+        run: |
+          for i in $(seq 1 12); do
+            if gsutil ls "gs://travel-assistant-spain-fuel-prices/spain_fuel_prices_$(date -u +%Y-%m-%d)*" 2>/dev/null; then
+              echo "Data found"
+              exit 0
+            fi
+            echo "Attempt $i/12: data not ready, waiting 30s..."
+            sleep 30
+          done
+          echo "ERROR: Ingestor data not found after 6 minutes"
+          exit 1
 
       - name: Run aggregation
         working-directory: fuel-ingestor/app
