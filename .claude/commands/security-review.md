@@ -9,35 +9,42 @@ If no target is specified, auto-detect changed files using `git diff --name-only
 Scan the target code for these categories (at minimum):
 
 ### Injection Attacks
+
 - **SQL Injection**: Raw SQL built via string concatenation/f-strings. Check DuckDB queries in `app/data/` and `app/services/`.
 - **Command Injection**: Unsanitized input passed to `os.system`, `subprocess`, or `eval`/`exec`.
 - **Template Injection**: User input rendered directly in templates without escaping.
 
 ### Cross-Site Attacks
+
 - **XSRF / CSRF**: State-changing endpoints (POST/PUT/DELETE) missing CSRF token validation.
 - **XSS (Cross-Site Scripting)**: User-supplied data rendered in HTML without sanitization (especially in NiceGUI UI components in `app/ui/`).
 
 ### Authentication & Authorization
+
 - **Broken Auth**: Missing or weak authentication on sensitive endpoints.
 - **Insecure Direct Object Reference (IDOR)**: User-controlled IDs used to access resources without ownership checks.
 - **Hardcoded Secrets**: API keys, passwords, tokens embedded in source code.
 
 ### Data Exposure
+
 - **Sensitive Data in Logs**: PII, credentials, or tokens written to logs or error messages.
 - **Overly Broad API Responses**: Endpoints returning more data than the client needs.
 - **Missing HTTPS / Insecure Transport**: HTTP links or disabled TLS verification.
 
 ### Infrastructure & Config
+
 - **Permissive CORS**: Wildcard (`*`) or overly broad CORS origins.
 - **Missing Security Headers**: No Content-Security-Policy, X-Frame-Options, Strict-Transport-Security, etc.
 - **Dockerfile / Terraform Misconfigurations**: Running as root, overly permissive IAM roles, public buckets.
 
 ### Input Validation
+
 - **Buffer Overflow / Resource Exhaustion**: Unbounded input sizes, missing pagination limits, no request body size caps.
 - **Path Traversal**: User input used to construct file paths without sanitization.
 - **Deserialization Attacks**: Unsafe use of `pickle`, `yaml.load` (without SafeLoader), or similar.
 
 ### Dependency & Supply Chain
+
 - **Known Vulnerable Dependencies**: Check `pyproject.toml` / `uv.lock` for obviously outdated or flagged packages (if pip-audit or similar is available, run it).
 
 ## Process
@@ -56,7 +63,7 @@ Scan the target code for these categories (at minimum):
 
 Write the report following this structure:
 
-```markdown
+````markdown
 # Security Review Report
 
 **Date**: YYYY-MM-DD
@@ -66,11 +73,11 @@ Write the report following this structure:
 ## Summary
 
 | Severity | Count |
-|----------|-------|
-| CRITICAL | N |
-| HIGH     | N |
-| MEDIUM   | N |
-| LOW      | N |
+| -------- | ----- |
+| CRITICAL | N     |
+| HIGH     | N     |
+| MEDIUM   | N     |
+| LOW      | N     |
 
 ## Findings
 
@@ -84,12 +91,16 @@ Write the report following this structure:
 
 **Before** (if fixed):
 \```python
+
 # vulnerable code
+
 \```
 
 **After** (if fixed):
 \```python
+
 # remediated code
+
 \```
 
 **Recommendation** (if flagged only): What should be done.
@@ -101,7 +112,7 @@ Write the report following this structure:
 ## Passed Checks
 
 List categories from the checklist that were reviewed and found clean.
-```
+````
 
 ## Final Steps
 

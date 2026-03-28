@@ -11,13 +11,13 @@ Terraform configuration for deploying all GCP resources: Cloud Run job, Cloud Ru
 
 ## Configuration
 
-| Variable | Description |
-|----------|-------------|
-| `PROJECT` | GCP project ID (`travel-assistant-417315`) |
-| `APP_NAME` | Application name |
-| `REGION` | GCP region (`europe-southwest1`) |
-| `DOCKER_HUB_USERNAME` | Docker Hub username for image pulls |
-| `DOCKER_IMAGE_TAG` | Image tag to deploy |
+| Variable              | Description                                |
+| --------------------- | ------------------------------------------ |
+| `PROJECT`             | GCP project ID (`travel-assistant-417315`) |
+| `APP_NAME`            | Application name                           |
+| `REGION`              | GCP region (`europe-southwest1`)           |
+| `DOCKER_HUB_USERNAME` | Docker Hub username for image pulls        |
+| `DOCKER_IMAGE_TAG`    | Image tag to deploy                        |
 
 Variables defined in `varibles.tf`.
 

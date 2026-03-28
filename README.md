@@ -3,7 +3,9 @@
 
 # Spanish Fuel Price Finder
 
-A data pipeline and dashboard for Spanish fuel station prices. Fetches daily pricing data from Spain's government API, stores it in Google Cloud Storage, and serves it through an interactive web dashboard with station search, trip planning, and price visualizations.
+A data pipeline and dashboard for Spanish fuel station prices. Fetches daily pricing data from Spain's government API,
+stores it in Google Cloud Storage, and serves it through an interactive web dashboard with station search, trip
+planning, and price visualizations.
 
 ## Architecture
 
@@ -62,15 +64,16 @@ make fuel-ingestor.run    # run ingestor locally (writes to output/)
 
 ## CI/CD
 
-| Workflow | Trigger | Description |
-|----------|---------|-------------|
-| `deploy.yaml` | Push to `main` | Test, build, Trivy scan, Terraform apply |
+| Workflow                | Trigger                | Description                                    |
+| ----------------------- | ---------------------- | ---------------------------------------------- |
+| `deploy.yaml`           | Push to `main`         | Test, build, Trivy scan, Terraform apply       |
 | `trigger-ingestor.yaml` | Daily cron (05:00 UTC) | Triggers Cloud Run ingestion job + aggregation |
-| `destroy.yaml` | Manual | Tears down GCP infrastructure |
+| `destroy.yaml`          | Manual                 | Tears down GCP infrastructure                  |
 
 ## Code Style
 
-Enforced via pre-commit hooks: **black** (line-length 120), **flake8** (max-line-length 120), **reorder-python-imports**, **gitleaks**, **terraform_fmt**, and **terraform_validate**.
+Enforced via pre-commit hooks: **black** (line-length 120), **flake8** (max-line-length 120),
+**reorder-python-imports**, **gitleaks**, **terraform_fmt**, and **terraform_validate**.
 
 ```bash
 pre-commit run --all-files

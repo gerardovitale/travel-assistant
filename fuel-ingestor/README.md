@@ -58,10 +58,10 @@ make fuel-ingestor.test-local
 
 ## Dependencies
 
-| Package | Version |
-|---------|---------|
-| pandas | 2.2.3 |
-| google-cloud-storage | 2.18.2 |
-| requests | 2.32.3 |
-| pytz | 2025.2 |
-| pyarrow | 18.1.0 |
+| Package              | Version |
+| -------------------- | ------- |
+| pandas               | 2.2.3   |
+| google-cloud-storage | 2.18.2  |
+| requests             | 2.32.3  |
+| pytz                 | 2025.2  |
+| pyarrow              | 18.1.0  |

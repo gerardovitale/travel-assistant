@@ -4,20 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Spanish Fuel Price Finder — a data ingestion pipeline that fetches fuel station prices from Spain's government API, transforms the data with pandas, and stores CSV files in Google Cloud Storage. Deployed on GCP using Terraform, with CI/CD via GitHub Actions.
+Spanish Fuel Price Finder — a data ingestion pipeline that fetches fuel station prices from Spain's government API,
+transforms the data with pandas, and stores CSV files in Google Cloud Storage. Deployed on GCP using Terraform, with
+CI/CD via GitHub Actions.
 
 ## Architecture
 
 Two parallel ingestion implementations exist:
 
-- **fuel-ingestor/** — Cloud Run Job (batch). Runs on a daily cron schedule triggered by GitHub Actions. Entry point: `app/main.py`.
-- **ingest-fuel-prices/** — Google Cloud Function (HTTP-triggered via `@functions_framework.http`). Entry point: `ingest_fuel_prices` in `main.py`.
+- **fuel-ingestor/** — Cloud Run Job (batch). Runs on a daily cron schedule triggered by GitHub Actions. Entry point:
+  `app/main.py`.
+- **ingest-fuel-prices/** — Google Cloud Function (HTTP-triggered via `@functions_framework.http`). Entry point:
+  `ingest_fuel_prices` in `main.py`.
 
-Both follow the same pipeline: fetch JSON from Spain's fuel prices REST API → transform with pandas (Spanish→English column mapping in `entity.py`, price normalization, timestamping) → upload CSV to GCS bucket.
+Both follow the same pipeline: fetch JSON from Spain's fuel prices REST API → transform with pandas (Spanish→English
+column mapping in `entity.py`, price normalization, timestamping) → upload CSV to GCS bucket.
 
-**Infrastructure (infra/):** Terraform configs for Cloud Run job, GCS bucket, service accounts, and IAM. `infra/backend_support/` handles CI/CD service account and Terraform state bucket.
+**Infrastructure (infra/):** Terraform configs for Cloud Run job, GCS bucket, service accounts, and IAM.
+`infra/backend_support/` handles CI/CD service account and Terraform state bucket.
 
-**Data flow:** GitHub Actions daily cron (`trigger-ingestor.yaml` at 5AM UTC) → Cloud Function HTTP call → GCS bucket (`travel-assistant-417315-spain-fuel-prices`).
+**Data flow:** GitHub Actions daily cron (`trigger-ingestor.yaml` at 5AM UTC) → Cloud Function HTTP call → GCS bucket
+(`travel-assistant-417315-spain-fuel-prices`).
 
 **Deployment pipeline:** Push to `main` → test (Docker) → build & push image to Docker Hub → Terraform apply to GCP.
 
@@ -65,19 +72,21 @@ Python version: 3.13. Run `pre-commit run --all-files` to check all hooks.
 
 ## Key Configuration
 
-| Item | Value |
-|------|-------|
-| GCP Project | travel-assistant-417315 |
-| GCP Region | europe-southwest1 |
-| Resource prefix | travass |
-| Terraform version | 1.10.4 |
-| Data source API | https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/ |
+| Item              | Value                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------- |
+| GCP Project       | travel-assistant-417315                                                                                   |
+| GCP Region        | europe-southwest1                                                                                         |
+| Resource prefix   | travass                                                                                                   |
+| Terraform version | 1.10.4                                                                                                    |
+| Data source API   | https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/ |
 
-Environment variables are in `.env` (loaded by Makefile). Terraform variables defined in `infra/varibles.tf` and `infra/backend_support/variables.tf`.
+Environment variables are in `.env` (loaded by Makefile). Terraform variables defined in `infra/varibles.tf` and
+`infra/backend_support/variables.tf`.
 
 ## Service Details
 
 ### fuel-dashboard (FastAPI + NiceGUI)
+
 - Entry point: `app/main.py` (FastAPI with lifespan hooks)
 - API routes: `app/api/` (FastAPI routers with Pydantic schemas)
 - Business logic: `app/services/` (station queries, trip planner, geocoding)
@@ -87,6 +96,7 @@ Environment variables are in `.env` (loaded by Makefile). Terraform variables de
 - Test fixtures: `tests/fixture.py`
 
 ### fuel-ingestor (Cloud Run Job)
+
 - Entry point: `app/main.py` (simple orchestration)
 - Pipeline: `spain_fuel_price.py` (fetch API) → `entity.py` (transform/map columns) → GCS upload
 - Aggregation: `aggregator.py` (post-ingestion stats, runs separately via GitHub Actions)
@@ -94,6 +104,7 @@ Environment variables are in `.env` (loaded by Makefile). Terraform variables de
 - Test fixtures: `tests/fixture.py`
 
 ### ingest-fuel-prices (Cloud Function — legacy)
+
 - Older implementation, not under active development. Prefer `fuel-ingestor/` for new work.
 
 ## When Adding Features
@@ -107,6 +118,8 @@ Environment variables are in `.env` (loaded by Makefile). Terraform variables de
 
 ## Troubleshooting
 
-- **Pre-commit fails on formatting**: Run `black --line-length 120 <file>` and `reorder-python-imports --py313-plus <file>`
-- **Docker test fails but local passes**: Check `Dockerfile.test` — it runs in an isolated container with its own dependency resolution
+- **Pre-commit fails on formatting**: Run `black --line-length 120 <file>` and
+  `reorder-python-imports --py313-plus <file>`
+- **Docker test fails but local passes**: Check `Dockerfile.test` — it runs in an isolated container with its own
+  dependency resolution
 - **Terraform state issues**: Run `make backend.init` to reinitialize the backend connection
