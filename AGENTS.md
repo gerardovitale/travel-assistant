@@ -39,6 +39,16 @@ Docker is the default execution path for tests and local runs.
   - Validation steps run (for example `make test`, `pre-commit run --all-files`).
   - Screenshots for dashboard UI changes and Terraform plan notes for infra changes.
 
+## Data Source API
+- The Spain fuel prices API returns JSON with Spanish field names.
+- Column mapping (Spanish → English) is defined in `fuel-ingestor/app/entity.py`.
+- When modifying the data schema, update both the entity mapping in the ingestor and any downstream consumers in `fuel-dashboard/app/services/`.
+
+## Testing Priorities
+- Data transformation logic (entity mapping, price normalization) needs thorough testing — errors here silently corrupt downstream data.
+- API endpoint tests should use fixture data from `tests/fixture.py`, never call external APIs.
+- Dashboard UI tests focus on view model logic and service layer, not visual rendering.
+
 ## Security & Configuration Tips
 - Never commit secrets (`.env`, service-account JSON keys, cloud credentials).
 - Run pre-commit before pushing; `gitleaks` is included and should remain passing.

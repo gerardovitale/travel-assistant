@@ -74,3 +74,39 @@ Python version: 3.13. Run `pre-commit run --all-files` to check all hooks.
 | Data source API | https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/ |
 
 Environment variables are in `.env` (loaded by Makefile). Terraform variables defined in `infra/varibles.tf` and `infra/backend_support/variables.tf`.
+
+## Service Details
+
+### fuel-dashboard (FastAPI + NiceGUI)
+- Entry point: `app/main.py` (FastAPI with lifespan hooks)
+- API routes: `app/api/` (FastAPI routers with Pydantic schemas)
+- Business logic: `app/services/` (station queries, trip planner, geocoding)
+- UI components: `app/ui/` (NiceGUI pages, charts, view models)
+- Data layer: `app/data/` (GCS client, DuckDB engine, GeoJSON loader)
+- Config: `app/config.py` (pydantic-settings, env prefix `DASHBOARD_*`)
+- Test fixtures: `tests/fixture.py`
+
+### fuel-ingestor (Cloud Run Job)
+- Entry point: `app/main.py` (simple orchestration)
+- Pipeline: `spain_fuel_price.py` (fetch API) → `entity.py` (transform/map columns) → GCS upload
+- Aggregation: `aggregator.py` (post-ingestion stats, runs separately via GitHub Actions)
+- Backfill: `backfill.py` (historical data recovery)
+- Test fixtures: `tests/fixture.py`
+
+### ingest-fuel-prices (Cloud Function — legacy)
+- Older implementation, not under active development. Prefer `fuel-ingestor/` for new work.
+
+## When Adding Features
+
+1. Always add tests in the corresponding `tests/` directory
+2. Use `tests/fixture.py` for shared test data — both services have one
+3. For dashboard endpoints: add route in `app/api/`, logic in `app/services/`, test in `tests/`
+4. For ingestor changes: the pipeline is linear (fetch → transform → upload), extend at the right stage
+5. Run `pre-commit run --all-files` before committing
+6. Docker-based tests (`make <service>.test`) are the CI source of truth
+
+## Troubleshooting
+
+- **Pre-commit fails on formatting**: Run `black --line-length 120 <file>` and `reorder-python-imports --py313-plus <file>`
+- **Docker test fails but local passes**: Check `Dockerfile.test` — it runs in an isolated container with its own dependency resolution
+- **Terraform state issues**: Run `make backend.init` to reinitialize the backend connection
