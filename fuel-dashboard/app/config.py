@@ -32,5 +32,7 @@ class Settings(BaseSettings):
     osrm_timeout: float = 5.0
     osrm_enabled: bool = True
 
+    rate_limit: str = "60/minute"
+
 
 settings = Settings()

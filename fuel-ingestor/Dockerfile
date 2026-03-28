@@ -11,4 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY --from=builder /app/.venv /app/.venv
 COPY ./app/ ./
 ENV PATH="/app/.venv/bin:$PATH"
+RUN useradd -r -u 1000 -s /usr/sbin/nologin appuser && chown -R appuser:appuser /app
+USER appuser
 ENTRYPOINT ["python3", "main.py"]

@@ -3,10 +3,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from datetime import timezone
 
+from api.router import limiter
 from api.router import router
 from config import settings
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from ui.pages import init_ui
 
 from data.cache import start_cache_refresh
@@ -28,6 +31,8 @@ async def lifespan(application: FastAPI):
 
 
 app = FastAPI(title="Spain Fuel Prices Dashboard", version="1.0.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(router, prefix="/api/v1")
 
 

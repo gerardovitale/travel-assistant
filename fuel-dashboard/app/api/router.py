@@ -7,6 +7,7 @@ from config import settings
 from fastapi import APIRouter
 from fastapi import HTTPException
 from fastapi import Query
+from fastapi import Request
 from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
 from services.station_service import get_cheapest_by_address
@@ -14,12 +15,17 @@ from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
 from services.station_service import get_nearest_by_address
 from services.station_service import get_price_trends
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 
 @router.get("/stations/cheapest-by-zip", response_model=StationListResponse)
+@limiter.limit(settings.rate_limit)
 def cheapest_by_zip(
+    request: Request,
     zip_code: str = Query(..., pattern=r"^\d{5}$", description="Zip code to search"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
@@ -29,7 +35,9 @@ def cheapest_by_zip(
 
 
 @router.get("/stations/nearest-by-address", response_model=StationListResponse)
+@limiter.limit(settings.rate_limit)
 def nearest_by_address(
+    request: Request,
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
@@ -45,7 +53,9 @@ def nearest_by_address(
 
 
 @router.get("/stations/cheapest-by-address", response_model=StationListResponse)
+@limiter.limit(settings.rate_limit)
 def cheapest_by_address(
+    request: Request,
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
@@ -62,7 +72,9 @@ def cheapest_by_address(
 
 
 @router.get("/stations/best-by-address", response_model=StationListResponse)
+@limiter.limit(settings.rate_limit)
 def best_by_address(
+    request: Request,
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
@@ -81,7 +93,9 @@ def best_by_address(
 
 
 @router.get("/zones/cheapest", response_model=ZoneListResponse)
+@limiter.limit(settings.rate_limit)
 def cheapest_zones(
+    request: Request,
     province: str = Query(..., description="Province name"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
 ):
@@ -90,7 +104,9 @@ def cheapest_zones(
 
 
 @router.get("/trends/price", response_model=TrendResponse)
+@limiter.limit(settings.rate_limit)
 def price_trends(
+    request: Request,
     zip_code: str = Query(..., pattern=r"^\d{5}$", description="Zip code"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     period: TrendPeriod = Query(TrendPeriod.month, description="Trend period"),

@@ -6,10 +6,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 FROM python:3.13-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/.venv /app/.venv
 COPY ./app/ ./
 ENV PATH="/app/.venv/bin:$PATH"
+RUN useradd -r -u 1000 -s /usr/sbin/nologin appuser && chown -R appuser:appuser /app
+USER appuser
 EXPOSE 8080
 ENTRYPOINT ["python3", "main.py"]
