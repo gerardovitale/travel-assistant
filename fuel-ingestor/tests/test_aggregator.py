@@ -10,6 +10,10 @@ from aggregator import compute_province_daily_stats
 from aggregator import run_aggregation
 
 
+def _logged_messages(mock_calls):
+    return [call.args[0] for call in mock_calls]
+
+
 def _make_raw_df():
     """Create a minimal raw DataFrame simulating a daily snapshot."""
     return pd.DataFrame(
@@ -176,9 +180,22 @@ class TestRunAggregation(TestCase):
         mock_download.side_effect = [raw_df, None, None, None]
 
         bucket = MagicMock()
-        run_aggregation(bucket)
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
 
         self.assertEqual(mock_upload.call_count, 3)
+        info_messages = _logged_messages(mock_logger.info.call_args_list)
+        self.assertTrue(
+            any(
+                "aggregation_mode_selected" in message and "run_type='incremental'" in message
+                for message in info_messages
+            )
+        )
+        self.assertTrue(any("raw_snapshot_loaded" in message for message in info_messages))
+        self.assertTrue(any("province_daily_stats_computed" in message for message in info_messages))
+        self.assertTrue(any("daily_ingestion_stats_computed" in message for message in info_messages))
+        self.assertTrue(any("day_of_week_stats_rebuilt" in message for message in info_messages))
+        self.assertTrue(any("aggregation_complete" in message for message in info_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -187,9 +204,12 @@ class TestRunAggregation(TestCase):
         mock_latest.return_value = None
 
         bucket = MagicMock()
-        run_aggregation(bucket)
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
 
         mock_upload.assert_not_called()
+        warning_messages = _logged_messages(mock_logger.warning.call_args_list)
+        self.assertTrue(any("aggregation_skipped_no_raw_file" in message for message in warning_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -210,7 +230,8 @@ class TestRunAggregation(TestCase):
         ]
 
         bucket = MagicMock()
-        run_aggregation(bucket)
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
 
         province_daily_df = mock_upload.call_args_list[0].args[2]
         dow_stats_df = mock_upload.call_args_list[2].args[2]
@@ -224,6 +245,11 @@ class TestRunAggregation(TestCase):
         ].iloc[0]
         self.assertAlmostEqual(madrid_sunday["sum_price"], 1.4767, places=6)
         self.assertEqual(madrid_sunday["count_days"], 1)
+        info_messages = _logged_messages(mock_logger.info.call_args_list)
+        self.assertTrue(
+            any("province_daily_stats_updated" in message and "removed_rows=4" in message for message in info_messages)
+        )
+        self.assertTrue(any("daily_ingestion_stats_initialized" in message for message in info_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -253,7 +279,8 @@ class TestRunAggregation(TestCase):
         mock_download.side_effect = [first_day_raw_df, second_day_raw_df]
 
         bucket = MagicMock()
-        run_aggregation(bucket)
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
 
         mock_latest.assert_not_called()
         self.assertEqual(
@@ -270,6 +297,21 @@ class TestRunAggregation(TestCase):
 
         self.assertEqual(len(province_daily_df), 8)
         self.assertEqual(len(ingestion_stats_df), 2)
+        info_messages = _logged_messages(mock_logger.info.call_args_list)
+        self.assertTrue(
+            any(
+                "aggregation_mode_selected" in message and "run_type='bootstrap'" in message
+                for message in info_messages
+            )
+        )
+        self.assertTrue(
+            any("bootstrap_raw_files_found" in message and "count=3" in message for message in info_messages)
+        )
+        self.assertTrue(
+            any("raw_files_deduplicated_by_day" in message and "unique_days=2" in message for message in info_messages)
+        )
+        self.assertTrue(any("historical_aggregate_build_complete" in message for message in info_messages))
+        self.assertTrue(any("bootstrap_aggregate_frames_ready" in message for message in info_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -310,10 +352,35 @@ class TestRunAggregation(TestCase):
         mock_list_raw.return_value = []
 
         bucket = MagicMock()
-        run_aggregation(bucket)
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
 
         mock_latest.assert_not_called()
         mock_upload.assert_not_called()
+        info_messages = _logged_messages(mock_logger.info.call_args_list)
+        warning_messages = _logged_messages(mock_logger.warning.call_args_list)
+        self.assertTrue(
+            any(
+                "aggregation_mode_selected" in message and "run_type='bootstrap'" in message
+                for message in info_messages
+            )
+        )
+        self.assertTrue(any("bootstrap_skipped_no_raw_files" in message for message in warning_messages))
+
+    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._download_parquet_from_gcs")
+    @patch("aggregator._get_latest_raw_file")
+    def test_run_aggregation_skips_when_selected_raw_file_disappears(self, mock_latest, mock_download, mock_upload):
+        mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
+        mock_download.return_value = None
+
+        bucket = MagicMock()
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
+
+        mock_upload.assert_not_called()
+        warning_messages = _logged_messages(mock_logger.warning.call_args_list)
+        self.assertTrue(any("raw_snapshot_missing_after_selection" in message for message in warning_messages))
 
 
 class TestComputeDailyIngestionStats(TestCase):

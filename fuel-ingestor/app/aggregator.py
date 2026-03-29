@@ -51,6 +51,36 @@ FUEL_PRICE_COLUMNS = [
 ]
 
 
+def _log_event(log_method, event, **fields):
+    if fields:
+        details = " ".join(f"{key}={value!r}" for key, value in fields.items())
+        log_method(f"{event} {details}")
+        return
+    log_method(event)
+
+
+def _snapshot_date(raw_df):
+    return pd.to_datetime(raw_df["timestamp"].iloc[0]).date()
+
+
+def _province_daily_stats_log_fields(df):
+    return {
+        "rows": len(df),
+        "unique_dates": df["date"].nunique() if not df.empty else 0,
+        "unique_provinces": df["province"].nunique() if not df.empty else 0,
+        "unique_fuel_types": df["fuel_type"].nunique() if not df.empty else 0,
+    }
+
+
+def _day_of_week_stats_log_fields(df):
+    return {
+        "rows": len(df),
+        "unique_weekdays": df["day_of_week"].nunique() if not df.empty else 0,
+        "unique_provinces": df["province"].nunique() if not df.empty else 0,
+        "unique_fuel_types": df["fuel_type"].nunique() if not df.empty else 0,
+    }
+
+
 def _get_bucket():
     client = storage.Client()
     return client.bucket(DATA_DESTINATION_BUCKET)
@@ -71,12 +101,14 @@ def _download_parquet_from_gcs(bucket, blob_name, columns=None):
 def _upload_parquet_to_gcs(bucket, blob_name, df):
     blob = bucket.blob(blob_name)
     blob.upload_from_string(df.to_parquet(index=False, compression="snappy"), "application/octet-stream")
-    logger.info(f"Uploaded {blob_name} ({len(df)} rows)")
+    _log_event(logger.info, "upload_complete", blob=blob_name, rows=len(df))
 
 
 def _list_raw_parquet_files(bucket):
     blobs = list(bucket.list_blobs(prefix="spain_fuel_prices_"))
-    return sorted([b.name for b in blobs if b.name.endswith(".parquet")])
+    parquet_files = sorted([b.name for b in blobs if b.name.endswith(".parquet")])
+    _log_event(logger.info, "raw_files_listed", count=len(parquet_files))
+    return parquet_files
 
 
 def _latest_raw_file_per_day(parquet_files):
@@ -87,7 +119,14 @@ def _latest_raw_file_per_day(parquet_files):
             continue
         day_key = match.group(1)
         latest_by_day[day_key] = file_name
-    return [latest_by_day[day_key] for day_key in sorted(latest_by_day)]
+    deduplicated_files = [latest_by_day[day_key] for day_key in sorted(latest_by_day)]
+    _log_event(
+        logger.info,
+        "raw_files_deduplicated_by_day",
+        input_files=len(parquet_files),
+        unique_days=len(deduplicated_files),
+    )
+    return deduplicated_files
 
 
 def _get_latest_raw_file(bucket):
@@ -98,14 +137,24 @@ def _get_latest_raw_file(bucket):
         prefix = f"spain_fuel_prices_{date_str}"
         blobs = list(bucket.list_blobs(prefix=prefix))
         parquets = sorted([b.name for b in blobs if b.name.endswith(".parquet")])
+        _log_event(
+            logger.info,
+            "latest_raw_file_check",
+            prefix=prefix,
+            days_ago=days_ago,
+            matching_files=len(parquets),
+        )
         if parquets:
-            return parquets[-1]
+            latest_file = parquets[-1]
+            _log_event(logger.info, "latest_raw_file_selected", file=latest_file)
+            return latest_file
+    _log_event(logger.warning, "latest_raw_file_missing", checked_days=3)
     return None
 
 
 def compute_daily_ingestion_stats(raw_df):
     """Compute per-day ingestion stats from a raw snapshot."""
-    date_val = pd.to_datetime(raw_df["timestamp"].iloc[0]).date()
+    date_val = _snapshot_date(raw_df)
     locality_keys = raw_df[raw_df["locality"].notna()][["province_id", "municipality_id", "locality"]].drop_duplicates()
     return pd.DataFrame(
         [
@@ -127,7 +176,7 @@ def compute_daily_ingestion_stats(raw_df):
 
 def compute_province_daily_stats(raw_df):
     """Compute per-province, per-fuel-type daily stats from a raw snapshot."""
-    date_val = pd.to_datetime(raw_df["timestamp"].iloc[0]).date()
+    date_val = _snapshot_date(raw_df)
     rows = []
     for fuel_col in FUEL_PRICE_COLUMNS:
         if fuel_col not in raw_df.columns:
@@ -153,7 +202,7 @@ def compute_province_daily_stats(raw_df):
 
 def compute_day_of_week_stats(raw_df, existing_dow_df=None):
     """Compute or update day-of-week running stats from a raw snapshot."""
-    date_val = pd.to_datetime(raw_df["timestamp"].iloc[0]).date()
+    date_val = _snapshot_date(raw_df)
     dow = date_val.weekday()  # 0=Monday, 6=Sunday
     today_rows = []
     for fuel_col in FUEL_PRICE_COLUMNS:
@@ -291,6 +340,7 @@ def build_day_of_week_stats_from_province_daily_stats(province_daily_df):
 
 
 def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
+    _log_event(logger.info, "historical_aggregate_build_start", files=len(parquet_files))
     needed_columns = [
         "timestamp",
         "eess_id",
@@ -307,11 +357,26 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
     all_ingestion_stats = []
 
     for index, file_name in enumerate(parquet_files, start=1):
-        logger.info(f"Processing historical raw file {index}/{len(parquet_files)}: {file_name}")
+        _log_event(
+            logger.info,
+            "historical_raw_file_processing",
+            file=file_name,
+            file_index=index,
+            total_files=len(parquet_files),
+        )
         raw_df = _download_parquet_from_gcs(bucket, file_name, columns=needed_columns)
         if raw_df is None:
-            logger.warning(f"Raw parquet {file_name} no longer exists. Skipping it during bootstrap.")
+            _log_event(logger.warning, "historical_raw_file_missing", file=file_name)
             continue
+
+        _log_event(
+            logger.info,
+            "historical_raw_file_loaded",
+            file=file_name,
+            rows=len(raw_df),
+            cols=len(raw_df.columns),
+            snapshot_date=_snapshot_date(raw_df),
+        )
 
         all_province_stats.append(compute_province_daily_stats(raw_df))
         all_ingestion_stats.append(compute_daily_ingestion_stats(raw_df))
@@ -327,23 +392,37 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
         ingestion_stats_df = pd.DataFrame(columns=DAILY_INGESTION_STATS_COLUMNS)
 
     dow_stats_df = build_day_of_week_stats_from_province_daily_stats(province_daily_df)
+    _log_event(
+        logger.info,
+        "historical_aggregate_build_complete",
+        province_daily_rows=len(province_daily_df),
+        day_of_week_rows=len(dow_stats_df),
+        ingestion_rows=len(ingestion_stats_df),
+    )
     return province_daily_df, dow_stats_df, ingestion_stats_df
 
 
 def _bootstrap_aggregates(bucket):
-    logger.info("One or more aggregate parquet files are missing. Rebuilding aggregates from historical raw files.")
+    _log_event(logger.info, "bootstrap_aggregation_start")
     parquet_files = _list_raw_parquet_files(bucket)
-    logger.info(f"Found {len(parquet_files)} raw files")
+    _log_event(logger.info, "bootstrap_raw_files_found", count=len(parquet_files))
 
     if not parquet_files:
-        logger.warning("No raw parquet files found. Skipping aggregate bootstrap.")
+        _log_event(logger.warning, "bootstrap_skipped_no_raw_files")
         return
 
     parquet_files = _latest_raw_file_per_day(parquet_files)
-    logger.info(f"Collapsed to {len(parquet_files)} raw files after deduplicating calendar days")
+    _log_event(logger.info, "bootstrap_raw_files_selected", count=len(parquet_files))
 
     province_daily_df, dow_stats_df, ingestion_stats_df = _build_aggregate_dataframes_from_raw_files(
         bucket, parquet_files
+    )
+    _log_event(
+        logger.info,
+        "bootstrap_aggregate_frames_ready",
+        province_daily_rows=len(province_daily_df),
+        day_of_week_rows=len(dow_stats_df),
+        ingestion_rows=len(ingestion_stats_df),
     )
 
     _upload_parquet_to_gcs(bucket, PROVINCE_DAILY_STATS_BLOB, province_daily_df)
@@ -353,6 +432,7 @@ def _bootstrap_aggregates(bucket):
 
 def run_aggregation(bucket=None):
     """Run incremental aggregation for today's data."""
+    _log_event(logger.info, "aggregation_start", bucket_provided=bucket is not None)
     if bucket is None:
         bucket = _get_bucket()
 
@@ -360,54 +440,127 @@ def run_aggregation(bucket=None):
         blob_name for blob_name in REQUIRED_AGGREGATE_BLOBS if not _blob_exists(bucket, blob_name)
     ]
     if missing_aggregate_blobs:
+        _log_event(
+            logger.info,
+            "aggregation_mode_selected",
+            run_type="bootstrap",
+            missing_aggregates=missing_aggregate_blobs,
+        )
         _bootstrap_aggregates(bucket)
         return
 
     latest_file = _get_latest_raw_file(bucket)
     if latest_file is None:
-        logger.warning("No raw parquet file found. Skipping aggregation.")
+        _log_event(logger.warning, "aggregation_skipped_no_raw_file")
         return
 
-    logger.info(f"Running aggregation for: {latest_file}")
+    _log_event(logger.info, "aggregation_mode_selected", run_type="incremental", file=latest_file)
     raw_df = _download_parquet_from_gcs(bucket, latest_file)
+    if raw_df is None:
+        _log_event(logger.warning, "raw_snapshot_missing_after_selection", file=latest_file)
+        return
+
+    snapshot_date = _snapshot_date(raw_df)
+    _log_event(
+        logger.info,
+        "raw_snapshot_loaded",
+        file=latest_file,
+        rows=len(raw_df),
+        cols=len(raw_df.columns),
+        snapshot_date=snapshot_date,
+    )
 
     # Province daily stats: append today's rows
-    logger.info("Computing province daily stats")
     today_province_stats = compute_province_daily_stats(raw_df)
+    _log_event(
+        logger.info,
+        "province_daily_stats_computed",
+        date=snapshot_date,
+        **_province_daily_stats_log_fields(today_province_stats),
+    )
     existing_province_stats = _download_parquet_from_gcs(bucket, PROVINCE_DAILY_STATS_BLOB)
 
     if existing_province_stats is not None:
         # Deduplicate: remove existing rows for today's date if re-running
         date_val = pd.Timestamp(today_province_stats["date"].iloc[0])
+        existing_rows = len(existing_province_stats)
         existing_province_stats = existing_province_stats[pd.to_datetime(existing_province_stats["date"]) != date_val]
+        removed_rows = existing_rows - len(existing_province_stats)
         province_stats = pd.concat([existing_province_stats, today_province_stats], ignore_index=True)
+        _log_event(
+            logger.info,
+            "province_daily_stats_updated",
+            date=str(date_val.date()),
+            existing_rows=existing_rows,
+            removed_rows=removed_rows,
+            added_rows=len(today_province_stats),
+            final_rows=len(province_stats),
+        )
     else:
         province_stats = today_province_stats
+        _log_event(
+            logger.info,
+            "province_daily_stats_initialized",
+            date=str(snapshot_date),
+            final_rows=len(province_stats),
+        )
 
     _upload_parquet_to_gcs(bucket, PROVINCE_DAILY_STATS_BLOB, province_stats)
 
     # Daily ingestion stats: append today's row
-    logger.info("Computing daily ingestion stats")
     today_ingestion_stats = compute_daily_ingestion_stats(raw_df)
+    _log_event(
+        logger.info,
+        "daily_ingestion_stats_computed",
+        date=str(snapshot_date),
+        rows=len(today_ingestion_stats),
+        record_count=int(today_ingestion_stats["record_count"].iloc[0]),
+        unique_stations=int(today_ingestion_stats["unique_stations"].iloc[0]),
+        unique_provinces=int(today_ingestion_stats["unique_provinces"].iloc[0]),
+        unique_municipalities=int(today_ingestion_stats["unique_municipalities"].iloc[0]),
+        unique_localities=int(today_ingestion_stats["unique_localities"].iloc[0]),
+    )
     existing_ingestion_stats = _download_parquet_from_gcs(bucket, DAILY_INGESTION_STATS_BLOB)
 
     if existing_ingestion_stats is not None:
         date_val = pd.Timestamp(today_ingestion_stats["date"].iloc[0])
+        existing_rows = len(existing_ingestion_stats)
         existing_ingestion_stats = existing_ingestion_stats[
             pd.to_datetime(existing_ingestion_stats["date"]) != date_val
         ]
+        removed_rows = existing_rows - len(existing_ingestion_stats)
         ingestion_stats = pd.concat([existing_ingestion_stats, today_ingestion_stats], ignore_index=True)
+        _log_event(
+            logger.info,
+            "daily_ingestion_stats_updated",
+            date=str(date_val.date()),
+            existing_rows=existing_rows,
+            removed_rows=removed_rows,
+            added_rows=len(today_ingestion_stats),
+            final_rows=len(ingestion_stats),
+        )
     else:
         ingestion_stats = today_ingestion_stats
+        _log_event(
+            logger.info,
+            "daily_ingestion_stats_initialized",
+            date=str(snapshot_date),
+            final_rows=len(ingestion_stats),
+        )
 
     _upload_parquet_to_gcs(bucket, DAILY_INGESTION_STATS_BLOB, ingestion_stats)
 
     # Day-of-week stats: rebuild from deduplicated daily province stats
-    logger.info("Computing day-of-week stats")
     dow_stats = build_day_of_week_stats_from_province_daily_stats(province_stats)
+    _log_event(
+        logger.info,
+        "day_of_week_stats_rebuilt",
+        date=str(snapshot_date),
+        **_day_of_week_stats_log_fields(dow_stats),
+    )
     _upload_parquet_to_gcs(bucket, DAY_OF_WEEK_STATS_BLOB, dow_stats)
 
-    logger.info("Aggregation complete")
+    _log_event(logger.info, "aggregation_complete", file=latest_file, snapshot_date=str(snapshot_date))
 
 
 if __name__ == "__main__":
