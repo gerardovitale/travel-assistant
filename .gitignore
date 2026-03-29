@@ -10,9 +10,7 @@ ext/transformer_output/
 *.db-shm
 *.db-wal
 insights/data/
-data/*.csv
-data/*.json
-data/*.parquet
+data/*
 
 
 # Byte-compiled / optimized / DLL files

@@ -79,5 +79,13 @@ backend.run: backend.init backend.plan backend.apply
 
 
 # DATA
-data.download:
+data.download-fuel-daily-prices:
 	cd fuel-dashboard && uv run python ../scripts/download_fuel_data.py
+
+data.download-aggregates:
+	mkdir -p ./data/aggregates
+	gsutil -m -o "GSUtil:parallel_process_count=1" cp \
+	"gs://travel-assistant-spain-fuel-prices/aggregates/daily_ingestion_stats.parquet" \
+	"gs://travel-assistant-spain-fuel-prices/aggregates/day_of_week_stats.parquet" \
+	"gs://travel-assistant-spain-fuel-prices/aggregates/province_daily_stats.parquet" \
+	./data/aggregates
