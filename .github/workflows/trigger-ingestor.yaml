@@ -33,19 +33,6 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
-      - name: Wait for ingestor data
-        run: |
-          for i in $(seq 1 12); do
-            if gsutil ls "gs://travel-assistant-spain-fuel-prices/spain_fuel_prices_$(date -u +%Y-%m-%d)*" 2>/dev/null; then
-              echo "Data found"
-              exit 0
-            fi
-            echo "Attempt $i/12: data not ready, waiting 30s..."
-            sleep 30
-          done
-          echo "ERROR: Ingestor data not found after 6 minutes"
-          exit 1
-
       - name: Run aggregation
         working-directory: fuel-ingestor/app
         run: python aggregator.py
