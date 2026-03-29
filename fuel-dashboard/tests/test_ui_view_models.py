@@ -109,6 +109,48 @@ def test_best_day_advice_returns_none_for_empty():
     assert best_day_advice(pd.DataFrame()) is None
 
 
+def test_format_data_size_megabytes():
+    from ui.view_models import format_data_size
+
+    assert format_data_size(500 * 1024 * 1024) == "500.0 MB"
+
+
+def test_format_data_size_gigabytes():
+    from ui.view_models import format_data_size
+
+    assert format_data_size(2 * 1024 * 1024 * 1024) == "2.0 GB"
+
+
+def test_data_inventory_kpis():
+    from ui.view_models import data_inventory_kpis
+
+    inventory = {"num_days": 365, "num_months": 12, "num_years": 1, "total_size_bytes": 500 * 1024 * 1024}
+    cards = data_inventory_kpis(inventory)
+    assert len(cards) == 4
+    assert cards[0]["value"] == "365"
+    assert cards[1]["value"] == "12"
+    assert cards[2]["value"] == "1"
+    assert "MB" in cards[3]["value"]
+
+
+def test_missing_days_kpis_with_gaps():
+    from ui.view_models import missing_days_kpis
+
+    cards = missing_days_kpis(["2026-01-02", "2026-01-04"])
+    assert cards[0]["value"] == "2"
+    assert cards[0]["color"] == "text-red-600"
+    assert cards[1]["value"] == "2026-01-04"
+
+
+def test_missing_days_kpis_no_gaps():
+    from ui.view_models import missing_days_kpis
+
+    cards = missing_days_kpis([])
+    assert cards[0]["value"] == "0"
+    assert cards[0]["color"] == "text-green-600"
+    assert cards[1]["value"] == "-"
+
+
 def test_best_day_advice_returns_none_for_tiny_diff():
     df = pd.DataFrame(
         {

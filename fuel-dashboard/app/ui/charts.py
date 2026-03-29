@@ -4,6 +4,7 @@ from typing import List
 from typing import Optional
 from typing import Tuple
 
+import pandas as pd
 import plotly.graph_objects as go
 from api.schemas import DistrictPriceResult
 from api.schemas import ProvincePriceResult
@@ -564,4 +565,45 @@ def build_day_of_week_chart(df, fuel_type: str) -> go.Figure:
         showlegend=False,
     )
     fig.update_yaxes(tickformat=".4f")
+    return fig
+
+
+def build_ingestion_stats_chart(df: pd.DataFrame) -> go.Figure:
+    """Build a multi-line chart showing daily ingestion metrics."""
+    fig = go.Figure()
+
+    metrics = [
+        ("record_count", "Registros", "#2563eb"),
+        ("unique_stations", "Estaciones", "#16a34a"),
+        ("unique_provinces", "Provincias", "#dc2626"),
+        ("unique_municipalities", "Municipios", "#9333ea"),
+        ("unique_localities", "Localidades", "#ea580c"),
+    ]
+
+    dates = pd.to_datetime(df["date"])
+    for col, name, color in metrics:
+        if col not in df.columns:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=dates,
+                y=df[col],
+                mode="lines+markers",
+                name=name,
+                line=dict(color=color, width=2),
+                marker=dict(size=4),
+                hovertemplate=f"Fecha: %{{x}}<br>{name}: %{{y:,}}<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        title="Metricas de ingestion diaria",
+        xaxis_title="Fecha",
+        yaxis_title="Cantidad",
+        template="plotly_white",
+        height=450,
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
+        margin=dict(l=50, r=30, t=70, b=50),
+    )
     return fig

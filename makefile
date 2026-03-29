@@ -1,6 +1,7 @@
 # Makefile
 
 ENV := $(PWD)/.env
+DASHBOARD_CREDENTIALS_PATH ?= $(PWD)/fuel-dashboard/gcs-fuel-dashboard-credentials.json
 
 include $(ENV)
 export
@@ -56,7 +57,7 @@ fuel-dashboard.test:
 fuel-dashboard.run:
 	cd fuel-dashboard && docker buildx build -t fuel-dashboard . && \
 	docker run --rm -p 8080:8080 \
-		-v $(PWD)/fuel-dashboard/gcs-fuel-dashboard-credentials.json:/app/credentials.json:ro \
+		-v $(DASHBOARD_CREDENTIALS_PATH):/app/credentials.json:ro \
 		-e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json \
 		fuel-dashboard
 

@@ -84,11 +84,12 @@ def _cached_download(blob_name: str) -> pd.DataFrame:
     return df
 
 
-def list_parquet_files(
+def list_parquet_files_with_metadata(
     days_back: Optional[int] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
-) -> List[str]:
+) -> List[dict]:
+    """List parquet files with name, date, and size metadata."""
     bucket = _get_bucket()
     blobs = bucket.list_blobs(prefix="spain_fuel_prices_")
 
@@ -107,15 +108,25 @@ def list_parquet_files(
         if not blob.name.endswith(".parquet"):
             continue
         match = PARQUET_PATTERN.search(blob.name)
-        if match and start_day:
-            file_date = datetime.strptime(match.group(1), "%Y-%m-%d").date()
-            if start_day <= file_date <= end_day:
-                files.append(blob.name)
-        elif start_day is None:
-            files.append(blob.name)
+        if not match:
+            continue
+        file_date_str = match.group(1)
+        file_date = datetime.strptime(file_date_str, "%Y-%m-%d").date()
+        if start_day and not (start_day <= file_date <= end_day):
+            continue
+        files.append({"name": blob.name, "date": file_date_str, "size_bytes": blob.size or 0})
 
     logger.info(f"Found {len(files)} parquet files in GCS bucket")
-    return sorted(files)
+    return sorted(files, key=lambda f: f["date"])
+
+
+def list_parquet_files(
+    days_back: Optional[int] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> List[str]:
+    """List parquet file names, optionally filtered by date range."""
+    return [f["name"] for f in list_parquet_files_with_metadata(days_back, start_date, end_date)]
 
 
 def get_latest_parquet_file() -> Optional[str]:

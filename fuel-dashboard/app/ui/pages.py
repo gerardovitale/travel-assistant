@@ -13,6 +13,9 @@ from config import settings
 from fastapi import FastAPI
 from nicegui import run
 from nicegui import ui
+from services.data_quality_service import get_data_inventory
+from services.data_quality_service import get_ingestion_stats
+from services.data_quality_service import get_missing_days
 from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
 from services.station_service import get_cheapest_by_address
@@ -35,6 +38,7 @@ from services.station_service import get_zip_codes_for_district
 from services.trip_planner import plan_trip
 from ui.charts import build_day_of_week_chart
 from ui.charts import build_district_choropleth
+from ui.charts import build_ingestion_stats_chart
 from ui.charts import build_province_choropleth
 from ui.charts import build_station_map
 from ui.charts import build_trend_chart
@@ -55,8 +59,10 @@ from ui.components import trend_period_select
 from ui.components import trip_stops_table
 from ui.view_models import alternative_plan_cards
 from ui.view_models import best_day_advice
+from ui.view_models import data_inventory_kpis
 from ui.view_models import day_of_week_kpis
 from ui.view_models import HISTORICAL_PERIOD_LABELS
+from ui.view_models import missing_days_kpis
 from ui.view_models import province_ranking_kpis
 from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
@@ -105,6 +111,7 @@ def init_ui(app: FastAPI) -> None:
                     zones_tab = ui.tab("Comparar zonas")
                     trip_tab = ui.tab("Planificar viaje")
                     historical_tab = ui.tab("Analisis historico")
+                    data_quality_tab = ui.tab("Calidad de datos")
 
                 with ui.tab_panels(tabs, value=search_tab).classes("w-full"):
                     with ui.tab_panel(search_tab):
@@ -117,6 +124,8 @@ def init_ui(app: FastAPI) -> None:
                         _build_trip_panel()
                     with ui.tab_panel(historical_tab):
                         _build_historical_panel()
+                    with ui.tab_panel(data_quality_tab):
+                        _build_data_quality_panel()
 
         if is_data_ready():
             _render_dashboard()
@@ -952,3 +961,63 @@ def _build_day_of_week_subtab() -> None:
 
     dow_button.on("click", lambda _: on_load_dow())
     set_status("info", "Descubre que dia de la semana es mas barato repostar.")
+
+
+def _build_data_quality_panel() -> None:
+    with ui.column().classes("w-full gap-3"):
+        with ui.card().classes("w-full p-4"):
+            ui.label(
+                "Transparencia de datos: revisa la calidad y completitud de los datos utilizados en este panel."
+            ).classes("text-sm text-gray-600")
+            quality_button = ui.button("Cargar metricas").props("unelevated color=primary")
+
+        status_container = ui.column().classes("w-full")
+        inventory_container = ui.column().classes("w-full")
+        chart_container = ui.column().classes("w-full")
+        missing_container = ui.column().classes("w-full")
+
+    set_status = _make_set_status(status_container)
+
+    async def on_load_quality() -> None:
+        inventory_container.clear()
+        chart_container.clear()
+        missing_container.clear()
+        set_status("loading", "Cargando metricas de calidad de datos...")
+        quality_button.disable()
+        try:
+            stats_df = await run.io_bound(get_ingestion_stats)
+            inventory = await run.io_bound(get_data_inventory, stats_df)
+
+            if inventory["num_days"] == 0:
+                set_status("empty", "No se encontraron datos validos en el almacenamiento.")
+                return
+
+            with inventory_container:
+                kpi_row(data_inventory_kpis(inventory))
+
+            missing = get_missing_days(inventory["available_dates"], inventory["min_date"], inventory["max_date"])
+            with missing_container:
+                kpi_row(missing_days_kpis(missing))
+                if missing:
+                    with ui.expansion("Ver dias sin datos").classes("w-full"):
+                        columns = [
+                            {"name": "date", "label": "Fecha", "field": "date", "align": "left", "sortable": True},
+                        ]
+                        rows = [{"date": d} for d in missing]
+                        ui.table(columns=columns, rows=rows, row_key="date").props(
+                            "dense flat bordered separator=cell"
+                        ).classes("w-full")
+
+            with chart_container:
+                fig = build_ingestion_stats_chart(stats_df)
+                ui.plotly(fig).classes("w-full")
+
+            set_status("success", f"Metricas cargadas. {inventory['num_days']} dias de datos disponibles.")
+        except Exception:
+            logger.exception("Data quality panel error")
+            set_status("error", "No se pudieron cargar las metricas de calidad. Intentalo de nuevo.")
+        finally:
+            quality_button.enable()
+
+    quality_button.on("click", lambda _: on_load_quality())
+    set_status("info", "Consulta las metricas de calidad y completitud de los datos.")

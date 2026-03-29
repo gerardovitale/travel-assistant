@@ -519,3 +519,54 @@ def day_of_week_kpis(df) -> List[Dict[str, str]]:
             "value": str(weeks),
         },
     ]
+
+
+# ---------------------------------------------------------------------------
+# Data quality
+# ---------------------------------------------------------------------------
+
+
+def format_data_size(size_bytes: int) -> str:
+    """Format bytes as human-readable MB or GB."""
+    if size_bytes >= 1_073_741_824:
+        return f"{size_bytes / 1_073_741_824:.1f} GB"
+    return f"{size_bytes / 1_048_576:.1f} MB"
+
+
+def data_inventory_kpis(inventory: dict) -> list[dict]:
+    """Build KPI cards for the data inventory."""
+    return [
+        {
+            "label": "Dias de datos",
+            "value": str(inventory["num_days"]),
+        },
+        {
+            "label": "Meses de datos",
+            "value": str(inventory["num_months"]),
+        },
+        {
+            "label": "Anos de datos",
+            "value": str(inventory["num_years"]),
+        },
+        {
+            "label": "Tamano aproximado",
+            "value": format_data_size(inventory["total_size_bytes"]),
+        },
+    ]
+
+
+def missing_days_kpis(missing_days: list[str]) -> list[dict]:
+    """Build KPI cards summarising missing ingestion days."""
+    count = len(missing_days)
+    most_recent = missing_days[-1] if missing_days else "-"
+    return [
+        {
+            "label": "Dias sin datos",
+            "value": str(count),
+            "color": "text-red-600" if count > 0 else "text-green-600",
+        },
+        {
+            "label": "Ultimo dia sin datos",
+            "value": most_recent,
+        },
+    ]

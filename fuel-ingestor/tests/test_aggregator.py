@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pandas as pd
 from aggregator import build_day_of_week_stats_from_province_daily_stats
+from aggregator import compute_daily_ingestion_stats
 from aggregator import compute_day_of_week_stats
 from aggregator import compute_province_daily_stats
 from aggregator import run_aggregation
@@ -14,7 +15,13 @@ def _make_raw_df():
     return pd.DataFrame(
         {
             "timestamp": ["2026-03-22T05:48:06"] * 6,
+            "eess_id": ["1", "2", "3", "4", "5", "6"],
+            "municipality_id": ["101", "101", "102", "201", "201", "202"],
+            "province_id": ["28", "28", "28", "08", "08", "08"],
+            "label": ["Station A", "Station B", "Station C", "Station D", "Station E", "Station F"],
             "province": ["madrid", "madrid", "madrid", "barcelona", "barcelona", "barcelona"],
+            "municipality": ["Madrid", "Madrid", "Getafe", "Barcelona", "Barcelona", "Hospitalet"],
+            "locality": ["Madrid", "Madrid", "Getafe", "Barcelona", "Barcelona", "Hospitalet"],
             "diesel_a_price": [1.45, 1.50, 1.48, 1.42, 1.44, 1.46],
             "gasoline_95_e5_price": [1.55, 1.60, 1.58, 1.52, 1.54, 1.56],
             "hydrogen_price": [None, None, None, None, None, None],
@@ -32,6 +39,22 @@ def _make_province_daily_df():
             "min_price": [1.45, 1.42],
             "max_price": [1.5, 1.46],
             "station_count": [3, 3],
+        }
+    )
+
+
+def _make_ingestion_stats_raw_df():
+    return pd.DataFrame(
+        {
+            "timestamp": ["2026-03-22T05:48:06"] * 6,
+            "eess_id": ["1", "2", "3", "4", "5", "6"],
+            "municipality_id": ["101", "101", "102", "201", "201", "202"],
+            "province_id": ["28", "28", "28", "08", "08", "08"],
+            "label": ["repsol", "repsol", "shell", "repsol", "bp", "bp"],
+            "province": ["madrid", "madrid", "madrid", "barcelona", "barcelona", "barcelona"],
+            "municipality": ["Madrid", "Madrid", "Getafe", "Madrid", "Barcelona", "Barcelona"],
+            "locality": ["Centro", "Centro", "Centro", "Centro", "Port", "Port"],
+            "diesel_a_price": [1.45, 1.50, 1.48, 1.42, 1.44, 1.46],
         }
     )
 
@@ -150,12 +173,12 @@ class TestRunAggregation(TestCase):
     def test_run_aggregation_creates_new_aggregates(self, mock_latest, mock_download, mock_upload):
         raw_df = _make_raw_df()
         mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
-        mock_download.side_effect = [raw_df, None, None]
+        mock_download.side_effect = [raw_df, None, None, None]
 
         bucket = MagicMock()
         run_aggregation(bucket)
 
-        self.assertEqual(mock_upload.call_count, 2)
+        self.assertEqual(mock_upload.call_count, 3)
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -180,13 +203,17 @@ class TestRunAggregation(TestCase):
         previous_day_stats["date"] = pd.Timestamp("2026-03-21").date()
 
         mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
-        mock_download.side_effect = [raw_df, pd.concat([previous_day_stats, stale_today_stats], ignore_index=True)]
+        mock_download.side_effect = [
+            raw_df,
+            pd.concat([previous_day_stats, stale_today_stats], ignore_index=True),
+            None,
+        ]
 
         bucket = MagicMock()
         run_aggregation(bucket)
 
         province_daily_df = mock_upload.call_args_list[0].args[2]
-        dow_stats_df = mock_upload.call_args_list[1].args[2]
+        dow_stats_df = mock_upload.call_args_list[2].args[2]
 
         self.assertEqual(len(province_daily_df), len(previous_day_stats) + len(today_stats))
 
@@ -197,3 +224,118 @@ class TestRunAggregation(TestCase):
         ].iloc[0]
         self.assertAlmostEqual(madrid_sunday["sum_price"], 1.4767, places=6)
         self.assertEqual(madrid_sunday["count_days"], 1)
+
+    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._download_parquet_from_gcs")
+    @patch("aggregator._list_raw_parquet_files")
+    @patch("aggregator._blob_exists")
+    @patch("aggregator._get_latest_raw_file")
+    def test_run_aggregation_bootstraps_missing_aggregates_from_historical_files(
+        self,
+        mock_latest,
+        mock_blob_exists,
+        mock_list_raw,
+        mock_download,
+        mock_upload,
+    ):
+        first_day_raw_df = _make_raw_df().copy()
+        first_day_raw_df["timestamp"] = "2026-03-22T08:00:00"
+
+        second_day_raw_df = _make_raw_df().copy()
+        second_day_raw_df["timestamp"] = "2026-03-23T05:48:06"
+
+        mock_blob_exists.return_value = False
+        mock_list_raw.return_value = [
+            "spain_fuel_prices_2026-03-22T05:00:00.parquet",
+            "spain_fuel_prices_2026-03-22T08:00:00.parquet",
+            "spain_fuel_prices_2026-03-23T05:48:06.parquet",
+        ]
+        mock_download.side_effect = [first_day_raw_df, second_day_raw_df]
+
+        bucket = MagicMock()
+        run_aggregation(bucket)
+
+        mock_latest.assert_not_called()
+        self.assertEqual(
+            [call.args[1] for call in mock_download.call_args_list],
+            [
+                "spain_fuel_prices_2026-03-22T08:00:00.parquet",
+                "spain_fuel_prices_2026-03-23T05:48:06.parquet",
+            ],
+        )
+        self.assertEqual(mock_upload.call_count, 3)
+
+        province_daily_df = mock_upload.call_args_list[0].args[2]
+        ingestion_stats_df = mock_upload.call_args_list[1].args[2]
+
+        self.assertEqual(len(province_daily_df), 8)
+        self.assertEqual(len(ingestion_stats_df), 2)
+
+    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._download_parquet_from_gcs")
+    @patch("aggregator._list_raw_parquet_files")
+    @patch("aggregator._blob_exists")
+    @patch("aggregator._get_latest_raw_file")
+    def test_run_aggregation_bootstraps_when_any_aggregate_is_missing(
+        self,
+        mock_latest,
+        mock_blob_exists,
+        mock_list_raw,
+        mock_download,
+        mock_upload,
+    ):
+        raw_df = _make_raw_df()
+        mock_blob_exists.side_effect = [False, True, True]
+        mock_list_raw.return_value = ["spain_fuel_prices_2026-03-22T05:48:06.parquet"]
+        mock_download.return_value = raw_df
+
+        bucket = MagicMock()
+        run_aggregation(bucket)
+
+        mock_latest.assert_not_called()
+        self.assertEqual(mock_upload.call_count, 3)
+
+    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._list_raw_parquet_files")
+    @patch("aggregator._blob_exists")
+    @patch("aggregator._get_latest_raw_file")
+    def test_run_aggregation_skips_bootstrap_when_no_raw_history_exists(
+        self,
+        mock_latest,
+        mock_blob_exists,
+        mock_list_raw,
+        mock_upload,
+    ):
+        mock_blob_exists.return_value = False
+        mock_list_raw.return_value = []
+
+        bucket = MagicMock()
+        run_aggregation(bucket)
+
+        mock_latest.assert_not_called()
+        mock_upload.assert_not_called()
+
+
+class TestComputeDailyIngestionStats(TestCase):
+
+    def test_computes_identifier_and_name_metrics(self):
+        raw_df = _make_ingestion_stats_raw_df()
+        result = compute_daily_ingestion_stats(raw_df)
+
+        self.assertEqual(len(result), 1)
+        row = result.iloc[0]
+        self.assertEqual(row["record_count"], 6)
+        self.assertEqual(row["unique_stations"], 6)
+        self.assertEqual(row["unique_station_labels"], 3)
+        self.assertEqual(row["unique_provinces"], 2)
+        self.assertEqual(row["unique_municipalities"], 4)
+        self.assertEqual(row["unique_municipality_names"], 3)
+        self.assertEqual(row["unique_localities"], 5)
+        self.assertEqual(row["unique_locality_names"], 2)
+
+    def test_extracts_date_from_timestamp(self):
+        import datetime
+
+        raw_df = _make_ingestion_stats_raw_df()
+        result = compute_daily_ingestion_stats(raw_df)
+        self.assertEqual(result.iloc[0]["date"], datetime.date(2026, 3, 22))

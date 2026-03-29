@@ -106,6 +106,28 @@ def test_build_station_map_with_multipolygon_boundary():
     assert highlight_idx == 4
 
 
+def test_build_ingestion_stats_chart():
+    import pandas as pd
+
+    from ui.charts import build_ingestion_stats_chart
+
+    df = pd.DataFrame(
+        {
+            "date": ["2026-01-01", "2026-01-02"],
+            "record_count": [10000, 10100],
+            "unique_stations": [8000, 8050],
+            "unique_provinces": [52, 52],
+            "unique_municipalities": [3000, 3010],
+            "unique_localities": [4000, 4020],
+        }
+    )
+    fig = build_ingestion_stats_chart(df)
+    assert len(fig.data) == 5
+    assert fig.layout.title.text == "Metricas de ingestion diaria"
+    assert fig.data[0].name == "Registros"
+    assert fig.data[4].name == "Localidades"
+
+
 def test_build_station_map_route_trace_is_lines():
     from ui.charts import build_station_map
 
