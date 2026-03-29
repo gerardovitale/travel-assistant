@@ -7,6 +7,7 @@ import pytest
 from data.duckdb_engine import _validate_fuel_column
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
+from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_stations_within_radius
 
@@ -83,6 +84,17 @@ def test_query_cheapest_zones(mock_conn):
     assert len(result) == 1
     assert result.iloc[0]["zip_code"] == "28001"
     assert result.iloc[0]["station_count"] == 2
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_avg_price(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_national_avg_price("diesel_a_price")
+    assert result is not None
+    assert result == pytest.approx(1.50, abs=0.01)
 
 
 def test_validate_fuel_column_valid():

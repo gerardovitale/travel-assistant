@@ -1,7 +1,9 @@
+import pandas as pd
 import pytest
 from api.schemas import StationResult
 from api.schemas import TrendPoint
 from api.schemas import ZoneResult
+from ui.view_models import best_day_advice
 from ui.view_models import format_delta
 from ui.view_models import format_distance
 from ui.view_models import format_price
@@ -85,3 +87,36 @@ def test_zone_kpis_values():
     assert metrics["cheapest_zip"] == "28002"
     assert metrics["cheapest_avg_price"] == 1.47
     assert metrics["province_avg_price"] == pytest.approx(1.485)
+
+
+def test_best_day_advice_returns_tip():
+    df = pd.DataFrame(
+        {
+            "day_of_week": list(range(7)),
+            "avg_price": [1.50, 1.48, 1.49, 1.51, 1.52, 1.53, 1.50],
+            "count_days": [10] * 7,
+            "min_daily_avg": [1.45] * 7,
+            "max_daily_avg": [1.55] * 7,
+        }
+    )
+    tip = best_day_advice(df)
+    assert tip is not None
+    assert "martes" in tip.lower()
+    assert "sabado" in tip.lower()
+
+
+def test_best_day_advice_returns_none_for_empty():
+    assert best_day_advice(pd.DataFrame()) is None
+
+
+def test_best_day_advice_returns_none_for_tiny_diff():
+    df = pd.DataFrame(
+        {
+            "day_of_week": list(range(7)),
+            "avg_price": [1.500] * 7,
+            "count_days": [10] * 7,
+            "min_daily_avg": [1.50] * 7,
+            "max_daily_avg": [1.50] * 7,
+        }
+    )
+    assert best_day_advice(df) is None

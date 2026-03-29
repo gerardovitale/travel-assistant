@@ -40,8 +40,10 @@ from ui.charts import build_station_map
 from ui.charts import build_trend_chart
 from ui.charts import build_trip_map
 from ui.charts import build_zip_code_choropleth
+from ui.components import advice_card
 from ui.components import empty_state
 from ui.components import fuel_type_select
+from ui.components import geolocation_button
 from ui.components import historical_period_select
 from ui.components import kpi_row
 from ui.components import loading_state
@@ -52,6 +54,7 @@ from ui.components import top_cheapest_table
 from ui.components import trend_period_select
 from ui.components import trip_stops_table
 from ui.view_models import alternative_plan_cards
+from ui.view_models import best_day_advice
 from ui.view_models import day_of_week_kpis
 from ui.view_models import HISTORICAL_PERIOD_LABELS
 from ui.view_models import province_ranking_kpis
@@ -165,6 +168,7 @@ def _build_search_panel() -> None:
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
+        advice_container = ui.column().classes("w-full")
         results_container = ui.column().classes("w-full")
         map_container = ui.column().classes("w-full")
 
@@ -172,6 +176,7 @@ def _build_search_panel() -> None:
 
     async def on_search() -> None:
         summary_container.clear()
+        advice_container.clear()
         results_container.clear()
         map_container.clear()
         query_input = state.get("query_input")
@@ -294,6 +299,19 @@ def _build_search_panel() -> None:
                             }}
                             """
                         )
+
+            # Best day to refuel advice
+            try:
+                province = stations[0].province if stations else None
+                if province:
+                    dow_df = await run.io_bound(get_day_of_week_pattern, fuel_type, province)
+                    tip = best_day_advice(dow_df)
+                    if tip:
+                        with advice_container:
+                            advice_card(tip)
+            except Exception:
+                logger.warning("Could not load day-of-week advice", exc_info=True)
+
         except ValueError as exc:
             logger.warning("Search validation error: %s", exc)
             set_status("warning", str(exc))
@@ -315,9 +333,17 @@ def _render_query_inputs(mode: ui.select, container: ui.column, state: Dict[str,
     state["consumption_input"] = None
     state["tank_input"] = None
     with container:
-        query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
-            "w-full max-w-lg"
-        )
+        is_address_mode = mode.value != "cheapest_by_zip"
+        if is_address_mode:
+            with ui.row().classes("w-full items-end gap-2"):
+                query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
+                    "flex-grow max-w-lg"
+                )
+                geolocation_button(query_input)
+        else:
+            query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
+                "w-full max-w-lg"
+            )
         ui.label(metadata.helper_text).classes("text-xs text-gray-500")
         state["query_input"] = query_input
         has_params = metadata.requires_radius or metadata.requires_consumption
@@ -616,8 +642,12 @@ def _build_trip_panel() -> None:
                 "text-sm text-gray-600"
             )
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                origin_input = ui.input(label="Origen", placeholder="Ejemplo: Madrid").classes("w-56")
-                dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-56")
+                with ui.row().classes("items-end gap-1"):
+                    origin_input = ui.input(label="Origen", placeholder="Ejemplo: Madrid").classes("w-56")
+                    geolocation_button(origin_input)
+                with ui.row().classes("items-end gap-1"):
+                    dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-56")
+                    geolocation_button(dest_input)
                 fuel = fuel_type_select()
                 detour_input = ui.number(
                     label="Desviacion maxima (min)",

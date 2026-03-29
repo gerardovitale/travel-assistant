@@ -467,6 +467,25 @@ def province_ranking_kpis(df) -> List[Dict[str, str]]:
     ]
 
 
+def best_day_advice(df) -> Optional[str]:
+    """Return a short tip about the cheapest day to refuel, or None if data is insufficient."""
+    if df.empty or len(df) < 7:
+        return None
+    cheapest_idx = df["avg_price"].idxmin()
+    most_expensive_idx = df["avg_price"].idxmax()
+    cheapest = df.loc[cheapest_idx]
+    most_expensive = df.loc[most_expensive_idx]
+    diff = most_expensive["avg_price"] - cheapest["avg_price"]
+    if diff < 0.001:
+        return None
+    cheapest_day = SPANISH_DAY_NAMES.get(int(cheapest["day_of_week"]), "?")
+    expensive_day = SPANISH_DAY_NAMES.get(int(most_expensive["day_of_week"]), "?")
+    return (
+        f"Consejo: los {cheapest_day.lower()} suelen ser mas baratos "
+        f"({diff:.3f} EUR/L menos que los {expensive_day.lower()}, el dia mas caro)."
+    )
+
+
 def day_of_week_kpis(df) -> List[Dict[str, str]]:
     if df.empty:
         return []

@@ -17,6 +17,44 @@ from ui.view_models import SEARCH_MODE_OPTIONS
 from ui.view_models import TREND_PERIOD_LABELS
 
 
+def advice_card(message: str) -> None:
+    with ui.row().classes(
+        "w-full items-center gap-2 px-3 py-2 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200"
+    ):
+        ui.icon("lightbulb").classes("text-lg")
+        ui.label(message).classes("text-sm")
+
+
+def geolocation_button(address_input: ui.input) -> None:
+    """Render a button that fills the address input with the user's current GPS coordinates."""
+
+    async def _on_click() -> None:
+        result = await ui.run_javascript(
+            """
+            return await new Promise((resolve) => {
+                if (!navigator.geolocation) {
+                    resolve({error: 'Geolocalizacion no soportada por el navegador.'});
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => resolve({lat: pos.coords.latitude, lon: pos.coords.longitude}),
+                    (err) => resolve({error: 'No se pudo obtener la ubicacion: ' + err.message}),
+                    {enableHighAccuracy: true, timeout: 10000}
+                );
+            });
+            """,
+            timeout=15.0,
+        )
+        if isinstance(result, dict) and "lat" in result:
+            address_input.set_value(f"{result['lat']:.6f}, {result['lon']:.6f}")
+        elif isinstance(result, dict) and "error" in result:
+            ui.notify(result["error"], type="warning")
+
+    ui.button(icon="my_location", on_click=_on_click).props("flat dense round color=grey-7").tooltip(
+        "Usar mi ubicacion"
+    )
+
+
 def fuel_type_select(label: str = "Tipo de combustible", on_change: Optional[Callable] = None) -> ui.select:
     options = {ft.value: FUEL_DISPLAY_NAMES.get(ft.value, ft.value.replace("_", " ").title()) for ft in FuelType}
     return ui.select(options, value=FuelType.gasoline_95_e5_price.value, label=label, on_change=on_change).classes(
@@ -97,12 +135,23 @@ def station_results_table(
     has_distance = any(s.distance_km is not None for s in stations)
     has_score = any(s.score is not None for s in stations)
     has_cost = any(s.estimated_total_cost is not None for s in stations)
+    has_pct = any(s.pct_vs_avg is not None for s in stations)
     columns = [
         {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
         {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
         {"name": "address", "label": "Direccion", "field": "address", "align": "left"},
         {"name": "price", "label": "Precio (EUR/L)", "field": "price", "align": "right", "sortable": True},
     ]
+    if has_pct:
+        columns.append(
+            {
+                "name": "pct_vs_avg",
+                "label": "vs media",
+                "field": "pct_vs_avg",
+                "align": "right",
+                "sortable": True,
+            }
+        )
     if has_distance:
         columns.append(
             {
@@ -134,6 +183,8 @@ def station_results_table(
             "address": f"{station.address}, {station.municipality}, {station.province}, {station.zip_code}",
             "price": round(station.price, 3),
         }
+        if station.pct_vs_avg is not None:
+            row["pct_vs_avg"] = f"{station.pct_vs_avg:+.1f}%"
         if station.distance_km is not None:
             row["distance_km"] = round(station.distance_km, 2)
         if station.estimated_total_cost is not None:

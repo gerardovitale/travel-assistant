@@ -25,6 +25,7 @@ from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_cheapest_zones_by_municipality
 from data.duckdb_engine import query_municipalities_by_province
+from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_price_trends
 from data.duckdb_engine import query_stations_by_province
@@ -45,9 +46,14 @@ def _validate_zip_code(zip_code: str) -> str:
     return zip_code
 
 
-def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResult]:
+def _df_to_station_results(
+    df: pd.DataFrame, fuel_type: str, national_avg: Optional[float] = None
+) -> List[StationResult]:
     results = []
     for _, row in df.iterrows():
+        pct_vs_avg = None
+        if national_avg and national_avg > 0:
+            pct_vs_avg = round((row[fuel_type] - national_avg) / national_avg * 100, 1)
         results.append(
             StationResult(
                 label=row["label"],
@@ -61,6 +67,7 @@ def _df_to_station_results(df: pd.DataFrame, fuel_type: str) -> List[StationResu
                 distance_km=row.get("distance_km"),
                 score=row.get("score"),
                 estimated_total_cost=row.get("estimated_total_cost"),
+                pct_vs_avg=pct_vs_avg,
             )
         )
     return results
@@ -100,7 +107,8 @@ def get_zip_code_boundary(zip_code: str) -> Optional[dict]:
 def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 5) -> List[StationResult]:
     _validate_zip_code(zip_code)
     df = query_cheapest_by_zip(zip_code, fuel_type.value, limit)
-    return _df_to_station_results(df, fuel_type.value)
+    national_avg = query_national_avg_price(fuel_type.value)
+    return _df_to_station_results(df, fuel_type.value, national_avg)
 
 
 def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: int = 5) -> List[StationResult]:
@@ -108,7 +116,8 @@ def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: i
     df = query_nearest_stations(lat, lon, fuel_type.value, oversample)
     df = _enrich_with_road_distances(lat, lon, df)
     df = df.sort_values("distance_km").head(limit)
-    return _df_to_station_results(df, fuel_type.value)
+    national_avg = query_national_avg_price(fuel_type.value)
+    return _df_to_station_results(df, fuel_type.value, national_avg)
 
 
 def get_cheapest_by_address(
@@ -125,7 +134,8 @@ def get_cheapest_by_address(
         return []
     df = df[df["distance_km"] <= radius_km]
     df = df.sort_values(fuel_type.value).head(limit)
-    return _df_to_station_results(df, fuel_type.value)
+    national_avg = query_national_avg_price(fuel_type.value)
+    return _df_to_station_results(df, fuel_type.value, national_avg)
 
 
 def get_best_by_address(
@@ -187,7 +197,8 @@ def get_best_by_address(
         df["score"] = 10.0
 
     df = df.sort_values("score", ascending=False).head(limit)
-    return _df_to_station_results(df, fuel_type.value)
+    national_avg = query_national_avg_price(fuel_type.value)
+    return _df_to_station_results(df, fuel_type.value, national_avg)
 
 
 def get_provinces() -> dict[str, str]:

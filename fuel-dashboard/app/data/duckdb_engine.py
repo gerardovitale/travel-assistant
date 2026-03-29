@@ -1,3 +1,4 @@
+import functools
 import logging
 import math
 import threading
@@ -53,6 +54,7 @@ def refresh_latest_snapshot() -> None:
         conn.execute("DROP TABLE IF EXISTS latest_stations")
         conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
         count = conn.execute("SELECT COUNT(*) FROM latest_stations").fetchone()[0]
+    query_national_avg_price.cache_clear()
     logger.info(f"Loaded {count} stations into latest_stations table")
 
 
@@ -317,6 +319,25 @@ def query_stations_along_corridor(
         ).fetchdf()
 
     return df
+
+
+@functools.lru_cache(maxsize=16)
+def query_national_avg_price(fuel_type: str) -> Optional[float]:
+    """Return the national average price for a fuel type, or None if unavailable.
+
+    Cached per fuel type; cache is cleared on ``refresh_latest_snapshot()``.
+    """
+    fuel_type = _validate_fuel_column(fuel_type)
+    with _lock:
+        conn = get_connection()
+        result = conn.execute(
+            f"""
+            SELECT AVG({fuel_type}) AS avg_price
+            FROM latest_stations
+            WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
+            """,
+        ).fetchone()
+    return result[0] if result and result[0] is not None else None
 
 
 def get_distinct_provinces() -> dict[str, str]:

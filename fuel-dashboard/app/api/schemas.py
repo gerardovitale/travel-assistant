@@ -62,6 +62,7 @@ class StationResult(BaseModel):
     estimated_total_cost: Optional[float] = None
     route_km: Optional[float] = None
     detour_minutes: Optional[float] = None
+    pct_vs_avg: Optional[float] = None
 
 
 class ZoneResult(BaseModel):

@@ -186,6 +186,7 @@ cython_debug/
 infass-compute-sa-cred-key.json
 cicd-service-account-cred-key.json
 infass-dbt-sa-cred-key.json
+gcs-fuel-dashboard-credentials.json
 
 ### Terraform template
 # Local .terraform directories

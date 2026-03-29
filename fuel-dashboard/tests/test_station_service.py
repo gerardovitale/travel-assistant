@@ -8,6 +8,13 @@ from tests.fixture import make_stations_df
 from tests.fixture import SAMPLE_FUEL_TYPE
 
 
+@pytest.fixture(autouse=True)
+def _mock_national_avg():
+    """All station service functions call query_national_avg_price; patch it globally."""
+    with patch("services.station_service.query_national_avg_price", return_value=1.60):
+        yield
+
+
 @patch("services.station_service.query_cheapest_by_zip")
 def test_get_cheapest_by_zip(mock_query):
     from services.station_service import get_cheapest_by_zip
@@ -16,6 +23,9 @@ def test_get_cheapest_by_zip(mock_query):
     results = get_cheapest_by_zip("28001", FuelType.diesel_a_price, 3)
     assert len(results) == 3
     assert results[0].price == 1.50
+    assert results[0].pct_vs_avg is not None
+    # pct_vs_avg = (1.50 - 1.60) / 1.60 * 100 = -6.2%
+    assert results[0].pct_vs_avg == pytest.approx(-6.2, abs=0.1)
     mock_query.assert_called_once_with("28001", SAMPLE_FUEL_TYPE, 3)
 
 
