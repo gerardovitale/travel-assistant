@@ -1,0 +1,24 @@
+name: Run Aggregation
+
+on:
+  workflow_dispatch:
+    inputs:
+      working_directory:
+        description: "Project directory containing pyproject.toml and uv.lock"
+        required: true
+        default: fuel-ingestor
+        type: string
+      script_path:
+        description: "Python script path relative to the working directory"
+        required: true
+        default: app/aggregator.py
+        type: string
+
+jobs:
+  run-aggregation:
+    uses: ./.github/workflows/run-aggregation-reusable.yaml
+    with:
+      working_directory: ${{ inputs.working_directory }}
+      script_path: ${{ inputs.script_path }}
+    secrets:
+      gcp_credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}

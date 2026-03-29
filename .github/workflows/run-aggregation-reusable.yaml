@@ -1,0 +1,43 @@
+name: Run Aggregation Reusable
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        required: true
+        type: string
+      script_path:
+        required: true
+        type: string
+    secrets:
+      gcp_credentials:
+        required: true
+
+jobs:
+  run-aggregation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          working-directory: ${{ inputs.working_directory }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.gcp_credentials }}
+
+      - name: Sync locked runtime dependencies
+        working-directory: ${{ inputs.working_directory }}
+        run: uv sync --frozen --no-dev --no-install-project
+
+      - name: Run script
+        working-directory: ${{ inputs.working_directory }}
+        run: uv run --frozen --no-sync python "${{ inputs.script_path }}"
