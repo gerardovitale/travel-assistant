@@ -1,0 +1,12 @@
+# Trivy Ignore File
+# These CVEs affect OS packages in python:3.13-slim (Debian) with no upstream fix.
+# Reviewed: 2026-03-30. Re-review by: 2026-06-30.
+
+# ncurses buffer overflow — not used by application code (terminal library)
+CVE-2025-69720
+
+# systemd arbitrary code execution — not the init system inside containers
+CVE-2026-29111
+
+# nghttp2 DoS — base image residual; curl removed from fuel-ingestor, not installed elsewhere
+CVE-2026-27135
