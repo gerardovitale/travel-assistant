@@ -607,3 +607,60 @@ def build_ingestion_stats_chart(df: pd.DataFrame) -> go.Figure:
         margin=dict(l=50, r=30, t=70, b=50),
     )
     return fig
+
+
+BRAND_COLORS = [
+    "#2563eb",
+    "#dc2626",
+    "#16a34a",
+    "#f59e0b",
+    "#9333ea",
+    "#ea580c",
+    "#0891b2",
+    "#be185d",
+    "#4f46e5",
+    "#65a30d",
+    "#c026d3",
+    "#0d9488",
+    "#b91c1c",
+    "#1d4ed8",
+    "#ca8a04",
+]
+
+
+def build_brand_trend_chart(df: pd.DataFrame, fuel_type: str) -> go.Figure:
+    """Build a multi-line chart showing price evolution for top brands over time."""
+    fig = go.Figure()
+
+    if df.empty:
+        fig.update_layout(title="Sin datos disponibles", template="plotly_white", height=420)
+        return fig
+
+    brands = df["brand"].unique()
+    for i, brand in enumerate(brands):
+        brand_data = df[df["brand"] == brand].sort_values("date")
+        color = BRAND_COLORS[i % len(BRAND_COLORS)]
+        fig.add_trace(
+            go.Scatter(
+                x=pd.to_datetime(brand_data["date"]),
+                y=brand_data["avg_price"],
+                mode="lines+markers",
+                name=brand.title(),
+                line=dict(color=color, width=2),
+                marker=dict(size=4),
+                hovertemplate=f"{brand.title()}: %{{y:.3f}} EUR/L<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        title=f"Evolucion de precios por marca: {fuel_label(fuel_type)}",
+        xaxis_title="Fecha",
+        yaxis_title="Precio medio (EUR/L)",
+        yaxis_tickformat=".3f",
+        template="plotly_white",
+        height=420,
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
+        margin=dict(l=50, r=30, t=70, b=50),
+    )
+    return fig

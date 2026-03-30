@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
+from aggregator import BRAND_DAILY_STATS_BLOB
 from backfill import backfill
 
 
@@ -31,6 +32,7 @@ class TestBackfill(TestCase):
             pd.DataFrame({"date": ["2026-03-22", "2026-03-23"]}),
             pd.DataFrame({"day_of_week": [6, 0]}),
             pd.DataFrame({"date": ["2026-03-22", "2026-03-23"]}),
+            pd.DataFrame({"brand": ["repsol", "shell"]}),
         )
 
         backfill()
@@ -42,4 +44,5 @@ class TestBackfill(TestCase):
                 "spain_fuel_prices_2026-03-23T05:00:00.parquet",
             ],
         )
-        self.assertEqual(mock_upload.call_count, 3)
+        self.assertEqual(mock_upload.call_count, 4)
+        self.assertEqual(mock_upload.call_args_list[3].args[1], BRAND_DAILY_STATS_BLOB)

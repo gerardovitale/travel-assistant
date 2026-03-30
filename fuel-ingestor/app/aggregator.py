@@ -14,8 +14,10 @@ AGGREGATES_PREFIX = "aggregates/"
 PROVINCE_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}province_daily_stats.parquet"
 DAY_OF_WEEK_STATS_BLOB = f"{AGGREGATES_PREFIX}day_of_week_stats.parquet"
 DAILY_INGESTION_STATS_BLOB = f"{AGGREGATES_PREFIX}daily_ingestion_stats.parquet"
+BRAND_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}brand_daily_stats.parquet"
 RAW_PARQUET_PATTERN = re.compile(r"spain_fuel_prices_(\d{4}-\d{2}-\d{2})T")
 PROVINCE_DAILY_STATS_COLUMNS = ["date", "province", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
+BRAND_DAILY_STATS_COLUMNS = ["date", "brand", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
 DAILY_INGESTION_STATS_COLUMNS = [
     "date",
     "record_count",
@@ -31,6 +33,7 @@ REQUIRED_AGGREGATE_BLOBS = [
     PROVINCE_DAILY_STATS_BLOB,
     DAY_OF_WEEK_STATS_BLOB,
     DAILY_INGESTION_STATS_BLOB,
+    BRAND_DAILY_STATS_BLOB,
 ]
 
 FUEL_PRICE_COLUMNS = [
@@ -200,6 +203,43 @@ def compute_province_daily_stats(raw_df):
     return pd.DataFrame(rows, columns=PROVINCE_DAILY_STATS_COLUMNS)
 
 
+def compute_brand_daily_stats(raw_df):
+    """Compute per-brand, per-fuel-type daily stats from a raw snapshot."""
+    from brand_utils import MIN_STATION_COUNT
+    from brand_utils import normalize_brand
+
+    if raw_df.empty:
+        return pd.DataFrame(columns=BRAND_DAILY_STATS_COLUMNS)
+
+    date_val = _snapshot_date(raw_df)
+    brands = raw_df["label"].apply(normalize_brand)
+    brand_df = raw_df[brands.notna()].copy()
+    brand_df["brand"] = brands[brands.notna()]
+
+    rows = []
+    for fuel_col in FUEL_PRICE_COLUMNS:
+        if fuel_col not in brand_df.columns:
+            continue
+        valid = brand_df[brand_df[fuel_col].notna() & (brand_df[fuel_col] > 0)]
+        if valid.empty:
+            continue
+        grouped = valid.groupby("brand")[fuel_col].agg(["mean", "min", "max", "count"]).reset_index()
+        grouped = grouped[grouped["count"] >= MIN_STATION_COUNT]
+        for _, row in grouped.iterrows():
+            rows.append(
+                {
+                    "date": date_val,
+                    "brand": row["brand"],
+                    "fuel_type": fuel_col,
+                    "avg_price": round(row["mean"], 4),
+                    "min_price": round(row["min"], 4),
+                    "max_price": round(row["max"], 4),
+                    "station_count": int(row["count"]),
+                }
+            )
+    return pd.DataFrame(rows, columns=BRAND_DAILY_STATS_COLUMNS)
+
+
 def compute_day_of_week_stats(raw_df, existing_dow_df=None):
     """Compute or update day-of-week running stats from a raw snapshot."""
     date_val = _snapshot_date(raw_df)
@@ -355,6 +395,7 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
 
     all_province_stats = []
     all_ingestion_stats = []
+    all_brand_stats = []
 
     for index, file_name in enumerate(parquet_files, start=1):
         _log_event(
@@ -380,6 +421,7 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
 
         all_province_stats.append(compute_province_daily_stats(raw_df))
         all_ingestion_stats.append(compute_daily_ingestion_stats(raw_df))
+        all_brand_stats.append(compute_brand_daily_stats(raw_df))
 
     if all_province_stats:
         province_daily_df = pd.concat(all_province_stats, ignore_index=True)
@@ -391,6 +433,11 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
     else:
         ingestion_stats_df = pd.DataFrame(columns=DAILY_INGESTION_STATS_COLUMNS)
 
+    if all_brand_stats:
+        brand_daily_df = pd.concat(all_brand_stats, ignore_index=True)
+    else:
+        brand_daily_df = pd.DataFrame(columns=BRAND_DAILY_STATS_COLUMNS)
+
     dow_stats_df = build_day_of_week_stats_from_province_daily_stats(province_daily_df)
     _log_event(
         logger.info,
@@ -398,8 +445,9 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
         province_daily_rows=len(province_daily_df),
         day_of_week_rows=len(dow_stats_df),
         ingestion_rows=len(ingestion_stats_df),
+        brand_daily_rows=len(brand_daily_df),
     )
-    return province_daily_df, dow_stats_df, ingestion_stats_df
+    return province_daily_df, dow_stats_df, ingestion_stats_df, brand_daily_df
 
 
 def _bootstrap_aggregates(bucket):
@@ -414,7 +462,7 @@ def _bootstrap_aggregates(bucket):
     parquet_files = _latest_raw_file_per_day(parquet_files)
     _log_event(logger.info, "bootstrap_raw_files_selected", count=len(parquet_files))
 
-    province_daily_df, dow_stats_df, ingestion_stats_df = _build_aggregate_dataframes_from_raw_files(
+    province_daily_df, dow_stats_df, ingestion_stats_df, brand_daily_df = _build_aggregate_dataframes_from_raw_files(
         bucket, parquet_files
     )
     _log_event(
@@ -423,11 +471,30 @@ def _bootstrap_aggregates(bucket):
         province_daily_rows=len(province_daily_df),
         day_of_week_rows=len(dow_stats_df),
         ingestion_rows=len(ingestion_stats_df),
+        brand_daily_rows=len(brand_daily_df),
     )
 
     _upload_parquet_to_gcs(bucket, PROVINCE_DAILY_STATS_BLOB, province_daily_df)
     _upload_parquet_to_gcs(bucket, DAILY_INGESTION_STATS_BLOB, ingestion_stats_df)
     _upload_parquet_to_gcs(bucket, DAY_OF_WEEK_STATS_BLOB, dow_stats_df)
+    _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_daily_df)
+
+
+def _backfill_brand_daily_stats(bucket):
+    _log_event(logger.info, "brand_backfill_start")
+    parquet_files = _list_raw_parquet_files(bucket)
+    _log_event(logger.info, "brand_backfill_raw_files_found", count=len(parquet_files))
+
+    if not parquet_files:
+        _log_event(logger.warning, "brand_backfill_skipped_no_raw_files")
+        return
+
+    parquet_files = _latest_raw_file_per_day(parquet_files)
+    _log_event(logger.info, "brand_backfill_raw_files_selected", count=len(parquet_files))
+
+    _, _, _, brand_daily_df = _build_aggregate_dataframes_from_raw_files(bucket, parquet_files)
+    _log_event(logger.info, "brand_backfill_frame_ready", brand_daily_rows=len(brand_daily_df))
+    _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_daily_df)
 
 
 def run_aggregation(bucket=None):
@@ -440,6 +507,16 @@ def run_aggregation(bucket=None):
         blob_name for blob_name in REQUIRED_AGGREGATE_BLOBS if not _blob_exists(bucket, blob_name)
     ]
     if missing_aggregate_blobs:
+        if set(missing_aggregate_blobs) == {BRAND_DAILY_STATS_BLOB}:
+            _log_event(
+                logger.info,
+                "aggregation_mode_selected",
+                run_type="brand_backfill",
+                missing_aggregates=missing_aggregate_blobs,
+            )
+            _backfill_brand_daily_stats(bucket)
+            return
+
         _log_event(
             logger.info,
             "aggregation_mode_selected",
@@ -559,6 +636,45 @@ def run_aggregation(bucket=None):
         **_day_of_week_stats_log_fields(dow_stats),
     )
     _upload_parquet_to_gcs(bucket, DAY_OF_WEEK_STATS_BLOB, dow_stats)
+
+    # Brand daily stats: append today's rows
+    today_brand_stats = compute_brand_daily_stats(raw_df)
+    _log_event(
+        logger.info,
+        "brand_daily_stats_computed",
+        date=str(snapshot_date),
+        rows=len(today_brand_stats),
+    )
+    existing_brand_stats = _download_parquet_from_gcs(bucket, BRAND_DAILY_STATS_BLOB)
+
+    if existing_brand_stats is not None:
+        date_val = pd.Timestamp(today_brand_stats["date"].iloc[0]) if not today_brand_stats.empty else None
+        if date_val is not None:
+            existing_rows = len(existing_brand_stats)
+            existing_brand_stats = existing_brand_stats[pd.to_datetime(existing_brand_stats["date"]) != date_val]
+            removed_rows = existing_rows - len(existing_brand_stats)
+            brand_stats = pd.concat([existing_brand_stats, today_brand_stats], ignore_index=True)
+            _log_event(
+                logger.info,
+                "brand_daily_stats_updated",
+                date=str(date_val.date()),
+                existing_rows=existing_rows,
+                removed_rows=removed_rows,
+                added_rows=len(today_brand_stats),
+                final_rows=len(brand_stats),
+            )
+        else:
+            brand_stats = existing_brand_stats
+    else:
+        brand_stats = today_brand_stats
+        _log_event(
+            logger.info,
+            "brand_daily_stats_initialized",
+            date=str(snapshot_date),
+            final_rows=len(brand_stats),
+        )
+
+    _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_stats)
 
     _log_event(logger.info, "aggregation_complete", file=latest_file, snapshot_date=str(snapshot_date))
 

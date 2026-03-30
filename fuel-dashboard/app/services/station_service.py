@@ -342,3 +342,23 @@ def get_day_of_week_pattern(
     if agg_df is None:
         return pd.DataFrame()
     return query_day_of_week_pattern(agg_df, fuel_type.value, normalize_data_province_name(province), exclude_provinces)
+
+
+def get_brand_ranking(fuel_type: FuelType, days_back: int, top_n: int = 15) -> pd.DataFrame:
+    from data.duckdb_engine import query_brand_ranking
+    from data.gcs_client import download_aggregate
+
+    agg_df = download_aggregate("brand_daily_stats.parquet")
+    if agg_df is None:
+        return pd.DataFrame()
+    return query_brand_ranking(agg_df, fuel_type.value, days_back, top_n)
+
+
+def get_brand_price_trend(fuel_type: FuelType, days_back: int, brands: list) -> pd.DataFrame:
+    from data.duckdb_engine import query_brand_price_trend
+    from data.gcs_client import download_aggregate
+
+    agg_df = download_aggregate("brand_daily_stats.parquet")
+    if agg_df is None:
+        return pd.DataFrame()
+    return query_brand_price_trend(agg_df, fuel_type.value, days_back, brands)

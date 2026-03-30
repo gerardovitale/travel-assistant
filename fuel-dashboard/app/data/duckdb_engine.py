@@ -432,3 +432,56 @@ def query_day_of_week_pattern(
             ).fetchdf()
         conn.execute("DROP TABLE IF EXISTS _dow_agg")
     return result
+
+
+def query_brand_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back: int, top_n: int = 15) -> pd.DataFrame:
+    """Query brand ranking from pre-computed brand_daily_stats aggregate."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    df = aggregate_df  # noqa: F841
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _brand_agg")
+        conn.execute("CREATE TEMP TABLE _brand_agg AS SELECT * FROM df")
+        result = conn.execute(
+            """
+            SELECT brand,
+                SUM(avg_price * station_count) / NULLIF(SUM(station_count), 0) AS avg_price,
+                MIN(min_price) AS min_price,
+                MAX(max_price) AS max_price,
+                CAST(SUM(station_count) AS INTEGER) AS total_observations
+            FROM _brand_agg
+            WHERE fuel_type = $1
+                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+            GROUP BY brand
+            ORDER BY avg_price ASC
+            LIMIT $3
+            """,
+            [fuel_type, days_back, top_n],
+        ).fetchdf()
+        conn.execute("DROP TABLE IF EXISTS _brand_agg")
+    return result
+
+
+def query_brand_price_trend(aggregate_df: pd.DataFrame, fuel_type: str, days_back: int, brands: list) -> pd.DataFrame:
+    """Query daily price trend for specific brands from brand_daily_stats aggregate."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    if not brands:
+        return pd.DataFrame(columns=["date", "brand", "avg_price"])
+    df = aggregate_df  # noqa: F841
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _brand_trend_agg")
+        conn.execute("CREATE TEMP TABLE _brand_trend_agg AS SELECT * FROM df")
+        result = conn.execute(
+            """
+            SELECT date, brand, avg_price
+            FROM _brand_trend_agg
+            WHERE fuel_type = $1
+                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                AND brand IN (SELECT UNNEST($3::VARCHAR[]))
+            ORDER BY date ASC, brand ASC
+            """,
+            [fuel_type, days_back, brands],
+        ).fetchdf()
+        conn.execute("DROP TABLE IF EXISTS _brand_trend_agg")
+    return result

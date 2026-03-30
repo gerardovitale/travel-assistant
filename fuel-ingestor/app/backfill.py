@@ -8,6 +8,7 @@ from aggregator import _get_bucket
 from aggregator import _latest_raw_file_per_day
 from aggregator import _list_raw_parquet_files
 from aggregator import _upload_parquet_to_gcs
+from aggregator import BRAND_DAILY_STATS_BLOB
 from aggregator import DAILY_INGESTION_STATS_BLOB
 from aggregator import DAY_OF_WEEK_STATS_BLOB
 from aggregator import PROVINCE_DAILY_STATS_BLOB
@@ -34,7 +35,7 @@ def backfill():
     parquet_files = _latest_raw_file_per_day(parquet_files)
     logger.info(f"Collapsed to {len(parquet_files)} raw files after deduplicating calendar days")
 
-    province_daily_df, dow_stats_df, ingestion_stats_df = _build_aggregate_dataframes_from_raw_files(
+    province_daily_df, dow_stats_df, ingestion_stats_df, brand_daily_df = _build_aggregate_dataframes_from_raw_files(
         bucket, parquet_files
     )
 
@@ -47,6 +48,9 @@ def backfill():
 
     logger.info(f"Daily ingestion stats: {len(ingestion_stats_df)} rows")
     _upload_parquet_to_gcs(bucket, DAILY_INGESTION_STATS_BLOB, ingestion_stats_df)
+
+    logger.info(f"Brand daily stats: {len(brand_daily_df)} rows")
+    _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_daily_df)
 
     logger.info("Backfill complete!")
 

@@ -521,6 +521,37 @@ def day_of_week_kpis(df) -> List[Dict[str, str]]:
     ]
 
 
+def brand_ranking_kpis(df) -> List[Dict[str, str]]:
+    if df.empty:
+        return []
+    cheapest = df.iloc[0]
+    most_expensive = df.iloc[-1]
+    diff = most_expensive["avg_price"] - cheapest["avg_price"]
+    return [
+        {
+            "label": "Marca mas barata",
+            "value": str(cheapest["brand"]).title(),
+            "color": "text-green-600",
+            "description": format_price(cheapest["avg_price"]),
+        },
+        {
+            "label": "Marca mas cara",
+            "value": str(most_expensive["brand"]).title(),
+            "color": "text-red-600",
+            "description": format_price(most_expensive["avg_price"]),
+        },
+        {
+            "label": "Diferencia max-min",
+            "value": f"{diff:.3f} EUR/L",
+            "description": "entre la mas barata y la mas cara",
+        },
+        {
+            "label": "Marcas analizadas",
+            "value": str(len(df)),
+        },
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Data quality
 # ---------------------------------------------------------------------------

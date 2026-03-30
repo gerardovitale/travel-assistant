@@ -128,6 +128,36 @@ def test_build_ingestion_stats_chart():
     assert fig.data[4].name == "Localidades"
 
 
+def test_build_brand_trend_chart_traces_per_brand():
+    import pandas as pd
+
+    from ui.charts import build_brand_trend_chart
+
+    df = pd.DataFrame(
+        {
+            "date": ["2026-01-01", "2026-01-02", "2026-01-01", "2026-01-02"],
+            "brand": ["repsol", "repsol", "shell", "shell"],
+            "avg_price": [1.42, 1.43, 1.48, 1.47],
+        }
+    )
+    fig = build_brand_trend_chart(df, "gasoline_95_e5_price")
+    assert len(fig.data) == 2
+    assert "Evolucion de precios por marca" in fig.layout.title.text
+    brand_names = {trace.name for trace in fig.data}
+    assert "Repsol" in brand_names
+    assert "Shell" in brand_names
+
+
+def test_build_brand_trend_chart_empty_df():
+    import pandas as pd
+
+    from ui.charts import build_brand_trend_chart
+
+    fig = build_brand_trend_chart(pd.DataFrame(columns=["date", "brand", "avg_price"]), "diesel_a_price")
+    assert len(fig.data) == 0
+    assert "Sin datos" in fig.layout.title.text
+
+
 def test_build_station_map_route_trace_is_lines():
     from ui.charts import build_station_map
 

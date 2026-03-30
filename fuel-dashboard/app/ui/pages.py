@@ -18,6 +18,8 @@ from services.data_quality_service import get_ingestion_stats
 from services.data_quality_service import get_missing_days
 from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
+from services.station_service import get_brand_price_trend
+from services.station_service import get_brand_ranking
 from services.station_service import get_cheapest_by_address
 from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
@@ -36,6 +38,7 @@ from services.station_service import get_zip_code_price_map_by_municipality
 from services.station_service import get_zip_code_price_map_for_zips
 from services.station_service import get_zip_codes_for_district
 from services.trip_planner import plan_trip
+from ui.charts import build_brand_trend_chart
 from ui.charts import build_day_of_week_chart
 from ui.charts import build_district_choropleth
 from ui.charts import build_ingestion_stats_chart
@@ -59,6 +62,7 @@ from ui.components import trend_period_select
 from ui.components import trip_stops_table
 from ui.view_models import alternative_plan_cards
 from ui.view_models import best_day_advice
+from ui.view_models import brand_ranking_kpis
 from ui.view_models import data_inventory_kpis
 from ui.view_models import day_of_week_kpis
 from ui.view_models import HISTORICAL_PERIOD_LABELS
@@ -786,12 +790,15 @@ def _build_historical_panel() -> None:
         with ui.tabs().classes("w-full") as sub_tabs:
             ranking_tab = ui.tab("Ranking de provincias")
             dow_tab = ui.tab("Patron semanal")
+            brand_tab = ui.tab("Comparacion por marca")
 
         with ui.tab_panels(sub_tabs, value=ranking_tab).classes("w-full"):
             with ui.tab_panel(ranking_tab):
                 _build_province_ranking_subtab()
             with ui.tab_panel(dow_tab):
                 _build_day_of_week_subtab()
+            with ui.tab_panel(brand_tab):
+                _build_brand_comparison_subtab()
 
 
 def _build_province_ranking_subtab() -> None:
@@ -961,6 +968,129 @@ def _build_day_of_week_subtab() -> None:
 
     dow_button.on("click", lambda _: on_load_dow())
     set_status("info", "Descubre que dia de la semana es mas barato repostar.")
+
+
+def _build_brand_comparison_subtab() -> None:
+    with ui.column().classes("w-full gap-3"):
+        with ui.card().classes("w-full p-4"):
+            ui.label("Ranking de marcas/operadores por precio medio de combustible.").classes("text-sm text-gray-600")
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                fuel = fuel_type_select()
+                period = historical_period_select()
+                brand_button = ui.button("Cargar ranking").props("unelevated color=primary")
+
+        status_container = ui.column().classes("w-full")
+        summary_container = ui.column().classes("w-full")
+        table_container = ui.column().classes("w-full")
+        chart_container = ui.column().classes("w-full")
+
+    set_status = _make_set_status(status_container)
+
+    async def on_load_brand_comparison() -> None:
+        summary_container.clear()
+        table_container.clear()
+        chart_container.clear()
+        set_status("loading", "Cargando ranking de marcas...")
+        brand_button.disable()
+        try:
+            fuel_type = FuelType(fuel.value)
+            hist_period = HistoricalPeriod(period.value)
+            days_back = HISTORICAL_PERIOD_DAYS[hist_period]
+            df = await run.io_bound(get_brand_ranking, fuel_type, days_back)
+
+            if df.empty:
+                set_status("empty", "No hay datos de marcas disponibles. Ejecuta la agregacion primero.")
+                return
+
+            with summary_container:
+                kpi_row(brand_ranking_kpis(df))
+
+            with table_container:
+                columns = [
+                    {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
+                    {"name": "brand", "label": "Marca", "field": "brand", "align": "left"},
+                    {
+                        "name": "avg_price",
+                        "label": "Precio medio (EUR/L)",
+                        "field": "avg_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "diff",
+                        "label": "Diff vs anterior",
+                        "field": "diff",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "min_price",
+                        "label": "Minimo (EUR/L)",
+                        "field": "min_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "max_price",
+                        "label": "Maximo (EUR/L)",
+                        "field": "max_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "total_observations",
+                        "label": "Estaciones",
+                        "field": "total_observations",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                ]
+                rows = []
+                prev_price = None
+                for idx, row in df.iterrows():
+                    avg = row["avg_price"]
+                    diff = f"+{avg - prev_price:.4f}" if prev_price is not None and avg >= prev_price else ""
+                    if prev_price is not None and avg < prev_price:
+                        diff = f"{avg - prev_price:.4f}"
+                    rows.append(
+                        {
+                            "ranking": idx + 1,
+                            "brand": str(row["brand"]).title(),
+                            "avg_price": f"{avg:.4f}",
+                            "diff": diff,
+                            "min_price": f"{row['min_price']:.4f}",
+                            "max_price": f"{row['max_price']:.4f}",
+                            "total_observations": int(row["total_observations"]),
+                        }
+                    )
+                    prev_price = avg
+                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+                table.props("dense flat bordered separator=cell")
+
+            # Load trend chart for the top brands
+            top_brands = df["brand"].tolist()[:10]
+            trend_df = await run.io_bound(get_brand_price_trend, fuel_type, days_back, top_brands)
+            if not trend_df.empty:
+                with chart_container:
+                    fig = build_brand_trend_chart(trend_df, fuel_type.value)
+                    ui.plotly(fig).classes("w-full")
+
+            date_to = date.today()
+            date_from = date_to - timedelta(days=days_back)
+            set_status(
+                "success",
+                f"Ranking cargado ({len(df)} marcas). "
+                f"Periodo: {date_from.strftime('%d/%m/%Y')} — {date_to.strftime('%d/%m/%Y')} "
+                f"({HISTORICAL_PERIOD_LABELS[hist_period]}).",
+            )
+        except Exception:
+            logger.exception("Brand comparison error")
+            set_status("error", "No se pudo cargar el ranking de marcas. Intentalo de nuevo.")
+        finally:
+            brand_button.enable()
+
+    brand_button.on("click", lambda _: on_load_brand_comparison())
+    set_status("info", "Selecciona tipo de combustible y periodo para comparar marcas.")
 
 
 def _build_data_quality_panel() -> None:
