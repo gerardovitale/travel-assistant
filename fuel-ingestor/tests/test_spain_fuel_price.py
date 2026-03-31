@@ -15,6 +15,14 @@ from spain_fuel_price import write_spain_fuel_prices_data_as_parquet
 from tests.fixture import get_response_raw_data
 
 
+class TestCurlAvailability(TestCase):
+
+    def test_curl_is_available(self):
+        """Ensure curl binary is installed — required for API data extraction."""
+        result = subprocess.run(["curl", "--version"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+
+
 class TestFuelPrice(TestCase):
 
     def setUp(self):
