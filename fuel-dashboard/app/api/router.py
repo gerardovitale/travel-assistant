@@ -16,9 +16,17 @@ from services.station_service import get_cheapest_zones
 from services.station_service import get_nearest_by_address
 from services.station_service import get_price_trends
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 
-limiter = Limiter(key_func=get_remote_address)
+
+def get_real_client_ip(request: Request) -> str:
+    return (
+        request.headers.get("CF-Connecting-IP")
+        or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.client.host
+    )
+
+
+limiter = Limiter(key_func=get_real_client_ip)
 router = APIRouter()
 
 

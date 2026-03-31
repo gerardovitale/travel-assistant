@@ -3,8 +3,8 @@ services:
     image: gerardovitale/travass-fuel-dashboard:latest
     container_name: fuel-dashboard
     restart: unless-stopped
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     environment:
       - DASHBOARD_GCP_PROJECT_ID=travel-assistant-417315
       - DASHBOARD_GCS_BUCKET_NAME=travel-assistant-spain-fuel-prices
@@ -97,6 +97,28 @@ services:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=3600
       - DOCKER_API_VERSION=1.40
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      fuel-dashboard:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
     logging:
       driver: json-file
       options:
