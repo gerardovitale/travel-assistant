@@ -37,6 +37,35 @@ fuel-dashboard.test-local:
 test-local: fuel-ingestor.test-local fuel-dashboard.test-local
 
 
+# IMAGE SCANNING
+# Trivy version must match aquasecurity/trivy-action in .github/workflows/deploy.yaml
+TRIVY_VERSION := 0.69.3
+
+fuel-ingestor.scan:
+	docker buildx build -t travass-fuel-ingestor:local fuel-ingestor/ && \
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(PWD)/.trivyignore:/root/.trivyignore \
+		aquasec/trivy:$(TRIVY_VERSION) image \
+		--exit-code 1 \
+		--severity CRITICAL,HIGH \
+		--ignorefile /root/.trivyignore \
+		travass-fuel-ingestor:local
+
+fuel-dashboard.scan:
+	docker buildx build -t travass-fuel-dashboard:local fuel-dashboard/ && \
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v $(PWD)/.trivyignore:/root/.trivyignore \
+		aquasec/trivy:$(TRIVY_VERSION) image \
+		--exit-code 1 \
+		--severity CRITICAL,HIGH \
+		--ignorefile /root/.trivyignore \
+		travass-fuel-dashboard:local
+
+scan: fuel-ingestor.scan fuel-dashboard.scan
+
+
 # CLOUD RUN JOB
 fuel-ingestor.test:
 	./scripts/run-docker-test.sh fuel-ingestor
