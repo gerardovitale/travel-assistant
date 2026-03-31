@@ -4,14 +4,18 @@
 import logging
 
 from aggregator import _build_aggregate_dataframes_from_raw_files
+from aggregator import _build_zip_code_daily_stats_from_raw_files
 from aggregator import _get_bucket
 from aggregator import _latest_raw_file_per_day
 from aggregator import _list_raw_parquet_files
+from aggregator import _most_recent_raw_files
 from aggregator import _upload_parquet_to_gcs
 from aggregator import BRAND_DAILY_STATS_BLOB
 from aggregator import DAILY_INGESTION_STATS_BLOB
 from aggregator import DAY_OF_WEEK_STATS_BLOB
 from aggregator import PROVINCE_DAILY_STATS_BLOB
+from aggregator import ZIP_CODE_DAILY_STATS_BLOB
+from aggregator import ZIP_CODE_DAILY_STATS_RETENTION_DAYS
 
 logging.basicConfig(
     format="%(name)s - [%(levelname)s] - %(message)s [%(filename)s:%(lineno)d]",
@@ -34,10 +38,12 @@ def backfill():
 
     parquet_files = _latest_raw_file_per_day(parquet_files)
     logger.info(f"Collapsed to {len(parquet_files)} raw files after deduplicating calendar days")
+    trend_parquet_files = _most_recent_raw_files(parquet_files, ZIP_CODE_DAILY_STATS_RETENTION_DAYS)
 
     province_daily_df, dow_stats_df, ingestion_stats_df, brand_daily_df = _build_aggregate_dataframes_from_raw_files(
         bucket, parquet_files
     )
+    zip_code_daily_df = _build_zip_code_daily_stats_from_raw_files(bucket, trend_parquet_files)
 
     logger.info(f"Province daily stats: {len(province_daily_df)} rows")
     _upload_parquet_to_gcs(bucket, PROVINCE_DAILY_STATS_BLOB, province_daily_df)
@@ -51,6 +57,9 @@ def backfill():
 
     logger.info(f"Brand daily stats: {len(brand_daily_df)} rows")
     _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_daily_df)
+
+    logger.info(f"Zip-code daily stats: {len(zip_code_daily_df)} rows")
+    _upload_parquet_to_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB, zip_code_daily_df)
 
     logger.info("Backfill complete!")
 

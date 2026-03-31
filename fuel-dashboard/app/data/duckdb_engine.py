@@ -147,21 +147,52 @@ def query_price_trends(blob_names: List[str], zip_code: str, fuel_type: str) -> 
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS _trend_data")
         conn.execute("CREATE TEMP TABLE _trend_data AS SELECT * FROM df")
-        result = conn.execute(
-            f"""
-            SELECT
-                CAST(timestamp AS DATE) AS date,
-                AVG({fuel_type}) AS avg_price,
-                MIN({fuel_type}) AS min_price,
-                MAX({fuel_type}) AS max_price
-            FROM _trend_data
-            WHERE zip_code = $1 AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
-            GROUP BY CAST(timestamp AS DATE)
-            ORDER BY date ASC
-            """,
-            [zip_code],
-        ).fetchdf()
-        conn.execute("DROP TABLE IF EXISTS _trend_data")
+        try:
+            result = conn.execute(
+                f"""
+                SELECT
+                    CAST(timestamp AS DATE) AS date,
+                    AVG({fuel_type}) AS avg_price,
+                    MIN({fuel_type}) AS min_price,
+                    MAX({fuel_type}) AS max_price
+                FROM _trend_data
+                WHERE zip_code = $1 AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
+                GROUP BY CAST(timestamp AS DATE)
+                ORDER BY date ASC
+                """,
+                [zip_code],
+            ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _trend_data")
+    return result
+
+
+def query_zip_code_price_trend(
+    aggregate_df: pd.DataFrame, zip_code: str, fuel_type: str, days_back: int
+) -> pd.DataFrame:
+    """Query daily price trend for a zip code from the pre-computed zip aggregate."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    if aggregate_df is None or aggregate_df.empty:
+        return pd.DataFrame(columns=["date", "avg_price", "min_price", "max_price"])
+    df = aggregate_df  # noqa: F841
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _zip_trend_agg")
+        conn.execute("CREATE TEMP TABLE _zip_trend_agg AS SELECT * FROM df")
+        try:
+            result = conn.execute(
+                """
+                SELECT date, avg_price, min_price, max_price
+                FROM _zip_trend_agg
+                WHERE zip_code = $1
+                    AND fuel_type = $2
+                    AND date >= CURRENT_DATE - INTERVAL ($3) DAY
+                ORDER BY date ASC
+                """,
+                [zip_code, fuel_type, days_back],
+            ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _zip_trend_agg")
     return result
 
 
@@ -356,22 +387,24 @@ def query_province_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS _province_agg")
         conn.execute("CREATE TEMP TABLE _province_agg AS SELECT * FROM df")
-        result = conn.execute(
-            """
-            SELECT province,
-                AVG(avg_price) AS avg_price,
-                MIN(min_price) AS min_price,
-                MAX(max_price) AS max_price,
-                CAST(SUM(station_count) AS INTEGER) AS total_observations
-            FROM _province_agg
-            WHERE fuel_type = $1
-                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
-            GROUP BY province
-            ORDER BY avg_price ASC
-            """,
-            [fuel_type, days_back],
-        ).fetchdf()
-        conn.execute("DROP TABLE IF EXISTS _province_agg")
+        try:
+            result = conn.execute(
+                """
+                SELECT province,
+                    AVG(avg_price) AS avg_price,
+                    MIN(min_price) AS min_price,
+                    MAX(max_price) AS max_price,
+                    CAST(SUM(station_count) AS INTEGER) AS total_observations
+                FROM _province_agg
+                WHERE fuel_type = $1
+                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                GROUP BY province
+                ORDER BY avg_price ASC
+                """,
+                [fuel_type, days_back],
+            ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _province_agg")
     return result
 
 
@@ -400,37 +433,39 @@ def query_day_of_week_pattern(
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS _dow_agg")
         conn.execute("CREATE TEMP TABLE _dow_agg AS SELECT * FROM df")
-        if use_aggregate:
-            result = conn.execute(
-                """
-                SELECT day_of_week,
-                    sum_price / count_days AS avg_price,
-                    count_days,
-                    min_daily_avg,
-                    max_daily_avg
-                FROM _dow_agg
-                WHERE fuel_type = $1 AND province = $2
-                ORDER BY day_of_week ASC
-                """,
-                [fuel_type, province_filter],
-            ).fetchdf()
-        else:
-            exclude_list = list(exclude_provinces | {"__national__"})
-            result = conn.execute(
-                """
-                SELECT day_of_week,
-                    SUM(sum_price) / SUM(count_days) AS avg_price,
-                    MAX(count_days) AS count_days,
-                    MIN(min_daily_avg) AS min_daily_avg,
-                    MAX(max_daily_avg) AS max_daily_avg
-                FROM _dow_agg
-                WHERE fuel_type = $1 AND province NOT IN (SELECT UNNEST($2::VARCHAR[]))
-                GROUP BY day_of_week
-                ORDER BY day_of_week ASC
-                """,
-                [fuel_type, exclude_list],
-            ).fetchdf()
-        conn.execute("DROP TABLE IF EXISTS _dow_agg")
+        try:
+            if use_aggregate:
+                result = conn.execute(
+                    """
+                    SELECT day_of_week,
+                        sum_price / count_days AS avg_price,
+                        count_days,
+                        min_daily_avg,
+                        max_daily_avg
+                    FROM _dow_agg
+                    WHERE fuel_type = $1 AND province = $2
+                    ORDER BY day_of_week ASC
+                    """,
+                    [fuel_type, province_filter],
+                ).fetchdf()
+            else:
+                exclude_list = list(exclude_provinces | {"__national__"})
+                result = conn.execute(
+                    """
+                    SELECT day_of_week,
+                        SUM(sum_price) / SUM(count_days) AS avg_price,
+                        MAX(count_days) AS count_days,
+                        MIN(min_daily_avg) AS min_daily_avg,
+                        MAX(max_daily_avg) AS max_daily_avg
+                    FROM _dow_agg
+                    WHERE fuel_type = $1 AND province NOT IN (SELECT UNNEST($2::VARCHAR[]))
+                    GROUP BY day_of_week
+                    ORDER BY day_of_week ASC
+                    """,
+                    [fuel_type, exclude_list],
+                ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _dow_agg")
     return result
 
 
@@ -442,23 +477,25 @@ def query_brand_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back: i
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS _brand_agg")
         conn.execute("CREATE TEMP TABLE _brand_agg AS SELECT * FROM df")
-        result = conn.execute(
-            """
-            SELECT brand,
-                SUM(avg_price * station_count) / NULLIF(SUM(station_count), 0) AS avg_price,
-                MIN(min_price) AS min_price,
-                MAX(max_price) AS max_price,
-                CAST(SUM(station_count) AS INTEGER) AS total_observations
-            FROM _brand_agg
-            WHERE fuel_type = $1
-                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
-            GROUP BY brand
-            ORDER BY avg_price ASC
-            LIMIT $3
-            """,
-            [fuel_type, days_back, top_n],
-        ).fetchdf()
-        conn.execute("DROP TABLE IF EXISTS _brand_agg")
+        try:
+            result = conn.execute(
+                """
+                SELECT brand,
+                    SUM(avg_price * station_count) / NULLIF(SUM(station_count), 0) AS avg_price,
+                    MIN(min_price) AS min_price,
+                    MAX(max_price) AS max_price,
+                    CAST(SUM(station_count) AS INTEGER) AS total_observations
+                FROM _brand_agg
+                WHERE fuel_type = $1
+                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                GROUP BY brand
+                ORDER BY avg_price ASC
+                LIMIT $3
+                """,
+                [fuel_type, days_back, top_n],
+            ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _brand_agg")
     return result
 
 
@@ -472,16 +509,18 @@ def query_brand_price_trend(aggregate_df: pd.DataFrame, fuel_type: str, days_bac
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS _brand_trend_agg")
         conn.execute("CREATE TEMP TABLE _brand_trend_agg AS SELECT * FROM df")
-        result = conn.execute(
-            """
-            SELECT date, brand, avg_price
-            FROM _brand_trend_agg
-            WHERE fuel_type = $1
-                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
-                AND brand IN (SELECT UNNEST($3::VARCHAR[]))
-            ORDER BY date ASC, brand ASC
-            """,
-            [fuel_type, days_back, brands],
-        ).fetchdf()
-        conn.execute("DROP TABLE IF EXISTS _brand_trend_agg")
+        try:
+            result = conn.execute(
+                """
+                SELECT date, brand, avg_price
+                FROM _brand_trend_agg
+                WHERE fuel_type = $1
+                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                    AND brand IN (SELECT UNNEST($3::VARCHAR[]))
+                ORDER BY date ASC, brand ASC
+                """,
+                [fuel_type, days_back, brands],
+            ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _brand_trend_agg")
     return result

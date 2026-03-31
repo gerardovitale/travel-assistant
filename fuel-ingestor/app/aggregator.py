@@ -15,9 +15,11 @@ PROVINCE_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}province_daily_stats.parquet"
 DAY_OF_WEEK_STATS_BLOB = f"{AGGREGATES_PREFIX}day_of_week_stats.parquet"
 DAILY_INGESTION_STATS_BLOB = f"{AGGREGATES_PREFIX}daily_ingestion_stats.parquet"
 BRAND_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}brand_daily_stats.parquet"
+ZIP_CODE_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}zip_code_daily_stats.parquet"
 RAW_PARQUET_PATTERN = re.compile(r"spain_fuel_prices_(\d{4}-\d{2}-\d{2})T")
 PROVINCE_DAILY_STATS_COLUMNS = ["date", "province", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
 BRAND_DAILY_STATS_COLUMNS = ["date", "brand", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
+ZIP_CODE_DAILY_STATS_COLUMNS = ["date", "zip_code", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
 DAILY_INGESTION_STATS_COLUMNS = [
     "date",
     "record_count",
@@ -29,11 +31,13 @@ DAILY_INGESTION_STATS_COLUMNS = [
     "unique_localities",
     "unique_locality_names",
 ]
+ZIP_CODE_DAILY_STATS_RETENTION_DAYS = 365
 REQUIRED_AGGREGATE_BLOBS = [
     PROVINCE_DAILY_STATS_BLOB,
     DAY_OF_WEEK_STATS_BLOB,
     DAILY_INGESTION_STATS_BLOB,
     BRAND_DAILY_STATS_BLOB,
+    ZIP_CODE_DAILY_STATS_BLOB,
 ]
 
 FUEL_PRICE_COLUMNS = [
@@ -84,6 +88,15 @@ def _day_of_week_stats_log_fields(df):
     }
 
 
+def _zip_code_daily_stats_log_fields(df):
+    return {
+        "rows": len(df),
+        "unique_dates": df["date"].nunique() if not df.empty else 0,
+        "unique_zip_codes": df["zip_code"].nunique() if not df.empty else 0,
+        "unique_fuel_types": df["fuel_type"].nunique() if not df.empty else 0,
+    }
+
+
 def _get_bucket():
     client = storage.Client()
     return client.bucket(DATA_DESTINATION_BUCKET)
@@ -130,6 +143,21 @@ def _latest_raw_file_per_day(parquet_files):
         unique_days=len(deduplicated_files),
     )
     return deduplicated_files
+
+
+def _most_recent_raw_files(parquet_files, max_days):
+    """Return the last *max_days* entries from *parquet_files* (assumes chronologically sorted input)."""
+    if max_days is None or len(parquet_files) <= max_days:
+        return parquet_files
+    recent_files = parquet_files[-max_days:]
+    _log_event(
+        logger.info,
+        "raw_files_limited_to_recent_days",
+        input_files=len(parquet_files),
+        selected_files=len(recent_files),
+        max_days=max_days,
+    )
+    return recent_files
 
 
 def _get_latest_raw_file(bucket):
@@ -238,6 +266,41 @@ def compute_brand_daily_stats(raw_df):
                 }
             )
     return pd.DataFrame(rows, columns=BRAND_DAILY_STATS_COLUMNS)
+
+
+def compute_zip_code_daily_stats(raw_df):
+    """Compute per-zip-code, per-fuel-type daily stats from a raw snapshot."""
+    if raw_df.empty or "zip_code" not in raw_df.columns:
+        return pd.DataFrame(columns=ZIP_CODE_DAILY_STATS_COLUMNS)
+
+    date_val = _snapshot_date(raw_df)
+    rows = []
+    zip_df = raw_df[raw_df["zip_code"].notna()].copy()
+    if zip_df.empty:
+        return pd.DataFrame(columns=ZIP_CODE_DAILY_STATS_COLUMNS)
+    zip_df["zip_code"] = zip_df["zip_code"].astype(str)
+
+    for fuel_col in FUEL_PRICE_COLUMNS:
+        if fuel_col not in zip_df.columns:
+            continue
+        valid = zip_df[zip_df[fuel_col].notna() & (zip_df[fuel_col] > 0)]
+        if valid.empty:
+            continue
+        grouped = valid.groupby("zip_code")[fuel_col].agg(["mean", "min", "max", "count"]).reset_index()
+        for _, row in grouped.iterrows():
+            rows.append(
+                {
+                    "date": date_val,
+                    "zip_code": row["zip_code"],
+                    "fuel_type": fuel_col,
+                    "avg_price": round(row["mean"], 4),
+                    "min_price": round(row["min"], 4),
+                    "max_price": round(row["max"], 4),
+                    "station_count": int(row["count"]),
+                }
+            )
+
+    return pd.DataFrame(rows, columns=ZIP_CODE_DAILY_STATS_COLUMNS)
 
 
 def compute_day_of_week_stats(raw_df, existing_dow_df=None):
@@ -450,6 +513,45 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
     return province_daily_df, dow_stats_df, ingestion_stats_df, brand_daily_df
 
 
+def _build_zip_code_daily_stats_from_raw_files(bucket, parquet_files):
+    _log_event(logger.info, "zip_code_daily_stats_build_start", files=len(parquet_files))
+    needed_columns = [
+        "timestamp",
+        "zip_code",
+        *FUEL_PRICE_COLUMNS,
+    ]
+    all_zip_code_stats = []
+
+    for index, file_name in enumerate(parquet_files, start=1):
+        _log_event(
+            logger.info,
+            "zip_code_daily_raw_file_processing",
+            file=file_name,
+            file_index=index,
+            total_files=len(parquet_files),
+        )
+        raw_df = _download_parquet_from_gcs(bucket, file_name, columns=needed_columns)
+        if raw_df is None:
+            _log_event(logger.warning, "zip_code_daily_raw_file_missing", file=file_name)
+            continue
+
+        zip_code_stats = compute_zip_code_daily_stats(raw_df)
+        if not zip_code_stats.empty:
+            all_zip_code_stats.append(zip_code_stats)
+
+    if all_zip_code_stats:
+        zip_code_daily_df = pd.concat(all_zip_code_stats, ignore_index=True)
+    else:
+        zip_code_daily_df = pd.DataFrame(columns=ZIP_CODE_DAILY_STATS_COLUMNS)
+
+    _log_event(
+        logger.info,
+        "zip_code_daily_stats_build_complete",
+        **_zip_code_daily_stats_log_fields(zip_code_daily_df),
+    )
+    return zip_code_daily_df
+
+
 def _bootstrap_aggregates(bucket):
     _log_event(logger.info, "bootstrap_aggregation_start")
     parquet_files = _list_raw_parquet_files(bucket)
@@ -461,10 +563,12 @@ def _bootstrap_aggregates(bucket):
 
     parquet_files = _latest_raw_file_per_day(parquet_files)
     _log_event(logger.info, "bootstrap_raw_files_selected", count=len(parquet_files))
+    trend_parquet_files = _most_recent_raw_files(parquet_files, ZIP_CODE_DAILY_STATS_RETENTION_DAYS)
 
     province_daily_df, dow_stats_df, ingestion_stats_df, brand_daily_df = _build_aggregate_dataframes_from_raw_files(
         bucket, parquet_files
     )
+    zip_code_daily_df = _build_zip_code_daily_stats_from_raw_files(bucket, trend_parquet_files)
     _log_event(
         logger.info,
         "bootstrap_aggregate_frames_ready",
@@ -472,12 +576,14 @@ def _bootstrap_aggregates(bucket):
         day_of_week_rows=len(dow_stats_df),
         ingestion_rows=len(ingestion_stats_df),
         brand_daily_rows=len(brand_daily_df),
+        zip_code_daily_rows=len(zip_code_daily_df),
     )
 
     _upload_parquet_to_gcs(bucket, PROVINCE_DAILY_STATS_BLOB, province_daily_df)
     _upload_parquet_to_gcs(bucket, DAILY_INGESTION_STATS_BLOB, ingestion_stats_df)
     _upload_parquet_to_gcs(bucket, DAY_OF_WEEK_STATS_BLOB, dow_stats_df)
     _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_daily_df)
+    _upload_parquet_to_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB, zip_code_daily_df)
 
 
 def _backfill_brand_daily_stats(bucket):
@@ -495,6 +601,26 @@ def _backfill_brand_daily_stats(bucket):
     _, _, _, brand_daily_df = _build_aggregate_dataframes_from_raw_files(bucket, parquet_files)
     _log_event(logger.info, "brand_backfill_frame_ready", brand_daily_rows=len(brand_daily_df))
     _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_daily_df)
+
+
+def _backfill_zip_code_daily_stats(bucket):
+    _log_event(logger.info, "zip_code_daily_backfill_start")
+    parquet_files = _list_raw_parquet_files(bucket)
+    _log_event(logger.info, "zip_code_daily_backfill_raw_files_found", count=len(parquet_files))
+
+    if not parquet_files:
+        _log_event(logger.warning, "zip_code_daily_backfill_skipped_no_raw_files")
+        return
+
+    parquet_files = _latest_raw_file_per_day(parquet_files)
+    parquet_files = _most_recent_raw_files(parquet_files, ZIP_CODE_DAILY_STATS_RETENTION_DAYS)
+    _log_event(logger.info, "zip_code_daily_backfill_raw_files_selected", count=len(parquet_files))
+
+    zip_code_daily_df = _build_zip_code_daily_stats_from_raw_files(bucket, parquet_files)
+    _log_event(
+        logger.info, "zip_code_daily_backfill_frame_ready", **_zip_code_daily_stats_log_fields(zip_code_daily_df)
+    )
+    _upload_parquet_to_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB, zip_code_daily_df)
 
 
 def run_aggregation(bucket=None):
@@ -515,6 +641,15 @@ def run_aggregation(bucket=None):
                 missing_aggregates=missing_aggregate_blobs,
             )
             _backfill_brand_daily_stats(bucket)
+            return
+        if set(missing_aggregate_blobs) == {ZIP_CODE_DAILY_STATS_BLOB}:
+            _log_event(
+                logger.info,
+                "aggregation_mode_selected",
+                run_type="zip_code_daily_backfill",
+                missing_aggregates=missing_aggregate_blobs,
+            )
+            _backfill_zip_code_daily_stats(bucket)
             return
 
         _log_event(
@@ -675,6 +810,60 @@ def run_aggregation(bucket=None):
         )
 
     _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_stats)
+
+    # Zip-code daily trend stats: append today's rows, replace same-day rows, and retain only the latest rolling year.
+    today_zip_code_stats = compute_zip_code_daily_stats(raw_df)
+    _log_event(
+        logger.info,
+        "zip_code_daily_stats_computed",
+        date=str(snapshot_date),
+        **_zip_code_daily_stats_log_fields(today_zip_code_stats),
+    )
+    existing_zip_code_stats = _download_parquet_from_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB)
+
+    if existing_zip_code_stats is not None and not today_zip_code_stats.empty:
+        date_val = pd.Timestamp(today_zip_code_stats["date"].iloc[0])
+        existing_rows = len(existing_zip_code_stats)
+        existing_zip_code_stats = existing_zip_code_stats[pd.to_datetime(existing_zip_code_stats["date"]) != date_val]
+        retention_cutoff = date_val - pd.Timedelta(days=ZIP_CODE_DAILY_STATS_RETENTION_DAYS - 1)
+        within_retention = pd.to_datetime(existing_zip_code_stats["date"]) >= retention_cutoff
+        pruned_rows = int((~within_retention).sum())
+        existing_zip_code_stats = existing_zip_code_stats[within_retention]
+        removed_rows = existing_rows - len(existing_zip_code_stats) - pruned_rows
+        zip_code_stats = pd.concat([existing_zip_code_stats, today_zip_code_stats], ignore_index=True)
+        _log_event(
+            logger.info,
+            "zip_code_daily_stats_updated",
+            date=str(date_val.date()),
+            existing_rows=existing_rows,
+            removed_rows=removed_rows,
+            pruned_rows=pruned_rows,
+            added_rows=len(today_zip_code_stats),
+            final_rows=len(zip_code_stats),
+        )
+    elif existing_zip_code_stats is not None:
+        date_val = pd.Timestamp(snapshot_date)
+        retention_cutoff = date_val - pd.Timedelta(days=ZIP_CODE_DAILY_STATS_RETENTION_DAYS - 1)
+        within_retention = pd.to_datetime(existing_zip_code_stats["date"]) >= retention_cutoff
+        pruned_rows = int((~within_retention).sum())
+        zip_code_stats = existing_zip_code_stats[within_retention].copy()
+        _log_event(
+            logger.info,
+            "zip_code_daily_stats_retained_existing",
+            date=str(date_val.date()),
+            pruned_rows=pruned_rows,
+            final_rows=len(zip_code_stats),
+        )
+    else:
+        zip_code_stats = today_zip_code_stats
+        _log_event(
+            logger.info,
+            "zip_code_daily_stats_initialized",
+            date=str(snapshot_date),
+            final_rows=len(zip_code_stats),
+        )
+
+    _upload_parquet_to_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB, zip_code_stats)
 
     _log_event(logger.info, "aggregation_complete", file=latest_file, snapshot_date=str(snapshot_date))
 

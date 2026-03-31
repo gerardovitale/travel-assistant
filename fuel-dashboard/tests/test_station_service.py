@@ -185,12 +185,12 @@ def test_get_cheapest_zones(mock_query):
     assert results[0].zip_code == "28001"
 
 
-@patch("services.station_service.query_price_trends")
-@patch("services.station_service.list_parquet_files")
-def test_get_price_trends(mock_list, mock_query):
+@patch("services.station_service.query_zip_code_price_trend")
+@patch("services.station_service.download_aggregate")
+def test_get_price_trends(mock_download, mock_query):
     from services.station_service import get_price_trends
 
-    mock_list.return_value = ["file1.parquet", "file2.parquet"]
+    mock_download.return_value = pd.DataFrame({"zip_code": ["28001"]})
     mock_query.return_value = pd.DataFrame(
         {
             "date": ["2025-01-01", "2025-01-02"],
@@ -202,6 +202,30 @@ def test_get_price_trends(mock_list, mock_query):
     results = get_price_trends("28001", FuelType.diesel_a_price, TrendPeriod.week)
     assert len(results) == 2
     assert results[0].date == "2025-01-01"
+    mock_query.assert_called_once_with(mock_download.return_value, "28001", FuelType.diesel_a_price.value, 7)
+
+
+@patch("services.station_service.query_price_trends")
+@patch("services.station_service.list_parquet_files")
+@patch("services.station_service.download_aggregate")
+def test_get_price_trends_falls_back_to_raw_history(mock_download, mock_list, mock_query):
+    from services.station_service import get_price_trends
+
+    mock_download.return_value = None
+    mock_list.return_value = ["file1.parquet", "file2.parquet"]
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01"],
+            "avg_price": [1.45],
+            "min_price": [1.40],
+            "max_price": [1.50],
+        }
+    )
+
+    results = get_price_trends("28001", FuelType.diesel_a_price, TrendPeriod.week)
+    assert len(results) == 1
+    mock_list.assert_called_once_with(days_back=7)
+    mock_query.assert_called_once_with(["file1.parquet", "file2.parquet"], "28001", FuelType.diesel_a_price.value)
 
 
 @patch("services.station_service.load_postal_code_boundary")

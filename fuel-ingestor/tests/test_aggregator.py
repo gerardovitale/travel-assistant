@@ -8,7 +8,11 @@ from aggregator import build_day_of_week_stats_from_province_daily_stats
 from aggregator import compute_daily_ingestion_stats
 from aggregator import compute_day_of_week_stats
 from aggregator import compute_province_daily_stats
+from aggregator import compute_zip_code_daily_stats
+from aggregator import DAILY_INGESTION_STATS_BLOB
+from aggregator import PROVINCE_DAILY_STATS_BLOB
 from aggregator import run_aggregation
+from aggregator import ZIP_CODE_DAILY_STATS_BLOB
 
 
 def _logged_messages(mock_calls):
@@ -27,6 +31,7 @@ def _make_raw_df():
             "province": ["madrid", "madrid", "madrid", "barcelona", "barcelona", "barcelona"],
             "municipality": ["Madrid", "Madrid", "Getafe", "Barcelona", "Barcelona", "Hospitalet"],
             "locality": ["Madrid", "Madrid", "Getafe", "Barcelona", "Barcelona", "Hospitalet"],
+            "zip_code": ["28001", "28001", "28901", "08001", "08001", "08901"],
             "diesel_a_price": [1.45, 1.50, 1.48, 1.42, 1.44, 1.46],
             "gasoline_95_e5_price": [1.55, 1.60, 1.58, 1.52, 1.54, 1.56],
             "hydrogen_price": [None, None, None, None, None, None],
@@ -59,6 +64,7 @@ def _make_ingestion_stats_raw_df():
             "province": ["madrid", "madrid", "madrid", "barcelona", "barcelona", "barcelona"],
             "municipality": ["Madrid", "Madrid", "Getafe", "Madrid", "Barcelona", "Barcelona"],
             "locality": ["Centro", "Centro", "Centro", "Centro", "Port", "Port"],
+            "zip_code": ["28001", "28001", "28901", "28001", "08001", "08001"],
             "diesel_a_price": [1.45, 1.50, 1.48, 1.42, 1.44, 1.46],
         }
     )
@@ -77,6 +83,7 @@ def _make_brand_raw_df():
                 "province": "madrid",
                 "municipality": "Madrid",
                 "locality": "Madrid",
+                "zip_code": "28001",
                 "diesel_a_price": 1.45 + index * 0.001,
             }
         )
@@ -91,10 +98,35 @@ def _make_brand_raw_df():
                 "province": "barcelona",
                 "municipality": "Barcelona",
                 "locality": "Barcelona",
+                "zip_code": "08001",
                 "diesel_a_price": 1.5 + index * 0.001,
             }
         )
     return pd.DataFrame(rows)
+
+
+def _make_download_side_effect(raw_df=None, aggregate_overrides=None):
+    """Build a side_effect function for _download_parquet_from_gcs based on blob names.
+
+    *raw_df* is returned for any raw parquet file. *aggregate_overrides* is an
+    optional dict mapping aggregate blob names to DataFrames (or None).
+    Unspecified aggregates default to None.
+    """
+    overrides = aggregate_overrides or {}
+
+    def _side_effect(_bucket, blob_name, columns=None):
+        if blob_name in overrides:
+            return overrides[blob_name]
+        if blob_name in (
+            PROVINCE_DAILY_STATS_BLOB,
+            DAILY_INGESTION_STATS_BLOB,
+            BRAND_DAILY_STATS_BLOB,
+            ZIP_CODE_DAILY_STATS_BLOB,
+        ):
+            return None
+        return raw_df
+
+    return _side_effect
 
 
 class TestComputeProvinceDailyStats(TestCase):
@@ -181,6 +213,39 @@ class TestComputeDayOfWeekStats(TestCase):
         self.assertIn(0, days)
 
 
+class TestComputeZipCodeDailyStats(TestCase):
+
+    def test_computes_stats_per_zip_code_and_fuel_type(self):
+        raw_df = _make_raw_df()
+        result = compute_zip_code_daily_stats(raw_df)
+
+        self.assertIn("zip_code", result.columns)
+        self.assertIn("fuel_type", result.columns)
+        self.assertIn("avg_price", result.columns)
+        self.assertIn("station_count", result.columns)
+        self.assertEqual(len(result), 8)
+
+    def test_skips_invalid_prices(self):
+        raw_df = _make_raw_df()
+        raw_df.loc[0, "diesel_a_price"] = 0
+        raw_df.loc[1, "diesel_a_price"] = None
+
+        result = compute_zip_code_daily_stats(raw_df)
+        zip_row = result[(result["zip_code"] == "28001") & (result["fuel_type"] == "diesel_a_price")]
+
+        self.assertEqual(len(zip_row), 0)
+
+    def test_aggregates_duplicate_zip_codes(self):
+        raw_df = _make_raw_df()
+        result = compute_zip_code_daily_stats(raw_df)
+
+        madrid_row = result[(result["zip_code"] == "28001") & (result["fuel_type"] == "diesel_a_price")].iloc[0]
+        self.assertAlmostEqual(madrid_row["avg_price"], 1.475, places=4)
+        self.assertAlmostEqual(madrid_row["min_price"], 1.45, places=4)
+        self.assertAlmostEqual(madrid_row["max_price"], 1.50, places=4)
+        self.assertEqual(madrid_row["station_count"], 2)
+
+
 class TestBuildDayOfWeekStatsFromProvinceDailyStats(TestCase):
 
     def test_builds_province_and_national_rows(self):
@@ -211,13 +276,13 @@ class TestRunAggregation(TestCase):
     def test_run_aggregation_creates_new_aggregates(self, mock_latest, mock_download, mock_upload):
         raw_df = _make_raw_df()
         mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
-        mock_download.side_effect = [raw_df, None, None, None, None]
+        mock_download.side_effect = _make_download_side_effect(raw_df)
 
         bucket = MagicMock()
         with patch("aggregator.logger") as mock_logger:
             run_aggregation(bucket)
 
-        self.assertEqual(mock_upload.call_count, 4)
+        self.assertEqual(mock_upload.call_count, 5)
         info_messages = _logged_messages(mock_logger.info.call_args_list)
         self.assertTrue(
             any(
@@ -230,6 +295,7 @@ class TestRunAggregation(TestCase):
         self.assertTrue(any("daily_ingestion_stats_computed" in message for message in info_messages))
         self.assertTrue(any("day_of_week_stats_rebuilt" in message for message in info_messages))
         self.assertTrue(any("brand_daily_stats_computed" in message for message in info_messages))
+        self.assertTrue(any("zip_code_daily_stats_computed" in message for message in info_messages))
         self.assertTrue(any("aggregation_complete" in message for message in info_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
@@ -258,12 +324,12 @@ class TestRunAggregation(TestCase):
         previous_day_stats["date"] = pd.Timestamp("2026-03-21").date()
 
         mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
-        mock_download.side_effect = [
+        mock_download.side_effect = _make_download_side_effect(
             raw_df,
-            pd.concat([previous_day_stats, stale_today_stats], ignore_index=True),
-            None,
-            None,
-        ]
+            aggregate_overrides={
+                PROVINCE_DAILY_STATS_BLOB: pd.concat([previous_day_stats, stale_today_stats], ignore_index=True),
+            },
+        )
 
         bucket = MagicMock()
         with patch("aggregator.logger") as mock_logger:
@@ -286,6 +352,7 @@ class TestRunAggregation(TestCase):
             any("province_daily_stats_updated" in message and "removed_rows=4" in message for message in info_messages)
         )
         self.assertTrue(any("daily_ingestion_stats_initialized" in message for message in info_messages))
+        self.assertTrue(any("zip_code_daily_stats_initialized" in message for message in info_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -312,27 +379,30 @@ class TestRunAggregation(TestCase):
             "spain_fuel_prices_2026-03-22T08:00:00.parquet",
             "spain_fuel_prices_2026-03-23T05:48:06.parquet",
         ]
-        mock_download.side_effect = [first_day_raw_df, second_day_raw_df]
+        raw_files_map = {
+            "spain_fuel_prices_2026-03-22T08:00:00.parquet": first_day_raw_df,
+            "spain_fuel_prices_2026-03-23T05:48:06.parquet": second_day_raw_df,
+        }
+
+        def _bootstrap_download(_bucket, blob_name, columns=None):
+            return raw_files_map.get(blob_name)
+
+        mock_download.side_effect = _bootstrap_download
 
         bucket = MagicMock()
         with patch("aggregator.logger") as mock_logger:
             run_aggregation(bucket)
 
         mock_latest.assert_not_called()
-        self.assertEqual(
-            [call.args[1] for call in mock_download.call_args_list],
-            [
-                "spain_fuel_prices_2026-03-22T08:00:00.parquet",
-                "spain_fuel_prices_2026-03-23T05:48:06.parquet",
-            ],
-        )
-        self.assertEqual(mock_upload.call_count, 4)
+        self.assertEqual(mock_upload.call_count, 5)
 
         province_daily_df = mock_upload.call_args_list[0].args[2]
         ingestion_stats_df = mock_upload.call_args_list[1].args[2]
+        zip_code_daily_df = mock_upload.call_args_list[4].args[2]
 
         self.assertEqual(len(province_daily_df), 8)
         self.assertEqual(len(ingestion_stats_df), 2)
+        self.assertFalse(zip_code_daily_df.empty)
         info_messages = _logged_messages(mock_logger.info.call_args_list)
         self.assertTrue(
             any(
@@ -363,7 +433,7 @@ class TestRunAggregation(TestCase):
         mock_upload,
     ):
         raw_df = _make_raw_df()
-        mock_blob_exists.side_effect = [False, True, True, True]
+        mock_blob_exists.side_effect = [False, True, True, True, True]
         mock_list_raw.return_value = ["spain_fuel_prices_2026-03-22T05:48:06.parquet"]
         mock_download.return_value = raw_df
 
@@ -371,7 +441,7 @@ class TestRunAggregation(TestCase):
         run_aggregation(bucket)
 
         mock_latest.assert_not_called()
-        self.assertEqual(mock_upload.call_count, 4)
+        self.assertEqual(mock_upload.call_count, 5)
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -386,7 +456,7 @@ class TestRunAggregation(TestCase):
         mock_download,
         mock_upload,
     ):
-        mock_blob_exists.side_effect = [True, True, True, False]
+        mock_blob_exists.side_effect = [True, True, True, False, True]
         mock_list_raw.return_value = ["spain_fuel_prices_2026-03-22T05:48:06.parquet"]
         mock_download.return_value = _make_brand_raw_df()
 
@@ -407,6 +477,81 @@ class TestRunAggregation(TestCase):
             )
         )
         self.assertTrue(any("brand_backfill_frame_ready" in message for message in info_messages))
+
+    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._download_parquet_from_gcs")
+    @patch("aggregator._list_raw_parquet_files")
+    @patch("aggregator._blob_exists")
+    @patch("aggregator._get_latest_raw_file")
+    def test_run_aggregation_backfills_zip_code_blob_without_rebuilding_other_aggregates(
+        self,
+        mock_latest,
+        mock_blob_exists,
+        mock_list_raw,
+        mock_download,
+        mock_upload,
+    ):
+        mock_blob_exists.side_effect = [True, True, True, True, False]
+        mock_list_raw.return_value = ["spain_fuel_prices_2026-03-22T05:48:06.parquet"]
+        mock_download.return_value = _make_raw_df()
+
+        bucket = MagicMock()
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
+
+        mock_latest.assert_not_called()
+        self.assertEqual(mock_upload.call_count, 1)
+        self.assertEqual(mock_upload.call_args.args[1], ZIP_CODE_DAILY_STATS_BLOB)
+        self.assertFalse(mock_upload.call_args.args[2].empty)
+
+        info_messages = _logged_messages(mock_logger.info.call_args_list)
+        self.assertTrue(
+            any(
+                "aggregation_mode_selected" in message and "run_type='zip_code_daily_backfill'" in message
+                for message in info_messages
+            )
+        )
+        self.assertTrue(any("zip_code_daily_backfill_frame_ready" in message for message in info_messages))
+
+    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._download_parquet_from_gcs")
+    @patch("aggregator._get_latest_raw_file")
+    def test_run_aggregation_prunes_zip_code_stats_older_than_retention(self, mock_latest, mock_download, mock_upload):
+        raw_df = _make_raw_df().copy()
+        raw_df["timestamp"] = "2026-03-31T05:48:06"
+
+        existing_zip_stats = pd.DataFrame(
+            {
+                "date": [pd.Timestamp("2025-03-31").date(), pd.Timestamp("2025-04-01").date()],
+                "zip_code": ["28001", "28001"],
+                "fuel_type": ["diesel_a_price", "diesel_a_price"],
+                "avg_price": [1.4, 1.41],
+                "min_price": [1.35, 1.36],
+                "max_price": [1.45, 1.46],
+                "station_count": [2, 2],
+            }
+        )
+        mock_latest.return_value = "spain_fuel_prices_2026-03-31T05:48:06.parquet"
+        mock_download.side_effect = _make_download_side_effect(
+            raw_df,
+            aggregate_overrides={ZIP_CODE_DAILY_STATS_BLOB: existing_zip_stats},
+        )
+
+        bucket = MagicMock()
+        with patch("aggregator.logger") as mock_logger:
+            run_aggregation(bucket)
+
+        zip_code_daily_df = mock_upload.call_args_list[4].args[2]
+        retained_dates = set(pd.to_datetime(zip_code_daily_df["date"]).dt.date)
+
+        self.assertNotIn(pd.Timestamp("2025-03-31").date(), retained_dates)
+        self.assertIn(pd.Timestamp("2025-04-01").date(), retained_dates)
+        self.assertIn(pd.Timestamp("2026-03-31").date(), retained_dates)
+
+        info_messages = _logged_messages(mock_logger.info.call_args_list)
+        self.assertTrue(
+            any("zip_code_daily_stats_updated" in message and "pruned_rows=1" in message for message in info_messages)
+        )
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._list_raw_parquet_files")

@@ -30,7 +30,9 @@ from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_price_trends
 from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
+from data.duckdb_engine import query_zip_code_price_trend
 from data.duckdb_engine import query_zip_codes_by_district
+from data.gcs_client import download_aggregate
 from data.gcs_client import list_parquet_files
 from data.geojson_loader import load_madrid_districts
 from data.geojson_loader import load_postal_code_boundary
@@ -309,8 +311,12 @@ def get_postal_code_geojson(zip_codes: List[str]) -> dict:
 def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:
     _validate_zip_code(zip_code)
     days_back = TREND_PERIOD_DAYS[period]
-    files = list_parquet_files(days_back=days_back)
-    df = query_price_trends(files, zip_code, fuel_type.value)
+    aggregate_df = download_aggregate("zip_code_daily_stats.parquet")
+    if aggregate_df is not None:
+        df = query_zip_code_price_trend(aggregate_df, zip_code, fuel_type.value, days_back)
+    else:
+        files = list_parquet_files(days_back=days_back)
+        df = query_price_trends(files, zip_code, fuel_type.value)
     return [
         TrendPoint(
             date=str(row["date"]),

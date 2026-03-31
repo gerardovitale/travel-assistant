@@ -153,6 +153,24 @@ def _make_brand_daily_stats():
     return pd.DataFrame(rows)
 
 
+def _make_zip_code_daily_stats():
+    rows = []
+    for zip_code, avg in [("28001", 1.45), ("08001", 1.48)]:
+        for day_offset in range(5):
+            rows.append(
+                {
+                    "date": datetime.date.today() - datetime.timedelta(days=4 - day_offset),
+                    "zip_code": zip_code,
+                    "fuel_type": "gasoline_95_e5_price",
+                    "avg_price": avg + day_offset * 0.001,
+                    "min_price": avg - 0.05,
+                    "max_price": avg + 0.05,
+                    "station_count": 25,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 class TestBrandRankingKpis:
 
     def test_returns_4_cards(self):
@@ -269,4 +287,26 @@ class TestQueryBrandPriceTrend:
 
         df = _make_brand_daily_stats()
         result = query_brand_price_trend(df, "gasoline_95_e5_price", 90, [])
+        assert result.empty
+
+
+class TestQueryZipCodePriceTrend:
+
+    def test_returns_daily_prices_for_selected_zip_code(self):
+        from data.duckdb_engine import query_zip_code_price_trend
+
+        df = _make_zip_code_daily_stats()
+        result = query_zip_code_price_trend(df, "28001", "gasoline_95_e5_price", 90)
+
+        assert not result.empty
+        assert set(result.columns) == {"date", "avg_price", "min_price", "max_price"}
+        assert len(result) == 5
+        assert result["avg_price"].iloc[0] < result["avg_price"].iloc[-1]
+
+    def test_filters_out_other_zip_codes(self):
+        from data.duckdb_engine import query_zip_code_price_trend
+
+        df = _make_zip_code_daily_stats()
+        result = query_zip_code_price_trend(df, "99999", "gasoline_95_e5_price", 90)
+
         assert result.empty
