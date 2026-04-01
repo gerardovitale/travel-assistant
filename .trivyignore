@@ -10,3 +10,6 @@ CVE-2026-29111
 
 # nghttp2 DoS — base image residual; curl removed from fuel-ingestor, not installed elsewhere
 CVE-2026-27135
+
+# glibc iconv() DoS — fix deferred by Debian; app does not use iconv with untrusted character sets
+CVE-2026-4046
