@@ -156,6 +156,7 @@ def _build_search_panel() -> None:
         "consumption_input": None,
         "tank_input": None,
         "dynamic_container": None,
+        "advanced_container": None,
     }
     mode = None
     search_button = None
@@ -163,9 +164,10 @@ def _build_search_panel() -> None:
 
     def on_mode_change(_: Any) -> None:
         container = state.get("dynamic_container")
-        if container is None:
+        advanced = state.get("advanced_container")
+        if container is None or advanced is None:
             return
-        _render_query_inputs(mode, container, state)
+        _render_query_inputs(mode, container, advanced, state)
 
     with ui.column().classes("w-full gap-3"):
         with ui.card().classes("w-full p-4"):
@@ -175,9 +177,11 @@ def _build_search_panel() -> None:
                 fuel = fuel_type_select()
             dynamic_container = ui.column().classes("w-full gap-2")
             state["dynamic_container"] = dynamic_container
-            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+                advanced_container = ui.column().classes("w-full gap-2")
+                state["advanced_container"] = advanced_container
                 limit_input = ui.number(label="Numero de estaciones", value=5, min=1, max=20).classes("w-48")
-                search_button = ui.button("Buscar").props("unelevated color=primary")
+            search_button = ui.button("Buscar").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
@@ -335,13 +339,16 @@ def _build_search_panel() -> None:
             search_button.enable()
 
     search_button.on("click", lambda _: on_search())
-    _render_query_inputs(mode, state["dynamic_container"], state)
+    _render_query_inputs(mode, state["dynamic_container"], state["advanced_container"], state)
     set_status("info", "Selecciona un modo y ejecuta una busqueda para ver resultados.")
 
 
-def _render_query_inputs(mode: ui.select, container: ui.column, state: Dict[str, Any]) -> None:
+def _render_query_inputs(
+    mode: ui.select, container: ui.column, advanced_container: ui.column, state: Dict[str, Any]
+) -> None:
     metadata = search_mode_metadata(mode.value)
     container.clear()
+    advanced_container.clear()
     state["radius_input"] = None
     state["consumption_input"] = None
     state["tank_input"] = None
@@ -359,8 +366,9 @@ def _render_query_inputs(mode: ui.select, container: ui.column, state: Dict[str,
             )
         ui.label(metadata.helper_text).classes("text-xs text-gray-500")
         state["query_input"] = query_input
-        has_params = metadata.requires_radius or metadata.requires_consumption
-        if has_params:
+    has_params = metadata.requires_radius or metadata.requires_consumption
+    if has_params:
+        with advanced_container:
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 if metadata.requires_radius:
                     state["radius_input"] = ui.number(
@@ -377,13 +385,13 @@ def _render_query_inputs(mode: ui.select, container: ui.column, state: Dict[str,
                     state["tank_input"] = ui.number(
                         label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
                     ).classes("w-40")
-        if metadata.requires_consumption:
-            with ui.expansion("Como se calcula la puntuacion?").classes("w-full text-sm").props("dense"):
-                for line in SCORE_METHODOLOGY_LINES:
-                    if line:
-                        ui.label(line).classes("text-xs text-gray-600")
-                    else:
-                        ui.separator().classes("my-1")
+            if metadata.requires_consumption:
+                with ui.expansion("Como se calcula la puntuacion?").classes("w-full text-sm").props("dense"):
+                    for line in SCORE_METHODOLOGY_LINES:
+                        if line:
+                            ui.label(line).classes("text-xs text-gray-600")
+                        else:
+                            ui.separator().classes("my-1")
 
 
 def _build_trends_panel() -> None:
@@ -393,9 +401,11 @@ def _build_trends_panel() -> None:
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 zip_input = ui.input(label="Codigo postal", placeholder="Ejemplo: 28001").classes("w-56")
                 fuel = fuel_type_select()
-                period = trend_period_select()
-                ui.label("Periodo: 7, 30 o 90 dias.").classes("text-xs text-gray-500")
                 trend_button = ui.button("Cargar tendencia").props("unelevated color=primary")
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                    period = trend_period_select()
+                    ui.label("Periodo: 7, 30 o 90 dias.").classes("text-xs text-gray-500")
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
@@ -662,41 +672,43 @@ def _build_trip_panel() -> None:
                     dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-56")
                     geolocation_button(dest_input)
                 fuel = fuel_type_select()
-                detour_input = ui.number(
-                    label="Desviacion maxima (min)",
-                    value=settings.default_max_detour_minutes,
-                    min=1,
-                    max=30,
-                ).classes("w-48")
 
-            with ui.expansion("Vehiculo").classes("w-full"):
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
                 with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                    consumption_input = ui.number(
-                        label="Consumo (l/100km)",
-                        value=settings.default_consumption_lper100km,
-                        min=1.0,
-                        max=30.0,
-                        step=0.5,
-                    ).classes("w-44")
-                    tank_input = ui.number(
-                        label="Deposito (L)",
-                        value=settings.default_tank_liters,
-                        min=5.0,
-                        max=120.0,
-                        step=5.0,
-                    ).classes("w-40")
-                    fuel_level_slider = ui.slider(
-                        min=5,
-                        max=100,
-                        value=settings.default_fuel_level_pct,
-                        step=5,
-                    ).classes("w-56")
-                    fuel_level_label = ui.label(f"Nivel actual: {int(settings.default_fuel_level_pct)}%").classes(
-                        "text-sm text-gray-600"
-                    )
-                    fuel_level_slider.on_value_change(
-                        lambda e: fuel_level_label.set_text(f"Nivel actual: {int(e.value)}%")
-                    )
+                    detour_input = ui.number(
+                        label="Desviacion maxima (min)",
+                        value=settings.default_max_detour_minutes,
+                        min=1,
+                        max=30,
+                    ).classes("w-48")
+                with ui.expansion("Vehiculo").classes("w-full"):
+                    with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                        consumption_input = ui.number(
+                            label="Consumo (l/100km)",
+                            value=settings.default_consumption_lper100km,
+                            min=1.0,
+                            max=30.0,
+                            step=0.5,
+                        ).classes("w-44")
+                        tank_input = ui.number(
+                            label="Deposito (L)",
+                            value=settings.default_tank_liters,
+                            min=5.0,
+                            max=120.0,
+                            step=5.0,
+                        ).classes("w-40")
+                        fuel_level_slider = ui.slider(
+                            min=5,
+                            max=100,
+                            value=settings.default_fuel_level_pct,
+                            step=5,
+                        ).classes("w-56")
+                        fuel_level_label = ui.label(f"Nivel actual: {int(settings.default_fuel_level_pct)}%").classes(
+                            "text-sm text-gray-600"
+                        )
+                        fuel_level_slider.on_value_change(
+                            lambda e: fuel_level_label.set_text(f"Nivel actual: {int(e.value)}%")
+                        )
 
             plan_button = ui.button("Planificar ruta").props("unelevated color=primary")
 
@@ -807,9 +819,11 @@ def _build_province_ranking_subtab() -> None:
             ui.label("Provincias ordenadas por precio medio de combustible.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 fuel = fuel_type_select()
-                period = historical_period_select()
-                mainland_only = ui.checkbox("Solo peninsula", value=True)
                 ranking_button = ui.button("Cargar ranking").props("unelevated color=primary")
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                    period = historical_period_select()
+                    mainland_only = ui.checkbox("Solo peninsula", value=True)
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
@@ -924,9 +938,11 @@ def _build_day_of_week_subtab() -> None:
             ui.label("Precio medio por dia de la semana.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 fuel = fuel_type_select()
-                province_input = ui.input(label="Provincia (opcional)", placeholder="Toda Espana").classes("w-56")
-                mainland_only = ui.checkbox("Solo peninsula", value=True)
                 dow_button = ui.button("Cargar patron").props("unelevated color=primary")
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                    province_input = ui.input(label="Provincia (opcional)", placeholder="Toda Espana").classes("w-56")
+                    mainland_only = ui.checkbox("Solo peninsula", value=True)
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
@@ -976,8 +992,9 @@ def _build_brand_comparison_subtab() -> None:
             ui.label("Ranking de marcas/operadores por precio medio de combustible.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 fuel = fuel_type_select()
-                period = historical_period_select()
                 brand_button = ui.button("Cargar ranking").props("unelevated color=primary")
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+                period = historical_period_select()
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
