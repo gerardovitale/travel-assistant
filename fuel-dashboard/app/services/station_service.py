@@ -30,6 +30,7 @@ from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_price_trends
 from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
+from data.duckdb_engine import query_volatility_by_zone
 from data.duckdb_engine import query_zip_code_price_trend
 from data.duckdb_engine import query_zip_codes_by_district
 from data.gcs_client import download_aggregate
@@ -368,3 +369,10 @@ def get_brand_price_trend(fuel_type: FuelType, days_back: int, brands: list) -> 
     if agg_df is None:
         return pd.DataFrame()
     return query_brand_price_trend(agg_df, fuel_type.value, days_back, brands)
+
+
+def get_zone_volatility_ranking(fuel_type: FuelType, days_back: int, mainland_only: bool = True) -> pd.DataFrame:
+    agg_df = download_aggregate("zip_code_daily_stats.parquet")
+    if agg_df is None:
+        return pd.DataFrame()
+    return query_volatility_by_zone(agg_df, fuel_type.value, days_back, mainland_only)

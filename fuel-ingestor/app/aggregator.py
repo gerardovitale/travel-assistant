@@ -19,7 +19,16 @@ ZIP_CODE_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}zip_code_daily_stats.parquet"
 RAW_PARQUET_PATTERN = re.compile(r"spain_fuel_prices_(\d{4}-\d{2}-\d{2})T")
 PROVINCE_DAILY_STATS_COLUMNS = ["date", "province", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
 BRAND_DAILY_STATS_COLUMNS = ["date", "brand", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
-ZIP_CODE_DAILY_STATS_COLUMNS = ["date", "zip_code", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
+ZIP_CODE_DAILY_STATS_COLUMNS = [
+    "date",
+    "zip_code",
+    "province",
+    "fuel_type",
+    "avg_price",
+    "min_price",
+    "max_price",
+    "station_count",
+]
 DAILY_INGESTION_STATS_COLUMNS = [
     "date",
     "record_count",
@@ -95,6 +104,7 @@ def _zip_code_daily_stats_log_fields(df):
         "rows": len(df),
         "unique_dates": df["date"].nunique() if not df.empty else 0,
         "unique_zip_codes": df["zip_code"].nunique() if not df.empty else 0,
+        "unique_provinces": df["province"].nunique() if not df.empty else 0,
         "unique_fuel_types": df["fuel_type"].nunique() if not df.empty else 0,
     }
 
@@ -276,12 +286,12 @@ def compute_brand_daily_stats(raw_df):
 
 def compute_zip_code_daily_stats(raw_df):
     """Compute per-zip-code, per-fuel-type daily stats from a raw snapshot."""
-    if raw_df.empty or "zip_code" not in raw_df.columns:
+    if raw_df.empty or "zip_code" not in raw_df.columns or "province" not in raw_df.columns:
         return pd.DataFrame(columns=ZIP_CODE_DAILY_STATS_COLUMNS)
 
     date_val = _snapshot_date(raw_df)
     rows = []
-    zip_df = raw_df[raw_df["zip_code"].notna()].copy()
+    zip_df = raw_df[raw_df["zip_code"].notna() & raw_df["province"].notna()].copy()
     if zip_df.empty:
         return pd.DataFrame(columns=ZIP_CODE_DAILY_STATS_COLUMNS)
     zip_df["zip_code"] = zip_df["zip_code"].astype(str)
@@ -292,12 +302,13 @@ def compute_zip_code_daily_stats(raw_df):
         valid = zip_df[zip_df[fuel_col].notna() & (zip_df[fuel_col] > 0)]
         if valid.empty:
             continue
-        grouped = valid.groupby("zip_code")[fuel_col].agg(["mean", "min", "max", "count"]).reset_index()
+        grouped = valid.groupby(["zip_code", "province"])[fuel_col].agg(["mean", "min", "max", "count"]).reset_index()
         for _, row in grouped.iterrows():
             rows.append(
                 {
                     "date": date_val,
                     "zip_code": row["zip_code"],
+                    "province": row["province"],
                     "fuel_type": fuel_col,
                     "avg_price": round(row["mean"], 4),
                     "min_price": round(row["min"], 4),

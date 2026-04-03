@@ -225,6 +225,7 @@ class TestComputeZipCodeDailyStats(TestCase):
         result = compute_zip_code_daily_stats(raw_df)
 
         self.assertIn("zip_code", result.columns)
+        self.assertIn("province", result.columns)
         self.assertIn("fuel_type", result.columns)
         self.assertIn("avg_price", result.columns)
         self.assertIn("station_count", result.columns)
@@ -240,11 +241,23 @@ class TestComputeZipCodeDailyStats(TestCase):
 
         self.assertEqual(len(zip_row), 0)
 
+    def test_returns_expected_schema_when_province_column_is_missing(self):
+        raw_df = _make_raw_df().drop(columns=["province"])
+
+        result = compute_zip_code_daily_stats(raw_df)
+
+        self.assertTrue(result.empty)
+        self.assertEqual(
+            result.columns.tolist(),
+            ["date", "zip_code", "province", "fuel_type", "avg_price", "min_price", "max_price", "station_count"],
+        )
+
     def test_aggregates_duplicate_zip_codes(self):
         raw_df = _make_raw_df()
         result = compute_zip_code_daily_stats(raw_df)
 
         madrid_row = result[(result["zip_code"] == "28001") & (result["fuel_type"] == "diesel_a_price")].iloc[0]
+        self.assertEqual(madrid_row["province"], "madrid")
         self.assertAlmostEqual(madrid_row["avg_price"], 1.475, places=4)
         self.assertAlmostEqual(madrid_row["min_price"], 1.45, places=4)
         self.assertAlmostEqual(madrid_row["max_price"], 1.50, places=4)
@@ -529,6 +542,7 @@ class TestRunAggregation(TestCase):
             {
                 "date": [pd.Timestamp("2025-03-31").date(), pd.Timestamp("2025-04-01").date()],
                 "zip_code": ["28001", "28001"],
+                "province": ["madrid", "madrid"],
                 "fuel_type": ["diesel_a_price", "diesel_a_price"],
                 "avg_price": [1.4, 1.41],
                 "min_price": [1.35, 1.36],

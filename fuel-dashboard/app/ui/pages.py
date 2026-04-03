@@ -38,6 +38,7 @@ from services.station_service import get_zip_code_boundary
 from services.station_service import get_zip_code_price_map_by_municipality
 from services.station_service import get_zip_code_price_map_for_zips
 from services.station_service import get_zip_codes_for_district
+from services.station_service import get_zone_volatility_ranking
 from services.trip_planner import plan_trip
 from ui.charts import build_brand_trend_chart
 from ui.charts import build_day_of_week_chart
@@ -66,6 +67,7 @@ from ui.view_models import best_day_advice
 from ui.view_models import brand_ranking_kpis
 from ui.view_models import data_inventory_kpis
 from ui.view_models import day_of_week_kpis
+from ui.view_models import format_percentage
 from ui.view_models import HISTORICAL_PERIOD_LABELS
 from ui.view_models import latest_day_kpis
 from ui.view_models import missing_days_kpis
@@ -77,6 +79,7 @@ from ui.view_models import station_summary
 from ui.view_models import trend_kpis
 from ui.view_models import trend_summary_cards
 from ui.view_models import trip_summary_cards
+from ui.view_models import volatility_kpis
 from ui.view_models import zone_kpis
 from ui.view_models import zone_summary_cards
 
@@ -805,6 +808,7 @@ def _build_historical_panel() -> None:
             ranking_tab = ui.tab("Ranking de provincias")
             dow_tab = ui.tab("Patron semanal")
             brand_tab = ui.tab("Comparacion por marca")
+            volatility_tab = ui.tab("Volatilidad de precios")
 
         with ui.tab_panels(sub_tabs, value=ranking_tab).classes("w-full"):
             with ui.tab_panel(ranking_tab):
@@ -813,6 +817,8 @@ def _build_historical_panel() -> None:
                 _build_day_of_week_subtab()
             with ui.tab_panel(brand_tab):
                 _build_brand_comparison_subtab()
+            with ui.tab_panel(volatility_tab):
+                _build_zone_volatility_subtab()
 
 
 def _build_province_ranking_subtab() -> None:
@@ -1110,6 +1116,137 @@ def _build_brand_comparison_subtab() -> None:
 
     brand_button.on("click", lambda _: on_load_brand_comparison())
     set_status("info", "Selecciona tipo de combustible y periodo para comparar marcas.")
+
+
+def _build_zone_volatility_subtab() -> None:
+    with ui.column().classes("w-full gap-3"):
+        with ui.card().classes("w-full p-4"):
+            ui.label("Ranking de codigos postales por estabilidad de precios.").classes("text-sm text-gray-600")
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                fuel = fuel_type_select()
+                volatility_button = ui.button("Cargar volatilidad").props("unelevated color=primary")
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                    period = historical_period_select()
+                    mainland_only = ui.checkbox("Solo peninsula", value=True)
+
+        status_container = ui.column().classes("w-full")
+        summary_container = ui.column().classes("w-full")
+        table_container = ui.column().classes("w-full")
+
+    set_status = _make_set_status(status_container)
+
+    async def on_load_volatility() -> None:
+        summary_container.clear()
+        table_container.clear()
+        set_status("loading", "Cargando ranking de volatilidad...")
+        volatility_button.disable()
+        try:
+            fuel_type = FuelType(fuel.value)
+            hist_period = HistoricalPeriod(period.value)
+            days_back = HISTORICAL_PERIOD_DAYS[hist_period]
+            df = await run.io_bound(get_zone_volatility_ranking, fuel_type, days_back, mainland_only.value)
+
+            if df.empty:
+                set_status(
+                    "empty",
+                    "No hay datos de volatilidad disponibles. Actualiza la agregacion historica y vuelve a intentarlo.",
+                )
+                return
+
+            with summary_container:
+                kpi_row(volatility_kpis(df))
+
+            with table_container:
+                columns = [
+                    {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
+                    {"name": "zip_code", "label": "CP", "field": "zip_code", "align": "left", "sortable": True},
+                    {"name": "province", "label": "Provincia", "field": "province", "align": "left", "sortable": True},
+                    {
+                        "name": "coefficient_of_variation",
+                        "label": "CV",
+                        "field": "coefficient_of_variation",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "std_dev_price",
+                        "label": "Desv. est. (EUR/L)",
+                        "field": "std_dev_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "avg_price",
+                        "label": "Precio medio (EUR/L)",
+                        "field": "avg_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "min_price",
+                        "label": "Minimo (EUR/L)",
+                        "field": "min_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "max_price",
+                        "label": "Maximo (EUR/L)",
+                        "field": "max_price",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "price_range",
+                        "label": "Rango (EUR/L)",
+                        "field": "price_range",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                    {
+                        "name": "observation_days",
+                        "label": "Dias observados",
+                        "field": "observation_days",
+                        "align": "right",
+                        "sortable": True,
+                    },
+                ]
+                rows = []
+                for idx, row in df.iterrows():
+                    rows.append(
+                        {
+                            "ranking": idx + 1,
+                            "zip_code": str(row["zip_code"]),
+                            "province": str(row["province"]).title(),
+                            "coefficient_of_variation": format_percentage(row["coefficient_of_variation"]),
+                            "std_dev_price": f"{row['std_dev_price']:.4f}",
+                            "avg_price": f"{row['avg_price']:.4f}",
+                            "min_price": f"{row['min_price']:.4f}",
+                            "max_price": f"{row['max_price']:.4f}",
+                            "price_range": f"{row['price_range']:.4f}",
+                            "observation_days": int(row["observation_days"]),
+                        }
+                    )
+                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+                table.props("dense flat bordered separator=cell")
+
+            date_to = date.today()
+            date_from = date_to - timedelta(days=days_back)
+            set_status(
+                "success",
+                f"Ranking cargado ({len(df)} zonas). "
+                f"Periodo: {date_from.strftime('%d/%m/%Y')} — {date_to.strftime('%d/%m/%Y')} "
+                f"({HISTORICAL_PERIOD_LABELS[hist_period]}).",
+            )
+        except Exception:
+            logger.exception("Zone volatility error")
+            set_status("error", "No se pudo cargar el ranking de volatilidad. Intentalo de nuevo.")
+        finally:
+            volatility_button.enable()
+
+    volatility_button.on("click", lambda _: on_load_volatility())
+    set_status("info", "Descubre que codigos postales han sido mas estables en el tiempo.")
 
 
 def _build_data_quality_panel() -> None:

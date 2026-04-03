@@ -131,6 +131,12 @@ def format_delta(delta: float) -> str:
     return f"{sign}{delta:.3f} EUR/L"
 
 
+def format_percentage(value: Optional[float], decimals: int = 2) -> str:
+    if value is None:
+        return "-"
+    return f"{value * 100:.{decimals}f}%"
+
+
 def station_summary(stations: Sequence[StationResult]) -> Dict[str, Any]:
     if not stations:
         return {
@@ -547,6 +553,45 @@ def brand_ranking_kpis(df) -> List[Dict[str, str]]:
         },
         {
             "label": "Marcas analizadas",
+            "value": str(len(df)),
+        },
+    ]
+
+
+def volatility_kpis(df) -> List[Dict[str, str]]:
+    if df.empty:
+        return []
+
+    most_stable = df.iloc[0]
+    least_stable = df.iloc[-1]
+    median_cv = df["coefficient_of_variation"].median()
+
+    return [
+        {
+            "label": "Zona mas estable",
+            "value": str(most_stable["zip_code"]),
+            "color": "text-green-600",
+            "description": (
+                f"{str(most_stable['province']).title()} | "
+                f"CV {format_percentage(most_stable['coefficient_of_variation'])}"
+            ),
+        },
+        {
+            "label": "Zona mas volatil",
+            "value": str(least_stable["zip_code"]),
+            "color": "text-red-600",
+            "description": (
+                f"{str(least_stable['province']).title()} | "
+                f"CV {format_percentage(least_stable['coefficient_of_variation'])}"
+            ),
+        },
+        {
+            "label": "CV mediano",
+            "value": format_percentage(median_cv),
+            "description": "dispersion relativa del precio medio diario",
+        },
+        {
+            "label": "Zonas analizadas",
             "value": str(len(df)),
         },
     ]

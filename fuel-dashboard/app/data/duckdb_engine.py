@@ -524,3 +524,100 @@ def query_brand_price_trend(aggregate_df: pd.DataFrame, fuel_type: str, days_bac
         finally:
             conn.execute("DROP TABLE IF EXISTS _brand_trend_agg")
     return result
+
+
+def query_volatility_by_zone(
+    aggregate_df: pd.DataFrame,
+    fuel_type: str,
+    days_back: int,
+    mainland_only: bool = True,
+) -> pd.DataFrame:
+    """Query ZIP-code price volatility from the pre-computed zip_code_daily_stats aggregate."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    expected_columns = {
+        "date",
+        "zip_code",
+        "province",
+        "fuel_type",
+        "avg_price",
+        "min_price",
+        "max_price",
+        "station_count",
+    }
+    if aggregate_df is None or aggregate_df.empty or not expected_columns.issubset(aggregate_df.columns):
+        return pd.DataFrame(
+            columns=[
+                "zip_code",
+                "province",
+                "avg_price",
+                "std_dev_price",
+                "coefficient_of_variation",
+                "min_price",
+                "max_price",
+                "price_range",
+                "observation_days",
+                "avg_station_count",
+            ]
+        )
+
+    min_observation_days = max(2, math.ceil(days_back * 0.7))
+    df = aggregate_df  # noqa: F841
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _zip_volatility_agg")
+        conn.execute("CREATE TEMP TABLE _zip_volatility_agg AS SELECT * FROM df")
+        try:
+            if mainland_only:
+                from data.geojson_loader import _NON_MAINLAND_DATA_NAMES
+
+                result = conn.execute(
+                    """
+                    SELECT
+                        zip_code,
+                        province,
+                        AVG(avg_price) AS avg_price,
+                        STDDEV_SAMP(avg_price) AS std_dev_price,
+                        STDDEV_SAMP(avg_price) / NULLIF(AVG(avg_price), 0) AS coefficient_of_variation,
+                        MIN(avg_price) AS min_price,
+                        MAX(avg_price) AS max_price,
+                        MAX(avg_price) - MIN(avg_price) AS price_range,
+                        CAST(COUNT(*) AS INTEGER) AS observation_days,
+                        AVG(station_count) AS avg_station_count
+                    FROM _zip_volatility_agg
+                    WHERE fuel_type = $1
+                        AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                        AND province NOT IN (SELECT UNNEST($3::VARCHAR[]))
+                    GROUP BY zip_code, province
+                    HAVING COUNT(*) >= $4
+                        AND AVG(station_count) >= 3
+                    ORDER BY coefficient_of_variation ASC, std_dev_price ASC, avg_price ASC
+                    """,
+                    [fuel_type, days_back, list(_NON_MAINLAND_DATA_NAMES), min_observation_days],
+                ).fetchdf()
+            else:
+                result = conn.execute(
+                    """
+                    SELECT
+                        zip_code,
+                        province,
+                        AVG(avg_price) AS avg_price,
+                        STDDEV_SAMP(avg_price) AS std_dev_price,
+                        STDDEV_SAMP(avg_price) / NULLIF(AVG(avg_price), 0) AS coefficient_of_variation,
+                        MIN(avg_price) AS min_price,
+                        MAX(avg_price) AS max_price,
+                        MAX(avg_price) - MIN(avg_price) AS price_range,
+                        CAST(COUNT(*) AS INTEGER) AS observation_days,
+                        AVG(station_count) AS avg_station_count
+                    FROM _zip_volatility_agg
+                    WHERE fuel_type = $1
+                        AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                    GROUP BY zip_code, province
+                    HAVING COUNT(*) >= $3
+                        AND AVG(station_count) >= 3
+                    ORDER BY coefficient_of_variation ASC, std_dev_price ASC, avg_price ASC
+                    """,
+                    [fuel_type, days_back, min_observation_days],
+                ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _zip_volatility_agg")
+    return result

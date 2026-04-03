@@ -15,6 +15,7 @@ from ui.view_models import search_mode_metadata
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
 from ui.view_models import trend_kpis
+from ui.view_models import volatility_kpis
 from ui.view_models import zone_kpis
 
 
@@ -198,3 +199,24 @@ def test_best_day_advice_returns_none_for_tiny_diff():
         }
     )
     assert best_day_advice(df) is None
+
+
+def test_volatility_kpis_populated():
+    df = pd.DataFrame(
+        {
+            "zip_code": ["28001", "41001", "50001"],
+            "province": ["madrid", "sevilla", "zaragoza"],
+            "coefficient_of_variation": [0.0010, 0.0040, 0.0020],
+        }
+    )
+
+    cards = volatility_kpis(df)
+
+    assert len(cards) == 4
+    assert cards[0]["value"] == "28001"
+    assert "Madrid" in cards[0]["description"]
+    assert cards[3]["value"] == "3"
+
+
+def test_volatility_kpis_empty():
+    assert volatility_kpis(pd.DataFrame()) == []

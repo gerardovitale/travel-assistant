@@ -7,6 +7,7 @@ from ui.view_models import brand_ranking_kpis
 from ui.view_models import day_of_week_kpis
 from ui.view_models import province_ranking_kpis
 from ui.view_models import SPANISH_DAY_NAMES
+from ui.view_models import volatility_kpis
 
 from data.geojson_loader import normalize_data_province_name
 
@@ -161,6 +162,7 @@ def _make_zip_code_daily_stats():
                 {
                     "date": datetime.date.today() - datetime.timedelta(days=4 - day_offset),
                     "zip_code": zip_code,
+                    "province": "madrid" if zip_code == "28001" else "barcelona",
                     "fuel_type": "gasoline_95_e5_price",
                     "avg_price": avg + day_offset * 0.001,
                     "min_price": avg - 0.05,
@@ -168,6 +170,77 @@ def _make_zip_code_daily_stats():
                     "station_count": 25,
                 }
             )
+    return pd.DataFrame(rows)
+
+
+def _make_zip_code_volatility_stats(days=70):
+    rows = []
+    start_date = datetime.date.today() - datetime.timedelta(days=days - 1)
+    for day_offset in range(days):
+        current_date = start_date + datetime.timedelta(days=day_offset)
+        rows.extend(
+            [
+                {
+                    "date": current_date,
+                    "zip_code": "28001",
+                    "province": "madrid",
+                    "fuel_type": "gasoline_95_e5_price",
+                    "avg_price": 1.5000 + ((day_offset % 3) - 1) * 0.0010,
+                    "min_price": 1.4950,
+                    "max_price": 1.5050,
+                    "station_count": 5,
+                },
+                {
+                    "date": current_date,
+                    "zip_code": "41001",
+                    "province": "sevilla",
+                    "fuel_type": "gasoline_95_e5_price",
+                    "avg_price": 1.5000 + ((day_offset % 5) - 2) * 0.0100,
+                    "min_price": 1.4500,
+                    "max_price": 1.5500,
+                    "station_count": 6,
+                },
+                {
+                    "date": current_date,
+                    "zip_code": "07001",
+                    "province": "balears (illes)",
+                    "fuel_type": "gasoline_95_e5_price",
+                    "avg_price": 1.4700 + ((day_offset % 4) - 2) * 0.0040,
+                    "min_price": 1.4500,
+                    "max_price": 1.4900,
+                    "station_count": 4,
+                },
+            ]
+        )
+
+    for day_offset in range(40):
+        rows.append(
+            {
+                "date": start_date + datetime.timedelta(days=day_offset),
+                "zip_code": "50001",
+                "province": "zaragoza",
+                "fuel_type": "gasoline_95_e5_price",
+                "avg_price": 1.4900 + ((day_offset % 4) - 2) * 0.0030,
+                "min_price": 1.4700,
+                "max_price": 1.5100,
+                "station_count": 5,
+            }
+        )
+
+    for day_offset in range(days):
+        rows.append(
+            {
+                "date": start_date + datetime.timedelta(days=day_offset),
+                "zip_code": "46001",
+                "province": "valencia / valència",
+                "fuel_type": "gasoline_95_e5_price",
+                "avg_price": 1.5100 + ((day_offset % 4) - 2) * 0.0020,
+                "min_price": 1.5000,
+                "max_price": 1.5200,
+                "station_count": 2,
+            }
+        )
+
     return pd.DataFrame(rows)
 
 
@@ -310,3 +383,69 @@ class TestQueryZipCodePriceTrend:
         result = query_zip_code_price_trend(df, "99999", "gasoline_95_e5_price", 90)
 
         assert result.empty
+
+
+class TestVolatilityKpis:
+
+    def test_returns_4_cards(self):
+        df = pd.DataFrame(
+            {
+                "zip_code": ["28001", "41001"],
+                "province": ["madrid", "sevilla"],
+                "avg_price": [1.50, 1.51],
+                "std_dev_price": [0.001, 0.010],
+                "coefficient_of_variation": [0.0007, 0.0066],
+                "min_price": [1.499, 1.48],
+                "max_price": [1.501, 1.54],
+                "price_range": [0.002, 0.06],
+                "observation_days": [70, 70],
+                "avg_station_count": [5, 6],
+            }
+        )
+
+        cards = volatility_kpis(df)
+
+        assert len(cards) == 4
+        assert cards[0]["value"] == "28001"
+        assert "Madrid" in cards[0]["description"]
+
+    def test_empty_df_returns_empty(self):
+        assert volatility_kpis(pd.DataFrame()) == []
+
+
+class TestQueryVolatilityByZone:
+
+    def test_query_computes_metrics_and_orders_by_lowest_cv(self):
+        from data.duckdb_engine import query_volatility_by_zone
+
+        df = _make_zip_code_volatility_stats()
+        result = query_volatility_by_zone(df, "gasoline_95_e5_price", 90, mainland_only=False)
+
+        assert not result.empty
+        assert set(result.columns) == {
+            "zip_code",
+            "province",
+            "avg_price",
+            "std_dev_price",
+            "coefficient_of_variation",
+            "min_price",
+            "max_price",
+            "price_range",
+            "observation_days",
+            "avg_station_count",
+        }
+        assert result.iloc[0]["zip_code"] == "28001"
+        assert result.iloc[-1]["zip_code"] == "41001"
+        assert result.iloc[0]["coefficient_of_variation"] < result.iloc[-1]["coefficient_of_variation"]
+
+    def test_query_excludes_non_mainland_low_coverage_and_low_station_zones(self):
+        from data.duckdb_engine import query_volatility_by_zone
+
+        df = _make_zip_code_volatility_stats()
+        result = query_volatility_by_zone(df, "gasoline_95_e5_price", 90, mainland_only=True)
+
+        zip_codes = set(result["zip_code"])
+        assert "07001" not in zip_codes
+        assert "50001" not in zip_codes
+        assert "46001" not in zip_codes
+        assert zip_codes == {"28001", "41001"}
