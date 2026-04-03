@@ -1,5 +1,6 @@
 import logging
 import re
+from time import perf_counter
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -311,12 +312,25 @@ def get_postal_code_geojson(zip_codes: List[str]) -> dict:
 def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:
     _validate_zip_code(zip_code)
     days_back = TREND_PERIOD_DAYS[period]
+    benchmark_start = perf_counter()
     aggregate_df = download_aggregate("zip_code_daily_stats.parquet")
     if aggregate_df is not None:
+        data_source = "zip_code_daily_stats"
         df = query_zip_code_price_trend(aggregate_df, zip_code, fuel_type.value, days_back)
     else:
+        data_source = "raw_parquet_fallback"
         files = list_parquet_files(days_back=days_back)
         df = query_price_trends(files, zip_code, fuel_type.value)
+    benchmark_ms = round((perf_counter() - benchmark_start) * 1000, 2)
+    logger.info(
+        "zone_trend_query_benchmark source=%s zip_code=%s fuel_type=%s period_days=%s rows=%s duration_ms=%s",
+        data_source,
+        zip_code,
+        fuel_type.value,
+        days_back,
+        len(df),
+        benchmark_ms,
+    )
     return [
         TrendPoint(
             date=str(row["date"]),

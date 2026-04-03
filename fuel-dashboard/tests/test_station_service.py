@@ -205,6 +205,33 @@ def test_get_price_trends(mock_download, mock_query):
     mock_query.assert_called_once_with(mock_download.return_value, "28001", FuelType.diesel_a_price.value, 7)
 
 
+@patch("services.station_service.logger")
+@patch("services.station_service.perf_counter")
+@patch("services.station_service.query_zip_code_price_trend")
+@patch("services.station_service.download_aggregate")
+def test_get_price_trends_logs_benchmark_for_zip_aggregate(mock_download, mock_query, mock_perf_counter, mock_logger):
+    from services.station_service import get_price_trends
+
+    mock_perf_counter.side_effect = [10.0, 10.125]
+    mock_download.return_value = pd.DataFrame({"zip_code": ["28001"]})
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01"],
+            "avg_price": [1.45],
+            "min_price": [1.40],
+            "max_price": [1.50],
+        }
+    )
+
+    get_price_trends("28001", FuelType.diesel_a_price, TrendPeriod.week)
+
+    mock_logger.info.assert_called_once()
+    log_args = mock_logger.info.call_args.args
+    assert "zone_trend_query_benchmark source=%s" in log_args[0]
+    assert log_args[1] == "zip_code_daily_stats"
+    assert log_args[6] == 125.0
+
+
 @patch("services.station_service.query_price_trends")
 @patch("services.station_service.list_parquet_files")
 @patch("services.station_service.download_aggregate")
@@ -226,6 +253,37 @@ def test_get_price_trends_falls_back_to_raw_history(mock_download, mock_list, mo
     assert len(results) == 1
     mock_list.assert_called_once_with(days_back=7)
     mock_query.assert_called_once_with(["file1.parquet", "file2.parquet"], "28001", FuelType.diesel_a_price.value)
+
+
+@patch("services.station_service.logger")
+@patch("services.station_service.perf_counter")
+@patch("services.station_service.query_price_trends")
+@patch("services.station_service.list_parquet_files")
+@patch("services.station_service.download_aggregate")
+def test_get_price_trends_logs_benchmark_for_raw_fallback(
+    mock_download, mock_list, mock_query, mock_perf_counter, mock_logger
+):
+    from services.station_service import get_price_trends
+
+    mock_perf_counter.side_effect = [20.0, 20.2501]
+    mock_download.return_value = None
+    mock_list.return_value = ["file1.parquet"]
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01"],
+            "avg_price": [1.45],
+            "min_price": [1.40],
+            "max_price": [1.50],
+        }
+    )
+
+    get_price_trends("28001", FuelType.diesel_a_price, TrendPeriod.week)
+
+    mock_logger.info.assert_called_once()
+    log_args = mock_logger.info.call_args.args
+    assert "zone_trend_query_benchmark source=%s" in log_args[0]
+    assert log_args[1] == "raw_parquet_fallback"
+    assert log_args[6] == 250.1
 
 
 @patch("services.station_service.load_postal_code_boundary")
