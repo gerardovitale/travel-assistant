@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -20,7 +21,9 @@ from services.routing import get_road_distances
 from services.routing import get_route_geometries
 
 from data.duckdb_engine import get_distinct_provinces
+from data.duckdb_engine import is_zip_code_trend_ready
 from data.duckdb_engine import query_avg_price_by_province
+from data.duckdb_engine import query_cached_zip_code_price_trend
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_cheapest_zones_by_municipality
@@ -31,7 +34,6 @@ from data.duckdb_engine import query_price_trends
 from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
 from data.duckdb_engine import query_volatility_by_zone
-from data.duckdb_engine import query_zip_code_price_trend
 from data.duckdb_engine import query_zip_codes_by_district
 from data.gcs_client import download_aggregate
 from data.gcs_client import list_parquet_files
@@ -312,13 +314,16 @@ def get_postal_code_geojson(zip_codes: List[str]) -> dict:
 def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:
     _validate_zip_code(zip_code)
     days_back = TREND_PERIOD_DAYS[period]
-    aggregate_df = download_aggregate("zip_code_daily_stats.parquet")
-    if aggregate_df is not None:
-        df = query_zip_code_price_trend(aggregate_df, zip_code, fuel_type.value, days_back)
+    started = time.perf_counter()
+    source = "duckdb_trend_cache"
+    if is_zip_code_trend_ready():
+        df = query_cached_zip_code_price_trend(zip_code, fuel_type.value, days_back)
     else:
+        source = "raw_history_fallback"
+        logger.warning("Zip-code trend cache not ready; falling back to raw history for %s", zip_code)
         files = list_parquet_files(days_back=days_back)
         df = query_price_trends(files, zip_code, fuel_type.value)
-    return [
+    trend = [
         TrendPoint(
             date=str(row["date"]),
             avg_price=row["avg_price"],
@@ -327,6 +332,15 @@ def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) ->
         )
         for _, row in df.iterrows()
     ]
+    duration_ms = (time.perf_counter() - started) * 1000
+    logger.info(
+        "Loaded price trends for %s from %s (%s rows, %.1f ms)",
+        zip_code,
+        source,
+        len(trend),
+        duration_ms,
+    )
+    return trend
 
 
 def get_province_ranking(fuel_type: FuelType, days_back: int) -> pd.DataFrame:

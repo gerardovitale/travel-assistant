@@ -4,12 +4,15 @@ import duckdb
 import pandas as pd
 import pytest
 
+import data.duckdb_engine as duckdb_engine_module
 from data.duckdb_engine import _validate_fuel_column
+from data.duckdb_engine import query_cached_zip_code_price_trend
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_stations_within_radius
+from data.duckdb_engine import refresh_zip_code_trend_snapshot
 
 
 def _setup_test_table(conn):
@@ -27,6 +30,25 @@ def _setup_test_table(conn):
     )
     conn.execute("DROP TABLE IF EXISTS latest_stations")
     conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
+
+
+def _make_zip_trend_df():
+    return pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2026-03-29", "2026-03-30", "2026-03-31"]).date,
+            "zip_code": ["28001", "28001", "08001"],
+            "province": ["madrid", "madrid", "barcelona"],
+            "fuel_type": ["diesel_a_price", "diesel_a_price", "diesel_a_price"],
+            "avg_price": [1.45, 1.47, 1.52],
+            "min_price": [1.40, 1.42, 1.49],
+            "max_price": [1.50, 1.52, 1.55],
+            "station_count": [5, 4, 3],
+        }
+    )
+
+
+def _make_legacy_zip_trend_df():
+    return _make_zip_trend_df().drop(columns=["province"])
 
 
 @patch("data.duckdb_engine.get_connection")
@@ -114,3 +136,96 @@ def test_query_rejects_invalid_fuel_column(mock_conn):
 
     with pytest.raises(ValueError, match="Invalid fuel column"):
         query_cheapest_by_zip("28001", "malicious_column", 3)
+
+
+@patch("data.duckdb_engine.download_aggregate")
+@patch("data.duckdb_engine.get_connection")
+def test_refresh_zip_code_trend_snapshot_loads_persistent_table(mock_conn, mock_download):
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    mock_download.return_value = _make_zip_trend_df()
+    duckdb_engine_module._zip_code_trend_ready.clear()
+
+    refreshed = refresh_zip_code_trend_snapshot()
+
+    assert refreshed is True
+    count = conn.execute("SELECT COUNT(*) FROM zip_code_daily_stats").fetchone()[0]
+    assert count == 3
+    assert duckdb_engine_module.is_zip_code_trend_ready() is True
+
+
+@patch("data.duckdb_engine.download_aggregate")
+@patch("data.duckdb_engine.get_connection")
+def test_refresh_zip_code_trend_snapshot_accepts_legacy_aggregate_without_province(mock_conn, mock_download):
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    mock_download.return_value = _make_legacy_zip_trend_df()
+    duckdb_engine_module._zip_code_trend_ready.clear()
+
+    refreshed = refresh_zip_code_trend_snapshot()
+
+    assert refreshed is True
+    result = conn.execute(
+        "SELECT province FROM zip_code_daily_stats WHERE zip_code = '28001' ORDER BY date ASC LIMIT 1"
+    ).fetchone()
+    assert result == (None,)
+    assert duckdb_engine_module.is_zip_code_trend_ready() is True
+
+
+@patch("data.duckdb_engine.download_aggregate")
+@patch("data.duckdb_engine.get_connection")
+def test_refresh_zip_code_trend_snapshot_keeps_last_good_snapshot_when_download_returns_none(mock_conn, mock_download):
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = _make_zip_trend_df()  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+    mock_download.return_value = None
+
+    refreshed = refresh_zip_code_trend_snapshot()
+
+    assert refreshed is False
+    assert duckdb_engine_module.is_zip_code_trend_ready() is True
+    count = conn.execute("SELECT COUNT(*) FROM zip_code_daily_stats").fetchone()[0]
+    assert count == 3
+
+
+@patch("data.duckdb_engine.download_aggregate")
+@patch("data.duckdb_engine.get_connection")
+def test_refresh_zip_code_trend_snapshot_keeps_last_good_snapshot_when_aggregate_is_invalid(mock_conn, mock_download):
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = _make_zip_trend_df()  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+    mock_download.return_value = pd.DataFrame({"zip_code": ["28001"]})
+
+    refreshed = refresh_zip_code_trend_snapshot()
+
+    assert refreshed is False
+    assert duckdb_engine_module.is_zip_code_trend_ready() is True
+    count = conn.execute("SELECT COUNT(*) FROM zip_code_daily_stats").fetchone()[0]
+    assert count == 3
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_cached_zip_code_price_trend_reads_from_persistent_table(mock_conn):
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = _make_zip_trend_df()  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_cached_zip_code_price_trend("28001", "diesel_a_price", 90)
+
+    assert len(result) == 2
+    assert set(result.columns) == {"date", "avg_price", "min_price", "max_price"}
+    assert result.iloc[0]["avg_price"] == pytest.approx(1.45, abs=0.001)
+
+
+def test_query_cached_zip_code_price_trend_returns_empty_when_not_ready():
+    duckdb_engine_module._zip_code_trend_ready.clear()
+
+    result = query_cached_zip_code_price_trend("28001", "diesel_a_price", 90)
+
+    assert result.empty

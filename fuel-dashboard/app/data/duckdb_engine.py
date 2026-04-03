@@ -2,6 +2,7 @@ import functools
 import logging
 import math
 import threading
+import time
 from typing import List
 from typing import Optional
 
@@ -10,6 +11,7 @@ import pandas as pd
 from api.schemas import FuelType
 from config import settings
 
+from data.gcs_client import download_aggregate
 from data.gcs_client import download_parquet_as_df
 from data.gcs_client import download_parquets_as_df
 from data.gcs_client import get_latest_parquet_file
@@ -27,6 +29,38 @@ def _validate_fuel_column(fuel_type: str) -> str:
 
 _connection: Optional[duckdb.DuckDBPyConnection] = None
 _lock = threading.Lock()
+_zip_code_trend_ready = threading.Event()
+_last_successful_trend_refresh: Optional[float] = None
+
+ZIP_CODE_TREND_TABLE = "zip_code_daily_stats"
+ZIP_CODE_TREND_COLUMNS = (
+    "date",
+    "zip_code",
+    "province",
+    "fuel_type",
+    "avg_price",
+    "min_price",
+    "max_price",
+    "station_count",
+)
+
+
+def _normalize_zip_code_trend_aggregate(aggregate_df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    if aggregate_df is None:
+        return None
+
+    if aggregate_df.empty:
+        return aggregate_df
+
+    if "province" not in aggregate_df.columns:
+        legacy_columns = set(ZIP_CODE_TREND_COLUMNS) - {"province"}
+        if legacy_columns.issubset(aggregate_df.columns):
+            normalized_df = aggregate_df.copy()
+            normalized_df["province"] = None
+            logger.info("Loaded legacy zip-code trend aggregate without province column; filling province with nulls")
+            return normalized_df
+
+    return aggregate_df
 
 
 def get_connection() -> duckdb.DuckDBPyConnection:
@@ -56,6 +90,59 @@ def refresh_latest_snapshot() -> None:
         count = conn.execute("SELECT COUNT(*) FROM latest_stations").fetchone()[0]
     query_national_avg_price.cache_clear()
     logger.info(f"Loaded {count} stations into latest_stations table")
+
+
+def is_zip_code_trend_ready() -> bool:
+    return _zip_code_trend_ready.is_set()
+
+
+def _log_trend_staleness():
+    if _last_successful_trend_refresh is not None:
+        stale_seconds = time.time() - _last_successful_trend_refresh
+        logger.warning("Last successful trend refresh was %.0f s ago", stale_seconds)
+
+
+def refresh_zip_code_trend_snapshot() -> bool:
+    global _last_successful_trend_refresh
+
+    had_snapshot = _zip_code_trend_ready.is_set()
+    started = time.perf_counter()
+    aggregate_df = _normalize_zip_code_trend_aggregate(download_aggregate("zip_code_daily_stats.parquet"))
+    if aggregate_df is None:
+        if had_snapshot:
+            logger.warning("Zip-code trend aggregate unavailable; keeping last good trend snapshot")
+            _log_trend_staleness()
+        else:
+            _zip_code_trend_ready.clear()
+            logger.warning("Zip-code trend aggregate unavailable; raw-history fallback will be used")
+        return False
+
+    expected_columns = set(ZIP_CODE_TREND_COLUMNS)
+    if aggregate_df.empty or not expected_columns.issubset(aggregate_df.columns):
+        if had_snapshot:
+            logger.warning(
+                "Zip-code trend aggregate invalid; keeping last good trend snapshot (%s)",
+                sorted(aggregate_df.columns.tolist()),
+            )
+            _log_trend_staleness()
+        else:
+            _zip_code_trend_ready.clear()
+            logger.warning(
+                "Zip-code trend aggregate invalid; raw-history fallback will be used (%s)",
+                sorted(aggregate_df.columns.tolist()),
+            )
+        return False
+
+    df = aggregate_df  # noqa: F841
+    with _lock:
+        conn = get_connection()
+        conn.execute(f"CREATE OR REPLACE TABLE {ZIP_CODE_TREND_TABLE} AS SELECT * FROM df")
+        row_count = conn.execute(f"SELECT COUNT(*) FROM {ZIP_CODE_TREND_TABLE}").fetchone()[0]
+    _zip_code_trend_ready.set()
+    _last_successful_trend_refresh = time.time()
+    duration_ms = (time.perf_counter() - started) * 1000
+    logger.info("Refreshed zip-code trend snapshot into DuckDB (%s rows, %.1f ms)", row_count, duration_ms)
+    return True
 
 
 def query_cheapest_by_zip(zip_code: str, fuel_type: str, limit: int = 5) -> pd.DataFrame:
@@ -193,6 +280,38 @@ def query_zip_code_price_trend(
             ).fetchdf()
         finally:
             conn.execute("DROP TABLE IF EXISTS _zip_trend_agg")
+    return result
+
+
+def query_cached_zip_code_price_trend(zip_code: str, fuel_type: str, days_back: int) -> pd.DataFrame:
+    """Query daily price trend for a zip code from the local DuckDB trend cache."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    if not _zip_code_trend_ready.is_set():
+        return pd.DataFrame(columns=["date", "avg_price", "min_price", "max_price"])
+
+    started = time.perf_counter()
+    with _lock:
+        conn = get_connection()
+        result = conn.execute(
+            f"""
+            SELECT date, avg_price, min_price, max_price
+            FROM {ZIP_CODE_TREND_TABLE}
+            WHERE zip_code = $1
+                AND fuel_type = $2
+                AND date >= CURRENT_DATE - INTERVAL ($3) DAY
+            ORDER BY date ASC
+            """,
+            [zip_code, fuel_type, days_back],
+        ).fetchdf()
+    duration_ms = (time.perf_counter() - started) * 1000
+    logger.info(
+        "Served zip-code trend query from DuckDB cache (%s/%s, %s days, %s rows, %.1f ms)",
+        zip_code,
+        fuel_type,
+        days_back,
+        len(result),
+        duration_ms,
+    )
     return result
 
 

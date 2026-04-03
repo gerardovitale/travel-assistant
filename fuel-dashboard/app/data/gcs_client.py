@@ -46,6 +46,12 @@ def _get_cache_dir() -> Path:
     return cache_dir
 
 
+def _aggregate_cached_path(name: str) -> Path:
+    blob_name = f"aggregates/{name}"
+    safe_name = blob_name.replace("/", "_")
+    return _get_cache_dir() / safe_name
+
+
 def _is_today_file(blob_name: str) -> bool:
     match = PARQUET_PATTERN.search(blob_name)
     if not match:
@@ -167,9 +173,7 @@ def download_aggregate(name: str) -> Optional[pd.DataFrame]:
     Cached locally with a TTL of parquet_cache_max_age_hours (same as today's files).
     """
     blob_name = f"aggregates/{name}"
-    cache_dir = _get_cache_dir()
-    safe_name = blob_name.replace("/", "_")
-    cached_path = cache_dir / safe_name
+    cached_path = _aggregate_cached_path(name)
 
     if cached_path.exists():
         age_hours = (time.time() - cached_path.stat().st_mtime) / 3600
@@ -194,3 +198,10 @@ def download_aggregate(name: str) -> Optional[pd.DataFrame]:
 
     logger.info(f"Downloaded aggregate {blob_name} ({len(df)} rows)")
     return df
+
+
+def get_aggregate_cache_age_seconds(name: str) -> Optional[float]:
+    cached_path = _aggregate_cached_path(name)
+    if not cached_path.exists():
+        return None
+    return max(0.0, time.time() - cached_path.stat().st_mtime)

@@ -13,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from ui.pages import init_ui
 
 from data.cache import start_cache_refresh
+from data.duckdb_engine import refresh_zip_code_trend_snapshot
 from data.gcs_client import get_latest_parquet_file
 from data.gcs_client import PARQUET_PATTERN
 from data.geojson_loader import load_provinces_geojson
@@ -23,8 +24,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    logger.info("Preloading zip-code trend cache")
+    trend_preloaded = False
+    try:
+        trend_preloaded = refresh_zip_code_trend_snapshot()
+    except Exception:
+        logger.exception("Failed to preload zip-code trend cache")
     logger.info("Starting cache refresh background task")
-    start_cache_refresh()
+    start_cache_refresh(skip_initial_trend_refresh=trend_preloaded)
     logger.info("Preloading GeoJSON data")
     load_provinces_geojson()
     yield

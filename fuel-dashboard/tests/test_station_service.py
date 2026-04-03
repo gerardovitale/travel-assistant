@@ -185,12 +185,12 @@ def test_get_cheapest_zones(mock_query):
     assert results[0].zip_code == "28001"
 
 
-@patch("services.station_service.query_zip_code_price_trend")
-@patch("services.station_service.download_aggregate")
-def test_get_price_trends(mock_download, mock_query):
+@patch("services.station_service.query_cached_zip_code_price_trend")
+@patch("services.station_service.is_zip_code_trend_ready")
+def test_get_price_trends(mock_ready, mock_query):
     from services.station_service import get_price_trends
 
-    mock_download.return_value = pd.DataFrame({"zip_code": ["28001"]})
+    mock_ready.return_value = True
     mock_query.return_value = pd.DataFrame(
         {
             "date": ["2025-01-01", "2025-01-02"],
@@ -202,16 +202,16 @@ def test_get_price_trends(mock_download, mock_query):
     results = get_price_trends("28001", FuelType.diesel_a_price, TrendPeriod.week)
     assert len(results) == 2
     assert results[0].date == "2025-01-01"
-    mock_query.assert_called_once_with(mock_download.return_value, "28001", FuelType.diesel_a_price.value, 7)
+    mock_query.assert_called_once_with("28001", FuelType.diesel_a_price.value, 7)
 
 
 @patch("services.station_service.query_price_trends")
 @patch("services.station_service.list_parquet_files")
-@patch("services.station_service.download_aggregate")
-def test_get_price_trends_falls_back_to_raw_history(mock_download, mock_list, mock_query):
+@patch("services.station_service.is_zip_code_trend_ready")
+def test_get_price_trends_falls_back_to_raw_history(mock_ready, mock_list, mock_query):
     from services.station_service import get_price_trends
 
-    mock_download.return_value = None
+    mock_ready.return_value = False
     mock_list.return_value = ["file1.parquet", "file2.parquet"]
     mock_query.return_value = pd.DataFrame(
         {

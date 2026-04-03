@@ -1,6 +1,9 @@
 # Makefile
 
 ENV := $(PWD)/.env
+
+# Trivy version must match aquasecurity/trivy-action in .github/workflows/deploy.yaml
+TRIVY_VERSION := 0.69.3
 DASHBOARD_CREDENTIALS_PATH ?= $(PWD)/fuel-dashboard/gcs-fuel-dashboard-credentials.json
 
 include $(ENV)
@@ -12,7 +15,19 @@ setup:
 
 test: fuel-ingestor.test fuel-dashboard.test
 test-local: fuel-ingestor.test-local fuel-dashboard.test-local
+scan: fuel-ingestor.scan fuel-dashboard.scan
 done: setup test scan
+
+
+# DATA
+data.download-fuel-daily-prices:
+	cd fuel-dashboard && uv run python ../scripts/download_fuel_data.py
+
+data.download-aggregates:
+	mkdir -p ./data/aggregates
+	gsutil -m -o "GSUtil:parallel_process_count=1" cp \
+		"gs://travel-assistant-spain-fuel-prices/aggregates/**/*.parquet" \
+		./data/aggregates
 
 notebook:
 	docker run -it --rm -p 8888:8888 \
@@ -39,9 +54,6 @@ test-local: fuel-ingestor.test-local fuel-dashboard.test-local
 
 
 # IMAGE SCANNING
-# Trivy version must match aquasecurity/trivy-action in .github/workflows/deploy.yaml
-TRIVY_VERSION := 0.69.3
-
 fuel-ingestor.scan:
 	docker buildx build -t travass-fuel-ingestor:local fuel-ingestor/ && \
 	docker run --rm \
@@ -63,8 +75,6 @@ fuel-dashboard.scan:
 		--severity CRITICAL,HIGH \
 		--ignorefile /root/.trivyignore \
 		travass-fuel-dashboard:local
-
-scan: fuel-ingestor.scan fuel-dashboard.scan
 
 
 # CLOUD RUN JOB
@@ -106,16 +116,3 @@ backend.destroy:
 	cd infra/backend_support/ && terraform destroy -auto-approve
 
 backend.run: backend.init backend.plan backend.apply
-
-
-# DATA
-data.download-fuel-daily-prices:
-	cd fuel-dashboard && uv run python ../scripts/download_fuel_data.py
-
-data.download-aggregates:
-	mkdir -p ./data/aggregates
-	gsutil -m -o "GSUtil:parallel_process_count=1" cp \
-	"gs://travel-assistant-spain-fuel-prices/aggregates/daily_ingestion_stats.parquet" \
-	"gs://travel-assistant-spain-fuel-prices/aggregates/day_of_week_stats.parquet" \
-	"gs://travel-assistant-spain-fuel-prices/aggregates/province_daily_stats.parquet" \
-	./data/aggregates
