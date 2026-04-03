@@ -12,6 +12,7 @@ setup:
 
 test: fuel-ingestor.test fuel-dashboard.test
 test-local: fuel-ingestor.test-local fuel-dashboard.test-local
+done: setup test scan
 
 notebook:
 	docker run -it --rm -p 8888:8888 \
