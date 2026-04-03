@@ -30,6 +30,8 @@ DAILY_INGESTION_STATS_COLUMNS = [
     "unique_municipality_names",
     "unique_localities",
     "unique_locality_names",
+    "unique_communities",
+    "unique_fuel_types",
 ]
 ZIP_CODE_DAILY_STATS_RETENTION_DAYS = 365
 REQUIRED_AGGREGATE_BLOBS = [
@@ -199,6 +201,10 @@ def compute_daily_ingestion_stats(raw_df):
                 "unique_municipality_names": raw_df["municipality"].nunique(),
                 "unique_localities": len(locality_keys),
                 "unique_locality_names": raw_df["locality"].nunique(),
+                "unique_communities": raw_df["ccaa_id"].nunique(),
+                "unique_fuel_types": sum(
+                    1 for col in FUEL_PRICE_COLUMNS if col in raw_df.columns and raw_df[col].notna().any()
+                ),
             }
         ],
         columns=DAILY_INGESTION_STATS_COLUMNS,

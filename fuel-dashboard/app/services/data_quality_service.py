@@ -70,6 +70,35 @@ def get_data_inventory(ingestion_stats: pd.DataFrame) -> Dict:
     }
 
 
+def get_latest_day_stats(ingestion_stats: pd.DataFrame, max_date: date) -> Dict:
+    """Extract key metrics from the latest available day in the ingestion stats."""
+    empty: Dict = {
+        "max_date": None,
+        "unique_stations": 0,
+        "unique_provinces": 0,
+        "unique_communities": 0,
+        "unique_localities": 0,
+        "unique_fuel_types": 0,
+    }
+    if ingestion_stats.empty or max_date is None:
+        return empty
+
+    dates = pd.to_datetime(ingestion_stats["date"]).dt.date
+    latest_rows = ingestion_stats[dates == max_date]
+    if latest_rows.empty:
+        return empty
+
+    row = latest_rows.iloc[0]
+    return {
+        "max_date": max_date,
+        "unique_stations": int(row.get("unique_stations", 0)),
+        "unique_provinces": int(row.get("unique_provinces", 0)),
+        "unique_communities": int(row.get("unique_communities", 0)),
+        "unique_localities": int(row.get("unique_localities", 0)),
+        "unique_fuel_types": int(row.get("unique_fuel_types", 0)),
+    }
+
+
 def get_missing_days(available_dates: Set[date], min_date: date, max_date: date) -> List[str]:
     """Find dates with no ingested data in the range."""
     all_dates = {d.date() for d in pd.date_range(min_date, max_date, freq="D")}

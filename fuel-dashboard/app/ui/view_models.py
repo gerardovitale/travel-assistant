@@ -586,6 +586,38 @@ def data_inventory_kpis(inventory: dict) -> list[dict]:
     ]
 
 
+def latest_day_kpis(latest_stats: dict) -> list[dict]:
+    """Build KPI cards for the latest day's snapshot metrics."""
+    max_date = latest_stats["max_date"]
+    date_str = max_date.isoformat() if max_date else "-"
+    return [
+        {
+            "label": "Ultima fecha disponible",
+            "value": date_str,
+        },
+        {
+            "label": "Estaciones cargadas",
+            "value": str(latest_stats["unique_stations"]),
+        },
+        {
+            "label": "Provincias",
+            "value": str(latest_stats["unique_provinces"]),
+        },
+        {
+            "label": "Comunidades autonomas",
+            "value": str(latest_stats["unique_communities"]),
+        },
+        {
+            "label": "Localidades",
+            "value": str(latest_stats["unique_localities"]),
+        },
+        {
+            "label": "Tipos de combustible",
+            "value": str(latest_stats["unique_fuel_types"]),
+        },
+    ]
+
+
 def missing_days_kpis(missing_days: list[str]) -> list[dict]:
     """Build KPI cards summarising missing ingestion days."""
     count = len(missing_days)

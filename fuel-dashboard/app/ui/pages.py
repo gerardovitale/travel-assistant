@@ -15,6 +15,7 @@ from nicegui import run
 from nicegui import ui
 from services.data_quality_service import get_data_inventory
 from services.data_quality_service import get_ingestion_stats
+from services.data_quality_service import get_latest_day_stats
 from services.data_quality_service import get_missing_days
 from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
@@ -66,6 +67,7 @@ from ui.view_models import brand_ranking_kpis
 from ui.view_models import data_inventory_kpis
 from ui.view_models import day_of_week_kpis
 from ui.view_models import HISTORICAL_PERIOD_LABELS
+from ui.view_models import latest_day_kpis
 from ui.view_models import missing_days_kpis
 from ui.view_models import province_ranking_kpis
 from ui.view_models import SCORE_METHODOLOGY_LINES
@@ -1120,6 +1122,7 @@ def _build_data_quality_panel() -> None:
 
         status_container = ui.column().classes("w-full")
         inventory_container = ui.column().classes("w-full")
+        latest_day_container = ui.column().classes("w-full")
         chart_container = ui.column().classes("w-full")
         missing_container = ui.column().classes("w-full")
 
@@ -1127,6 +1130,7 @@ def _build_data_quality_panel() -> None:
 
     async def on_load_quality() -> None:
         inventory_container.clear()
+        latest_day_container.clear()
         chart_container.clear()
         missing_container.clear()
         set_status("loading", "Cargando metricas de calidad de datos...")
@@ -1141,6 +1145,10 @@ def _build_data_quality_panel() -> None:
 
             with inventory_container:
                 kpi_row(data_inventory_kpis(inventory))
+
+            latest_stats = get_latest_day_stats(stats_df, inventory["max_date"])
+            with latest_day_container:
+                kpi_row(latest_day_kpis(latest_stats))
 
             missing = get_missing_days(inventory["available_dates"], inventory["min_date"], inventory["max_date"])
             with missing_container:

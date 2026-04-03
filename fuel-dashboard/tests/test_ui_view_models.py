@@ -1,3 +1,5 @@
+from datetime import date
+
 import pandas as pd
 import pytest
 from api.schemas import StationResult
@@ -8,6 +10,7 @@ from ui.view_models import format_delta
 from ui.view_models import format_distance
 from ui.view_models import format_price
 from ui.view_models import fuel_label
+from ui.view_models import latest_day_kpis
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
@@ -149,6 +152,39 @@ def test_missing_days_kpis_no_gaps():
     assert cards[0]["value"] == "0"
     assert cards[0]["color"] == "text-green-600"
     assert cards[1]["value"] == "-"
+
+
+def test_latest_day_kpis():
+    stats = {
+        "max_date": date(2026, 3, 22),
+        "unique_stations": 12000,
+        "unique_provinces": 52,
+        "unique_communities": 19,
+        "unique_localities": 8500,
+        "unique_fuel_types": 10,
+    }
+    cards = latest_day_kpis(stats)
+    assert len(cards) == 6
+    assert cards[0]["value"] == "2026-03-22"
+    assert cards[1]["value"] == "12000"
+    assert cards[2]["value"] == "52"
+    assert cards[3]["value"] == "19"
+    assert cards[4]["value"] == "8500"
+    assert cards[5]["value"] == "10"
+
+
+def test_latest_day_kpis_no_data():
+    stats = {
+        "max_date": None,
+        "unique_stations": 0,
+        "unique_provinces": 0,
+        "unique_communities": 0,
+        "unique_localities": 0,
+        "unique_fuel_types": 0,
+    }
+    cards = latest_day_kpis(stats)
+    assert cards[0]["value"] == "-"
+    assert cards[1]["value"] == "0"
 
 
 def test_best_day_advice_returns_none_for_tiny_diff():

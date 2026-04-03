@@ -25,6 +25,7 @@ def _make_raw_df():
         {
             "timestamp": ["2026-03-22T05:48:06"] * 6,
             "eess_id": ["1", "2", "3", "4", "5", "6"],
+            "ccaa_id": ["13", "13", "13", "09", "09", "09"],
             "municipality_id": ["101", "101", "102", "201", "201", "202"],
             "province_id": ["28", "28", "28", "08", "08", "08"],
             "label": ["Station A", "Station B", "Station C", "Station D", "Station E", "Station F"],
@@ -58,6 +59,7 @@ def _make_ingestion_stats_raw_df():
         {
             "timestamp": ["2026-03-22T05:48:06"] * 6,
             "eess_id": ["1", "2", "3", "4", "5", "6"],
+            "ccaa_id": ["13", "13", "13", "09", "09", "09"],
             "municipality_id": ["101", "101", "102", "201", "201", "202"],
             "province_id": ["28", "28", "28", "08", "08", "08"],
             "label": ["repsol", "repsol", "shell", "repsol", "bp", "bp"],
@@ -66,6 +68,7 @@ def _make_ingestion_stats_raw_df():
             "locality": ["Centro", "Centro", "Centro", "Centro", "Port", "Port"],
             "zip_code": ["28001", "28001", "28901", "28001", "08001", "08001"],
             "diesel_a_price": [1.45, 1.50, 1.48, 1.42, 1.44, 1.46],
+            "gasoline_95_e5_price": [1.55, 1.60, None, 1.52, 1.54, None],
         }
     )
 
@@ -77,6 +80,7 @@ def _make_brand_raw_df():
             {
                 "timestamp": "2026-03-22T05:48:06",
                 "eess_id": f"r{index}",
+                "ccaa_id": "13",
                 "municipality_id": "101",
                 "province_id": "28",
                 "label": "repsol",
@@ -92,6 +96,7 @@ def _make_brand_raw_df():
             {
                 "timestamp": "2026-03-22T05:48:06",
                 "eess_id": f"s{index}",
+                "ccaa_id": "09",
                 "municipality_id": "201",
                 "province_id": "08",
                 "label": "shell",
@@ -615,6 +620,8 @@ class TestComputeDailyIngestionStats(TestCase):
         self.assertEqual(row["unique_municipality_names"], 3)
         self.assertEqual(row["unique_localities"], 5)
         self.assertEqual(row["unique_locality_names"], 2)
+        self.assertEqual(row["unique_communities"], 2)
+        self.assertEqual(row["unique_fuel_types"], 2)
 
     def test_extracts_date_from_timestamp(self):
         import datetime
