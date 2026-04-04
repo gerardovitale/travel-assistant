@@ -12,6 +12,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from ui.pages import init_ui
 
+from data.cache import get_realtime_status
 from data.cache import start_cache_refresh
 from data.duckdb_engine import refresh_zip_code_trend_snapshot
 from data.gcs_client import get_latest_parquet_file
@@ -60,20 +61,37 @@ def health():
 
 @app.get("/health/data")
 def health_data():
+    realtime = get_realtime_status()
     latest = get_latest_parquet_file()
-    if latest is None:
+    if latest is None and not realtime["realtime_active"]:
         return JSONResponse(status_code=503, content={"status": "error", "detail": "No parquet files found"})
 
-    match = PARQUET_PATTERN.search(latest)
+    match = PARQUET_PATTERN.search(latest) if latest else None
     file_date_str = match.group(1) if match else "unknown"
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    if file_date_str == today_str:
-        return {"status": "ok", "latest_file": latest, "file_date": file_date_str}
+    source = "realtime" if realtime["realtime_active"] else "gcs"
+    result = {
+        "status": "ok",
+        "source": source,
+        "latest_file": latest,
+        "file_date": file_date_str,
+        "realtime": realtime,
+    }
 
+    if source == "realtime":
+        return result
+    if file_date_str == today_str:
+        return result
     return JSONResponse(
         status_code=503,
-        content={"status": "stale", "latest_file": latest, "file_date": file_date_str, "expected_date": today_str},
+        content={
+            "status": "stale",
+            "source": source,
+            "latest_file": latest,
+            "file_date": file_date_str,
+            "expected_date": today_str,
+        },
     )
 
 

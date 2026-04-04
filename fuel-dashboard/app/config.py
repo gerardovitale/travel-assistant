@@ -34,5 +34,9 @@ class Settings(BaseSettings):
 
     rate_limit: str = "60/minute"
 
+    realtime_enabled: bool = True
+    realtime_refresh_seconds: int = 600
+    realtime_curl_timeout: int = 120
+
 
 settings = Settings()

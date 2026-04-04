@@ -76,19 +76,28 @@ def get_connection() -> duckdb.DuckDBPyConnection:
     return _connection
 
 
-def refresh_latest_snapshot() -> None:
-    latest_file = get_latest_parquet_file()
-    if latest_file is None:
-        logger.warning("No parquet files found in GCS bucket")
-        return
-    logger.info(f"Refreshing latest snapshot from {latest_file}")
-    df = download_parquet_as_df(latest_file)  # noqa: F841
+def replace_latest_stations(df: pd.DataFrame) -> int:
+    """Atomically replace the latest_stations table with the given DataFrame.
+
+    Returns the number of rows loaded.
+    """
     with _lock:
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS latest_stations")
         conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
         count = conn.execute("SELECT COUNT(*) FROM latest_stations").fetchone()[0]
     query_national_avg_price.cache_clear()
+    return count
+
+
+def refresh_latest_snapshot() -> None:
+    latest_file = get_latest_parquet_file()
+    if latest_file is None:
+        logger.warning("No parquet files found in GCS bucket")
+        return
+    logger.info(f"Refreshing latest snapshot from {latest_file}")
+    df = download_parquet_as_df(latest_file)
+    count = replace_latest_stations(df)
     logger.info(f"Loaded {count} stations into latest_stations table")
 
 
