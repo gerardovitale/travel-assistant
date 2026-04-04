@@ -13,6 +13,7 @@ from config import settings
 from fastapi import FastAPI
 from nicegui import run
 from nicegui import ui
+from nicegui.elements.toggle import Toggle
 from services.data_quality_service import get_data_inventory
 from services.data_quality_service import get_ingestion_stats
 from services.data_quality_service import get_latest_day_stats
@@ -50,15 +51,20 @@ from ui.charts import build_trend_chart
 from ui.charts import build_trip_map
 from ui.charts import build_zip_code_choropleth
 from ui.components import advice_card
+from ui.components import card_nav
 from ui.components import empty_state
 from ui.components import fuel_type_select
 from ui.components import geolocation_button
 from ui.components import historical_period_select
+from ui.components import init_theme
 from ui.components import kpi_row
 from ui.components import loading_state
+from ui.components import page_header
 from ui.components import search_mode_select
+from ui.components import section_intro
 from ui.components import station_results_table
 from ui.components import status_banner
+from ui.components import summary_card
 from ui.components import top_cheapest_table
 from ui.components import trend_period_select
 from ui.components import trip_stops_table
@@ -69,15 +75,19 @@ from ui.view_models import data_inventory_kpis
 from ui.view_models import day_of_week_kpis
 from ui.view_models import format_percentage
 from ui.view_models import HISTORICAL_PERIOD_LABELS
+from ui.view_models import INSIGHT_SECTION_CARDS
 from ui.view_models import latest_day_kpis
 from ui.view_models import missing_days_kpis
+from ui.view_models import PRIMARY_NAV_ITEMS
 from ui.view_models import province_ranking_kpis
 from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
+from ui.view_models import search_recommendation
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
 from ui.view_models import trend_kpis
 from ui.view_models import trend_summary_cards
+from ui.view_models import trip_recommendation
 from ui.view_models import trip_summary_cards
 from ui.view_models import volatility_kpis
 from ui.view_models import zone_kpis
@@ -102,39 +112,56 @@ def _make_set_status(container: ui.column):
 
 
 def init_ui(app: FastAPI) -> None:
+    init_theme()
+
     @ui.page("/")
     def index():
-        page_container = ui.column().classes("w-full max-w-7xl mx-auto gap-3 p-4")
+        page_container = ui.column().classes("pe-page w-full max-w-7xl mx-auto p-4")
 
         def _render_dashboard() -> None:
             page_container.clear()
             with page_container:
-                ui.label("Panel de precios de combustible en Espana").classes("text-2xl font-bold")
-                ui.label(
-                    "Consulta estaciones, tendencias y zonas con una vista mas clara en movil y escritorio."
-                ).classes("text-sm text-gray-600")
+                state: Dict[str, Any] = {"active": PRIMARY_NAV_ITEMS[0].key}
 
-                with ui.tabs().classes("w-full") as tabs:
-                    search_tab = ui.tab("Buscar estaciones")
-                    trends_tab = ui.tab("Tendencias de precios")
-                    zones_tab = ui.tab("Comparar zonas")
-                    trip_tab = ui.tab("Planificar viaje")
-                    historical_tab = ui.tab("Analisis historico")
-                    data_quality_tab = ui.tab("Calidad de datos")
+                page_header(
+                    "Panel de precios de combustible en España",
+                    "Consulta estaciones, prepara un viaje o explora tendencias e historicos de precios, "
+                    "todo en un mismo lugar.",
+                    eyebrow="Fuel Precision",
+                    variant="hero",
+                )
+                nav_container = ui.row().classes("w-full gap-3 flex-wrap")
+                content_container = ui.column().classes("w-full")
 
-                with ui.tab_panels(tabs, value=search_tab).classes("w-full"):
-                    with ui.tab_panel(search_tab):
-                        _build_search_panel()
-                    with ui.tab_panel(trends_tab):
-                        _build_trends_panel()
-                    with ui.tab_panel(zones_tab):
-                        _build_zones_panel()
-                    with ui.tab_panel(trip_tab):
-                        _build_trip_panel()
-                    with ui.tab_panel(historical_tab):
-                        _build_historical_panel()
-                    with ui.tab_panel(data_quality_tab):
-                        _build_data_quality_panel()
+                def render_content() -> None:
+                    content_container.clear()
+                    with content_container:
+                        if state["active"] == "search":
+                            _build_search_panel()
+                        elif state["active"] == "trip":
+                            _build_trip_panel()
+                        else:
+                            _build_insights_panel()
+
+                def set_active(section_key: str) -> None:
+                    state["active"] = section_key
+                    render_nav()
+                    render_content()
+
+                def render_nav() -> None:
+                    nav_container.clear()
+                    with nav_container:
+                        card_nav(
+                            [
+                                {"key": item.key, "label": item.label, "description": item.description}
+                                for item in PRIMARY_NAV_ITEMS
+                            ],
+                            state["active"],
+                            set_active,
+                        )
+
+                render_nav()
+                render_content()
 
         if is_data_ready():
             _render_dashboard()
@@ -173,44 +200,60 @@ def _build_search_panel() -> None:
         if container is None or advanced is None:
             return
         _render_query_inputs(mode, container, advanced, state)
+        search_button.set_text(search_mode_metadata(mode.value).action_label)
 
-    with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
-            ui.label("Encuentra estaciones por codigo postal o direccion.").classes("text-sm text-gray-600")
-            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                mode = search_mode_select(on_change=on_mode_change)
+    with ui.column().classes("w-full gap-4"):
+        page_header(
+            "Busca la mejor estación",
+            "Busca por direccion o codigo postal y compara por cercania, precio o coste total.",
+            eyebrow="Buscar",
+        )
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-5"):
+            mode = search_mode_select(on_change=on_mode_change)
+            with ui.row().classes("w-full items-start gap-4 flex-wrap"):
+                dynamic_container = ui.column().classes("min-w-72 flex-1 gap-3")
+                state["dynamic_container"] = dynamic_container
                 fuel = fuel_type_select()
-            dynamic_container = ui.column().classes("w-full gap-2")
-            state["dynamic_container"] = dynamic_container
-            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+
+            with ui.expansion("Ajustes avanzados").classes("w-full").props("dense"):
+                ui.label(
+                    "Ajusta el numero de resultados y, si buscas la mejor opcion, tus parametros de vehiculo."
+                ).classes("text-xs text-gray-500")
                 advanced_container = ui.column().classes("w-full gap-2")
                 state["advanced_container"] = advanced_container
                 limit_input = ui.number(label="Numero de estaciones", value=5, min=1, max=20).classes("w-48")
-            search_button = ui.button("Buscar").props("unelevated color=primary")
+
+            with ui.row().classes("w-full justify-end"):
+                search_button = ui.button("Buscar estaciones").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
+        recommendation_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
         advice_container = ui.column().classes("w-full")
-        results_container = ui.column().classes("w-full")
         map_container = ui.column().classes("w-full")
+        results_container = ui.column().classes("w-full")
 
     set_status = _make_set_status(status_container)
 
     async def on_search() -> None:
-        summary_container.clear()
-        advice_container.clear()
-        results_container.clear()
-        map_container.clear()
+        def clear_search_outputs() -> None:
+            recommendation_container.clear()
+            summary_container.clear()
+            advice_container.clear()
+            map_container.clear()
+            results_container.clear()
+
+        clear_search_outputs()
         query_input = state.get("query_input")
         if query_input is None:
             return
         query_value = (query_input.value or "").strip()
         if not query_value:
-            set_status("warning", "Introduce un codigo postal o una direccion para continuar.")
+            set_status("warning", f"Introduce {search_mode_metadata(mode.value).query_label.lower()} para continuar.")
             return
 
         set_status("loading", "Buscando estaciones...")
-        with results_container:
+        with map_container:
             with ui.column().classes("w-full items-center py-8"):
                 ui.spinner(size="lg").classes("text-primary")
         search_button.disable()
@@ -235,7 +278,7 @@ def _build_search_panel() -> None:
             elif current_mode in ("nearest_by_address", "cheapest_by_address", "best_by_address"):
                 coords = await run.io_bound(geocode_address, query_value)
                 if coords is None:
-                    results_container.clear()
+                    clear_search_outputs()
                     set_status("warning", "No se pudo geocodificar la direccion proporcionada.")
                     return
                 search_lat, search_lon = coords
@@ -260,9 +303,10 @@ def _build_search_panel() -> None:
 
             results_container.clear()
             if not stations:
+                map_container.clear()
                 set_status("empty", "No se encontraron resultados para esta busqueda.")
                 with results_container:
-                    empty_state("Prueba con otro codigo postal, direccion o radio.")
+                    empty_state(search_mode_metadata(current_mode).empty_state_hint)
                 return
 
             summary = station_summary(stations)
@@ -271,8 +315,21 @@ def _build_search_panel() -> None:
                 set_status("success", f"{summary['count']} estaciones encontradas. Cargando rutas en el mapa...")
             else:
                 set_status("success", f"{summary['count']} estaciones encontradas.")
+            map_container.clear()
+            recommendation = search_recommendation(stations, current_mode)
+            with recommendation_container:
+                summary_card(
+                    recommendation["title"],
+                    recommendation["headline"],
+                    recommendation["detail"],
+                    recommendation["caption"],
+                    tone="info" if current_mode == "nearest_by_address" else "primary",
+                )
             with summary_container:
                 kpi_row(search_summary_cards(summary, current_mode))
+            if fetch_routes:
+                with map_container:
+                    ui.label("Mapa y accesos").classes("text-base font-semibold text-slate-900")
             with map_container:
                 fig, stations_trace_idx, highlight_trace_idx, route_trace_idx = build_station_map(
                     stations,
@@ -335,9 +392,11 @@ def _build_search_panel() -> None:
                 logger.warning("Could not load day-of-week advice", exc_info=True)
 
         except ValueError as exc:
+            map_container.clear()
             logger.warning("Search validation error: %s", exc)
             set_status("warning", str(exc))
         except Exception:
+            map_container.clear()
             logger.exception("Search error")
             set_status("error", "No se pudo completar la busqueda. Revisa los datos e intentalo de nuevo.")
         finally:
@@ -345,11 +404,12 @@ def _build_search_panel() -> None:
 
     search_button.on("click", lambda _: on_search())
     _render_query_inputs(mode, state["dynamic_container"], state["advanced_container"], state)
-    set_status("info", "Selecciona un modo y ejecuta una busqueda para ver resultados.")
+    search_button.set_text(search_mode_metadata(mode.value).action_label)
+    set_status("info", "Completa tu ubicacion, el combustible y la estrategia para ver una recomendacion clara.")
 
 
 def _render_query_inputs(
-    mode: ui.select, container: ui.column, advanced_container: ui.column, state: Dict[str, Any]
+    mode: Toggle, container: ui.column, advanced_container: ui.column, state: Dict[str, Any]
 ) -> None:
     metadata = search_mode_metadata(mode.value)
     container.clear()
@@ -362,51 +422,59 @@ def _render_query_inputs(
         if is_address_mode:
             with ui.row().classes("w-full items-end gap-2"):
                 query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
-                    "flex-grow max-w-lg"
+                    "flex-grow max-w-xl"
                 )
                 geolocation_button(query_input)
         else:
             query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
-                "w-full max-w-lg"
+                "w-full max-w-xl"
             )
         ui.label(metadata.helper_text).classes("text-xs text-gray-500")
+        if metadata.requires_radius:
+            state["radius_input"] = ui.number(
+                label="Radio de busqueda (km)",
+                value=settings.default_radius_km,
+                min=0.1,
+                max=50.0,
+            ).classes("w-48")
+        if metadata.requires_consumption:
+            ui.label(
+                "Usaremos tus ajustes del vehiculo para estimar si compensa desplazarte a una estacion mas barata."
+            ).classes("text-xs text-emerald-700")
         state["query_input"] = query_input
-    has_params = metadata.requires_radius or metadata.requires_consumption
-    if has_params:
+    if metadata.requires_consumption:
         with advanced_container:
+            section_intro(
+                "Ajustes del vehiculo",
+                "Solo se usan para la estrategia de mejor opcion.",
+            )
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                if metadata.requires_radius:
-                    state["radius_input"] = ui.number(
-                        label="Radio (km)", value=settings.default_radius_km, min=0.1, max=50.0
-                    ).classes("w-36")
-                if metadata.requires_consumption:
-                    state["consumption_input"] = ui.number(
-                        label="Consumo (l/100km)",
-                        value=settings.default_consumption_lper100km,
-                        min=1.0,
-                        max=30.0,
-                        step=0.5,
-                    ).classes("w-44")
-                    state["tank_input"] = ui.number(
-                        label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
-                    ).classes("w-40")
-            if metadata.requires_consumption:
-                with ui.expansion("Como se calcula la puntuacion?").classes("w-full text-sm").props("dense"):
-                    for line in SCORE_METHODOLOGY_LINES:
-                        if line:
-                            ui.label(line).classes("text-xs text-gray-600")
-                        else:
-                            ui.separator().classes("my-1")
+                state["consumption_input"] = ui.number(
+                    label="Consumo (l/100km)",
+                    value=settings.default_consumption_lper100km,
+                    min=1.0,
+                    max=30.0,
+                    step=0.5,
+                ).classes("w-44")
+                state["tank_input"] = ui.number(
+                    label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
+                ).classes("w-40")
+            with ui.expansion("Como se calcula la puntuacion?").classes("w-full text-sm").props("dense"):
+                for line in SCORE_METHODOLOGY_LINES:
+                    if line:
+                        ui.label(line).classes("text-xs text-gray-600")
+                    else:
+                        ui.separator().classes("my-1")
 
 
 def _build_trends_panel() -> None:
     with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
-            ui.label("Analiza la evolucion de precios por codigo postal.").classes("text-sm text-gray-600")
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
+            ui.label("Consulta la evolucion de precios por codigo postal.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 zip_input = ui.input(label="Codigo postal", placeholder="Ejemplo: 28001").classes("w-56")
                 fuel = fuel_type_select()
-                trend_button = ui.button("Cargar tendencia").props("unelevated color=primary")
+                trend_button = ui.button("Ver tendencia").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
                 with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                     period = trend_period_select()
@@ -472,13 +540,13 @@ def _build_zones_panel() -> None:
     }
 
     with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label("Compara zonas por precio promedio de combustible.").classes("text-sm text-gray-600")
             provinces = get_provinces()
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 province_input = ui.select(options=provinces, label="Provincia", with_input=True).classes("w-56")
                 fuel = fuel_type_select()
-                zones_button = ui.button("Cargar zonas").props("unelevated color=primary")
+                zones_button = ui.button("Comparar zonas").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
@@ -575,7 +643,7 @@ def _build_zones_panel() -> None:
 
     def _render_subregion_card(options: Dict[str, str], label: str) -> None:
         with subregion_container:
-            with ui.card().classes("w-full p-4"):
+            with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
                 ui.label(f"Selecciona un {label.lower()} para ver detalle por codigo postal").classes(
                     "text-sm text-gray-600"
                 )
@@ -664,60 +732,66 @@ def _build_zones_panel() -> None:
 
 
 def _build_trip_panel() -> None:
-    with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
-            ui.label("Planifica tu viaje y encuentra las paradas de repostaje mas baratas.").classes(
-                "text-sm text-gray-600"
-            )
+    with ui.column().classes("w-full gap-4"):
+        page_header(
+            "Planifica tu viaje",
+            "Mantiene origen y destino siempre visibles y resume primero si necesitas parar, donde compensa hacerlo "
+            "y cuanto desvio supone.",
+            eyebrow="Viaje",
+        )
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-5"):
+            section_intro("1. Ruta", "Indica el trayecto y el combustible que quieres usar en la planificacion.")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 with ui.row().classes("items-end gap-1"):
-                    origin_input = ui.input(label="Origen", placeholder="Ejemplo: Madrid").classes("w-56")
+                    origin_input = ui.input(label="Origen", placeholder="Ejemplo: Madrid").classes("w-64")
                     geolocation_button(origin_input)
                 with ui.row().classes("items-end gap-1"):
-                    dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-56")
+                    dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-64")
                     geolocation_button(dest_input)
                 fuel = fuel_type_select()
 
-            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
-                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                    detour_input = ui.number(
-                        label="Desviacion maxima (min)",
-                        value=settings.default_max_detour_minutes,
-                        min=1,
-                        max=30,
-                    ).classes("w-48")
-                with ui.expansion("Vehiculo").classes("w-full"):
-                    with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                        consumption_input = ui.number(
-                            label="Consumo (l/100km)",
-                            value=settings.default_consumption_lper100km,
-                            min=1.0,
-                            max=30.0,
-                            step=0.5,
-                        ).classes("w-44")
-                        tank_input = ui.number(
-                            label="Deposito (L)",
-                            value=settings.default_tank_liters,
-                            min=5.0,
-                            max=120.0,
-                            step=5.0,
-                        ).classes("w-40")
-                        fuel_level_slider = ui.slider(
-                            min=5,
-                            max=100,
-                            value=settings.default_fuel_level_pct,
-                            step=5,
-                        ).classes("w-56")
-                        fuel_level_label = ui.label(f"Nivel actual: {int(settings.default_fuel_level_pct)}%").classes(
-                            "text-sm text-gray-600"
-                        )
-                        fuel_level_slider.on_value_change(
-                            lambda e: fuel_level_label.set_text(f"Nivel actual: {int(e.value)}%")
-                        )
-
-            plan_button = ui.button("Planificar ruta").props("unelevated color=primary")
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-5"):
+            section_intro(
+                "2. Ajustes del vehiculo",
+                "Solo ajusta lo necesario: autonomia, nivel actual y el desvio maximo que estas dispuesto a asumir.",
+            )
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                detour_input = ui.number(
+                    label="Desviacion maxima (min)",
+                    value=settings.default_max_detour_minutes,
+                    min=1,
+                    max=30,
+                ).classes("w-48")
+                consumption_input = ui.number(
+                    label="Consumo (l/100km)",
+                    value=settings.default_consumption_lper100km,
+                    min=1.0,
+                    max=30.0,
+                    step=0.5,
+                ).classes("w-44")
+                tank_input = ui.number(
+                    label="Deposito (L)",
+                    value=settings.default_tank_liters,
+                    min=5.0,
+                    max=120.0,
+                    step=5.0,
+                ).classes("w-40")
+            with ui.row().classes("w-full items-center gap-4 flex-wrap"):
+                fuel_level_slider = ui.slider(
+                    min=5,
+                    max=100,
+                    value=settings.default_fuel_level_pct,
+                    step=5,
+                ).classes("w-72")
+                fuel_level_label = ui.label(f"Nivel actual: {int(settings.default_fuel_level_pct)}%").classes(
+                    "text-sm text-gray-600"
+                )
+                fuel_level_slider.on_value_change(lambda e: fuel_level_label.set_text(f"Nivel actual: {int(e.value)}%"))
+            with ui.row().classes("w-full justify-end"):
+                plan_button = ui.button("Planificar viaje").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
+        recommendation_container = ui.column().classes("w-full")
         summary_container = ui.column().classes("w-full")
         map_container = ui.column().classes("w-full")
         table_container = ui.column().classes("w-full")
@@ -725,6 +799,7 @@ def _build_trip_panel() -> None:
     set_status = _make_set_status(status_container)
 
     async def on_plan() -> None:
+        recommendation_container.clear()
         summary_container.clear()
         map_container.clear()
         table_container.clear()
@@ -762,6 +837,15 @@ def _build_trip_panel() -> None:
                     f"Ruta planificada: {len(trip_result.stops)} parada(s) recomendada(s).",
                 )
 
+            recommendation = trip_recommendation(trip_result)
+            with recommendation_container:
+                summary_card(
+                    recommendation["title"],
+                    recommendation["headline"],
+                    recommendation["detail"],
+                    recommendation["caption"],
+                    tone="info" if not trip_result.stops else "primary",
+                )
             with summary_container:
                 kpi_row(trip_summary_cards(trip_result))
 
@@ -771,21 +855,24 @@ def _build_trip_panel() -> None:
 
             if trip_result.stops:
                 with table_container:
+                    ui.label("Paradas recomendadas").classes("text-lg font-semibold")
                     trip_stops_table(trip_result.stops)
-
-            if trip_result.candidate_stations:
-                with table_container:
-                    ui.label("Top 5 estaciones mas baratas en la ruta").classes("text-lg font-semibold mt-4")
-                    top_cheapest_table(trip_result.candidate_stations)
 
             if trip_result.alternative_plans:
                 with table_container:
-                    with ui.expansion("Planes alternativos").classes("w-full mt-4"):
-                        for alt_plan in trip_result.alternative_plans:
-                            ui.label(alt_plan.strategy_name).classes("text-md font-semibold mt-2")
+                    ui.label("Planes alternativos").classes("text-lg font-semibold mt-4")
+                    for alt_plan in trip_result.alternative_plans:
+                        with ui.card().classes("pe-surface-card pe-ghost-outline w-full rounded-2xl p-4"):
+                            ui.label(alt_plan.strategy_name).classes("text-md font-semibold")
                             ui.label(alt_plan.strategy_description).classes("text-sm text-gray-600")
                             kpi_row(alternative_plan_cards(alt_plan))
-                            trip_stops_table(alt_plan.stops)
+                            with ui.expansion("Ver detalle de paradas").classes("w-full").props("dense"):
+                                trip_stops_table(alt_plan.stops)
+
+            if trip_result.candidate_stations:
+                with table_container:
+                    ui.label("Estaciones baratas en la ruta").classes("text-lg font-semibold mt-4")
+                    top_cheapest_table(trip_result.candidate_stations)
 
         except ValueError as exc:
             logger.warning("Trip planning validation error: %s", exc)
@@ -797,7 +884,56 @@ def _build_trip_panel() -> None:
             plan_button.enable()
 
     plan_button.on("click", lambda _: on_plan())
-    set_status("info", "Introduce origen, destino y parametros del vehiculo para planificar tu ruta.")
+    set_status("info", "Introduce origen, destino y los ajustes del vehiculo para obtener una recomendacion de ruta.")
+
+
+def _build_insights_panel() -> None:
+    with ui.column().classes("w-full gap-4"):
+        page_header(
+            "Insights y contexto",
+            "Explora tendencias, mapas y calidad de datos.",
+            eyebrow="Insights",
+        )
+        state: Dict[str, Any] = {"active": INSIGHT_SECTION_CARDS[0].key}
+        nav_container = ui.column().classes("w-full")
+        content_container = ui.column().classes("w-full")
+
+        def render_content() -> None:
+            content_container.clear()
+            with content_container:
+                if state["active"] == "trends":
+                    _build_trends_panel()
+                elif state["active"] == "zones":
+                    _build_zones_panel()
+                elif state["active"] == "historical":
+                    _build_historical_panel()
+                else:
+                    _build_data_quality_panel()
+
+        def set_active(section_key: str) -> None:
+            state["active"] = section_key
+            render_nav()
+            render_content()
+
+        def render_nav() -> None:
+            nav_container.clear()
+            with nav_container:
+                card_nav(
+                    [
+                        {
+                            "key": item.key,
+                            "label": item.label,
+                            "description": "" if item.key == "quality" else item.description,
+                        }
+                        for item in INSIGHT_SECTION_CARDS
+                    ],
+                    state["active"],
+                    set_active,
+                    tone="secondary",
+                )
+
+        render_nav()
+        render_content()
 
 
 def _build_historical_panel() -> None:
@@ -823,11 +959,11 @@ def _build_historical_panel() -> None:
 
 def _build_province_ranking_subtab() -> None:
     with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label("Provincias ordenadas por precio medio de combustible.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 fuel = fuel_type_select()
-                ranking_button = ui.button("Cargar ranking").props("unelevated color=primary")
+                ranking_button = ui.button("Ver ranking").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
                 with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                     period = historical_period_select()
@@ -920,7 +1056,7 @@ def _build_province_ranking_subtab() -> None:
                         }
                     )
                     prev_price = avg
-                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("pe-table w-full")
                 table.props("dense flat bordered separator=cell")
             date_to = date.today()
             date_from = date_to - timedelta(days=days_back)
@@ -942,11 +1078,11 @@ def _build_province_ranking_subtab() -> None:
 
 def _build_day_of_week_subtab() -> None:
     with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label("Precio medio por dia de la semana.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 fuel = fuel_type_select()
-                dow_button = ui.button("Cargar patron").props("unelevated color=primary")
+                dow_button = ui.button("Ver patron").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
                 with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                     province_input = ui.input(label="Provincia (opcional)", placeholder="Toda Espana").classes("w-56")
@@ -996,11 +1132,11 @@ def _build_day_of_week_subtab() -> None:
 
 def _build_brand_comparison_subtab() -> None:
     with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label("Ranking de marcas/operadores por precio medio de combustible.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 fuel = fuel_type_select()
-                brand_button = ui.button("Cargar ranking").props("unelevated color=primary")
+                brand_button = ui.button("Ver ranking").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
                 period = historical_period_select()
 
@@ -1089,7 +1225,7 @@ def _build_brand_comparison_subtab() -> None:
                         }
                     )
                     prev_price = avg
-                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("pe-table w-full")
                 table.props("dense flat bordered separator=cell")
 
             # Load trend chart for the top brands
@@ -1120,11 +1256,11 @@ def _build_brand_comparison_subtab() -> None:
 
 def _build_zone_volatility_subtab() -> None:
     with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label("Ranking de codigos postales por estabilidad de precios.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 fuel = fuel_type_select()
-                volatility_button = ui.button("Cargar volatilidad").props("unelevated color=primary")
+                volatility_button = ui.button("Ver volatilidad").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
                 with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                     period = historical_period_select()
@@ -1228,7 +1364,7 @@ def _build_zone_volatility_subtab() -> None:
                             "observation_days": int(row["observation_days"]),
                         }
                     )
-                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+                table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("pe-table w-full")
                 table.props("dense flat bordered separator=cell")
 
             date_to = date.today()
@@ -1251,11 +1387,11 @@ def _build_zone_volatility_subtab() -> None:
 
 def _build_data_quality_panel() -> None:
     with ui.column().classes("w-full gap-3"):
-        with ui.card().classes("w-full p-4"):
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label(
                 "Transparencia de datos: revisa la calidad y completitud de los datos utilizados en este panel."
             ).classes("text-sm text-gray-600")
-            quality_button = ui.button("Cargar metricas").props("unelevated color=primary")
+            quality_button = ui.button("Ver calidad de datos").props("unelevated color=primary")
 
         status_container = ui.column().classes("w-full")
         inventory_container = ui.column().classes("w-full")
@@ -1296,9 +1432,9 @@ def _build_data_quality_panel() -> None:
                             {"name": "date", "label": "Fecha", "field": "date", "align": "left", "sortable": True},
                         ]
                         rows = [{"date": d} for d in missing]
-                        ui.table(columns=columns, rows=rows, row_key="date").props(
+                        ui.table(columns=columns, rows=rows, row_key="date").classes("pe-table w-full").props(
                             "dense flat bordered separator=cell"
-                        ).classes("w-full")
+                        )
 
             with chart_container:
                 fig = build_ingestion_stats_chart(stats_df)

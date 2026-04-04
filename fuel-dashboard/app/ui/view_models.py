@@ -30,11 +30,32 @@ FUEL_DISPLAY_NAMES: Dict[str, str] = {
     "hydrogen_price": "Hidrogeno",
 }
 
+
+@dataclass(frozen=True)
+class NavigationItem:
+    key: str
+    label: str
+    description: str
+
+
+PRIMARY_NAV_ITEMS: List[NavigationItem] = [
+    NavigationItem("search", "Buscar", "Estaciones cercanas"),
+    NavigationItem("trip", "Viaje", "Planifica tu ruta"),
+    NavigationItem("insights", "Insights", "Tendencias y mapas"),
+]
+
+INSIGHT_SECTION_CARDS: List[NavigationItem] = [
+    NavigationItem("trends", "Tendencias", "Sigue la evolucion de precios por codigo postal."),
+    NavigationItem("zones", "Comparar zonas", "Descubre provincias, distritos y municipios mas competitivos."),
+    NavigationItem("historical", "Analisis historico", "Consulta rankings, patrones semanales y volatilidad."),
+    NavigationItem("quality", "Calidad de datos", "Revisa cobertura, huecos y metricas operativas."),
+]
+
 SEARCH_MODE_OPTIONS: Dict[str, str] = {
-    "cheapest_by_zip": "Mas barato por codigo postal",
-    "nearest_by_address": "Mas cercano por direccion",
-    "cheapest_by_address": "Mas barato cerca de direccion",
     "best_by_address": "Mejor opcion",
+    "nearest_by_address": "Mas cercano",
+    "cheapest_by_address": "Mas barato",
+    "cheapest_by_zip": "Mas barato por CP",
 }
 
 TREND_PERIOD_LABELS: Dict[str, str] = {
@@ -51,6 +72,8 @@ class SearchModeMeta:
     helper_text: str
     requires_radius: bool
     success_metric_label: str
+    action_label: str
+    empty_state_hint: str
     requires_consumption: bool = False
 
 
@@ -58,30 +81,38 @@ SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
     "cheapest_by_zip": SearchModeMeta(
         query_label="Codigo postal",
         query_placeholder="Ejemplo: 28001",
-        helper_text="Introduce un codigo postal de Espana para comparar precios.",
+        helper_text="Introduce un codigo postal para comparar estaciones dentro de esa zona.",
         requires_radius=False,
         success_metric_label="Mejor precio",
+        action_label="Buscar estaciones",
+        empty_state_hint="Prueba con otro codigo postal o tipo de combustible.",
     ),
     "nearest_by_address": SearchModeMeta(
         query_label="Direccion o referencia",
         query_placeholder="Ejemplo: Gran Via 1, Madrid",
-        helper_text="Usa una direccion para ver las estaciones mas cercanas.",
+        helper_text="Usa una direccion o tu ubicacion para encontrar la parada mas cercana.",
         requires_radius=False,
         success_metric_label="Distancia minima",
+        action_label="Buscar estaciones",
+        empty_state_hint="Prueba con otra direccion o amplia tu punto de partida.",
     ),
     "cheapest_by_address": SearchModeMeta(
         query_label="Direccion o referencia",
         query_placeholder="Ejemplo: Calle Alcala 45, Madrid",
-        helper_text="Busca estaciones cercanas y ordena por precio.",
+        helper_text="Busca alrededor de una direccion y prioriza el precio por litro.",
         requires_radius=True,
         success_metric_label="Mejor precio",
+        action_label="Buscar estaciones",
+        empty_state_hint="Prueba otro radio o una direccion diferente.",
     ),
     "best_by_address": SearchModeMeta(
         query_label="Direccion o referencia",
         query_placeholder="Ejemplo: Atocha, Madrid",
-        helper_text="Calcula el coste total (repostaje + viaje ida y vuelta) para encontrar la opcion mas barata.",
+        helper_text="Combina precio, distancia y consumo para recomendar la mejor opcion.",
         requires_radius=True,
         success_metric_label="Mejor puntuacion",
+        action_label="Buscar estaciones",
+        empty_state_hint="Amplia el radio o revisa los ajustes del vehiculo.",
         requires_consumption=True,
     ),
 }
@@ -118,6 +149,12 @@ def format_price(price: Optional[float]) -> str:
     if price is None:
         return "-"
     return f"{price:.3f} EUR/L"
+
+
+def format_currency(value: Optional[float]) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.2f} EUR"
 
 
 def format_distance(distance_km: Optional[float]) -> str:
@@ -312,6 +349,82 @@ def _truncate(text: Optional[str], max_len: int = 30) -> str:
     return text if len(text) <= max_len else text[: max_len - 1] + "…"
 
 
+def search_recommendation(stations: Sequence[StationResult], mode: str) -> Dict[str, str]:
+    """Build a recommendation card dict from the top search result.
+
+    Assumes *stations* are already sorted by the caller (price, distance, or
+    score depending on *mode*), so ``stations[0]`` is the best match.
+    """
+    if not stations:
+        return {
+            "title": "Sin recomendacion",
+            "headline": "No hay estaciones disponibles para comparar.",
+            "detail": "Prueba otra ubicacion o cambia la estrategia de busqueda.",
+            "caption": "",
+        }
+
+    recommended = stations[0]
+    avg_price = sum(station.price for station in stations) / len(stations)
+    price_savings_vs_avg = avg_price - recommended.price
+
+    if mode == "nearest_by_address":
+        second_best = stations[1] if len(stations) > 1 else None
+        distance_gap = None
+        if second_best and recommended.distance_km is not None and second_best.distance_km is not None:
+            distance_gap = second_best.distance_km - recommended.distance_km
+        caption = (
+            f"Llega {distance_gap:.2f} km antes que la siguiente alternativa."
+            if distance_gap is not None and distance_gap > 0
+            else "Ideal si priorizas rapidez y acceso."
+        )
+        return {
+            "title": "Recomendacion principal",
+            "headline": f"{recommended.label} es la estacion mas cercana.",
+            "detail": f"A {format_distance(recommended.distance_km)} de tu punto de partida.",
+            "caption": caption,
+        }
+
+    if mode == "best_by_address":
+        second_best = stations[1] if len(stations) > 1 else None
+        cost_advantage = None
+        if (
+            second_best
+            and recommended.estimated_total_cost is not None
+            and second_best.estimated_total_cost is not None
+        ):
+            cost_advantage = second_best.estimated_total_cost - recommended.estimated_total_cost
+        detail = (
+            f"Coste total estimado {format_currency(recommended.estimated_total_cost)}"
+            f" con puntuacion {recommended.score:.1f}/10."
+            if recommended.score is not None
+            else f"Coste total estimado {format_currency(recommended.estimated_total_cost)}."
+        )
+        caption = (
+            f"Ahorras {cost_advantage:.2f} EUR frente a la siguiente opcion."
+            if cost_advantage is not None and cost_advantage > 0
+            else "Equilibra precio por litro y coste de desplazamiento."
+        )
+        return {
+            "title": "Mejor opcion",
+            "headline": f"{recommended.label} compensa mejor el viaje y el repostaje.",
+            "detail": detail,
+            "caption": caption,
+        }
+
+    zone_suffix = " en tu codigo postal" if mode == "cheapest_by_zip" else " cerca de tu ubicacion"
+    caption = (
+        f"Ahorro medio de {price_savings_vs_avg:.3f} EUR/L frente al conjunto analizado."
+        if price_savings_vs_avg > 0
+        else "Es la opcion mas competitiva dentro de los resultados cargados."
+    )
+    return {
+        "title": "Mejor precio detectado",
+        "headline": f"{recommended.label} ofrece el mejor precio{zone_suffix}.",
+        "detail": f"Precio actual: {format_price(recommended.price)}.",
+        "caption": caption,
+    }
+
+
 def search_summary_cards(summary: Dict[str, Any], mode: str) -> List[Dict[str, str]]:
     count = summary["count"]
     cards: List[Dict[str, str]] = [
@@ -395,6 +508,27 @@ def trip_summary_cards(trip_plan: TripPlan) -> List[Dict[str, str]]:
             "value": kpis["fuel_at_destination"],
         },
     ]
+
+
+def trip_recommendation(trip_plan: TripPlan) -> Dict[str, str]:
+    if not trip_plan.stops:
+        return {
+            "title": "Ruta validada",
+            "headline": "Puedes completar el trayecto sin parar a repostar.",
+            "detail": f"Distancia estimada: {trip_plan.total_distance_km:.0f} km.",
+            "caption": f"Llegarias con {trip_plan.fuel_at_destination_pct:.0f}% de combustible restante.",
+        }
+
+    first_stop = trip_plan.stops[0]
+    return {
+        "title": "Plan recomendado",
+        "headline": f"{len(trip_plan.stops)} parada(s) recomendada(s) para completar la ruta.",
+        "detail": (
+            f"Primera parada sugerida: {first_stop.station.label} "
+            f"({first_stop.detour_minutes:.1f} min de desvio, {format_price(first_stop.station.price)})."
+        ),
+        "caption": f"Desvio total estimado: {sum(stop.detour_minutes for stop in trip_plan.stops):.0f} min.",
+    }
 
 
 def alternative_plan_cards(plan: AlternativePlan) -> List[Dict[str, str]]:

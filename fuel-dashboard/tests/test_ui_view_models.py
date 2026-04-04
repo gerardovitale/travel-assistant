@@ -2,19 +2,26 @@ from datetime import date
 
 import pandas as pd
 import pytest
+from api.schemas import AlternativePlan
 from api.schemas import StationResult
 from api.schemas import TrendPoint
+from api.schemas import TripPlan
+from api.schemas import TripStop
 from api.schemas import ZoneResult
 from ui.view_models import best_day_advice
 from ui.view_models import format_delta
 from ui.view_models import format_distance
 from ui.view_models import format_price
 from ui.view_models import fuel_label
+from ui.view_models import INSIGHT_SECTION_CARDS
 from ui.view_models import latest_day_kpis
+from ui.view_models import PRIMARY_NAV_ITEMS
 from ui.view_models import search_mode_metadata
+from ui.view_models import search_recommendation
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
 from ui.view_models import trend_kpis
+from ui.view_models import trip_recommendation
 from ui.view_models import volatility_kpis
 from ui.view_models import zone_kpis
 
@@ -22,8 +29,10 @@ from ui.view_models import zone_kpis
 def test_search_mode_metadata_radius_by_mode():
     zip_meta = search_mode_metadata("cheapest_by_zip")
     assert zip_meta.requires_radius is False
+    assert zip_meta.action_label == "Buscar estaciones"
     address_meta = search_mode_metadata("best_by_address")
     assert address_meta.requires_radius is True
+    assert address_meta.requires_consumption is True
 
 
 def test_fuel_label_uses_known_mappings_and_fallback():
@@ -65,6 +74,83 @@ def test_station_summary_and_cards_include_distance():
     assert cards[0]["value"] == "2"
 
 
+def test_primary_navigation_metadata_is_consumer_first():
+    assert [item.key for item in PRIMARY_NAV_ITEMS] == ["search", "trip", "insights"]
+    assert PRIMARY_NAV_ITEMS[0].label == "Buscar"
+    assert INSIGHT_SECTION_CARDS[-1].key == "quality"
+
+
+def test_search_recommendation_for_best_option_uses_total_cost():
+    stations = [
+        StationResult(
+            label="s1",
+            address="a1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.50,
+            distance_km=3.0,
+            score=9.8,
+            estimated_total_cost=58.20,
+        ),
+        StationResult(
+            label="s2",
+            address="a2",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.2,
+            longitude=-3.8,
+            price=1.47,
+            distance_km=6.0,
+            score=8.9,
+            estimated_total_cost=59.10,
+        ),
+    ]
+
+    recommendation = search_recommendation(stations, "best_by_address")
+
+    assert "Mejor opcion" == recommendation["title"]
+    assert "s1" in recommendation["headline"]
+    assert "58.20 EUR" in recommendation["detail"]
+    assert "0.90 EUR" in recommendation["caption"]
+
+
+def test_search_recommendation_for_nearest_station_mentions_distance_gap():
+    stations = [
+        StationResult(
+            label="near",
+            address="a1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.50,
+            distance_km=1.0,
+        ),
+        StationResult(
+            label="far",
+            address="a2",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.2,
+            longitude=-3.8,
+            price=1.45,
+            distance_km=2.4,
+        ),
+    ]
+
+    recommendation = search_recommendation(stations, "nearest_by_address")
+
+    assert "near" in recommendation["headline"]
+    assert "1.00 km" in recommendation["detail"]
+    assert "1.40 km" in recommendation["caption"]
+
+
 def test_trend_kpis_and_formatters():
     trend = [
         TrendPoint(date="2025-01-01", avg_price=1.60, min_price=1.55, max_price=1.65),
@@ -91,6 +177,75 @@ def test_zone_kpis_values():
     assert metrics["cheapest_zip"] == "28002"
     assert metrics["cheapest_avg_price"] == 1.47
     assert metrics["province_avg_price"] == pytest.approx(1.485)
+
+
+def test_trip_recommendation_with_and_without_stops():
+    stop_station = StationResult(
+        label="Stop 1",
+        address="A1",
+        municipality="madrid",
+        province="madrid",
+        zip_code="28001",
+        latitude=40.1,
+        longitude=-3.7,
+        price=1.50,
+    )
+    stop = TripStop(
+        station=stop_station,
+        route_km=120.0,
+        detour_minutes=6.0,
+        fuel_at_arrival_pct=20.0,
+        liters_to_fill=25.0,
+        cost_eur=37.5,
+        reasoning="test",
+    )
+    trip_with_stop = TripPlan(
+        stops=[stop],
+        total_fuel_cost=37.5,
+        total_distance_km=400.0,
+        duration_minutes=240.0,
+        total_fuel_liters=25.0,
+        savings_eur=4.0,
+        route_coordinates=[[-3.7, 40.1], [-4.0, 39.5]],
+        candidate_stations=[stop_station],
+        origin_coords=[40.1, -3.7],
+        destination_coords=[39.5, -4.0],
+        fuel_at_destination_pct=12.0,
+        alternative_plans=[
+            AlternativePlan(
+                strategy_name="Minimo desvio",
+                strategy_description="Menos salida de ruta",
+                stops=[stop],
+                total_fuel_cost=38.0,
+                total_fuel_liters=25.0,
+                total_detour_minutes=4.0,
+                fuel_at_destination_pct=11.0,
+            )
+        ],
+    )
+    trip_without_stop = TripPlan(
+        stops=[],
+        total_fuel_cost=0.0,
+        total_distance_km=120.0,
+        duration_minutes=90.0,
+        total_fuel_liters=0.0,
+        savings_eur=0.0,
+        route_coordinates=[[-3.7, 40.1], [-3.9, 40.3]],
+        candidate_stations=[],
+        origin_coords=[40.1, -3.7],
+        destination_coords=[40.3, -3.9],
+        fuel_at_destination_pct=42.0,
+        alternative_plans=[],
+    )
+
+    with_stop = trip_recommendation(trip_with_stop)
+    without_stop = trip_recommendation(trip_without_stop)
+
+    assert "1 parada(s)" in with_stop["headline"]
+    assert "Stop 1" in with_stop["detail"]
+    assert "6 min" in with_stop["caption"]
+    assert "sin parar a repostar" in without_stop["headline"]
+    assert "42%" in without_stop["caption"]
 
 
 def test_best_day_advice_returns_tip():

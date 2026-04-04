@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Callable
 from typing import Dict
 from typing import List
@@ -11,18 +12,138 @@ from api.schemas import TrendPeriod
 from api.schemas import TripStop
 from api.schemas import ZoneResult
 from nicegui import ui
+from nicegui.elements.toggle import Toggle
 from ui.view_models import FUEL_DISPLAY_NAMES
 from ui.view_models import HISTORICAL_PERIOD_LABELS
 from ui.view_models import SEARCH_MODE_OPTIONS
 from ui.view_models import TREND_PERIOD_LABELS
 
+_THEME_CSS = (Path(__file__).parent / "theme.css").read_text()
+
+
+def init_theme() -> None:
+    # Keep ui.colors() in sync with the --pe-* tokens in theme.css
+    ui.colors(
+        primary="#003d9b",
+        secondary="#0c56d0",
+        positive="#004e33",
+        negative="#ba1a1a",
+        warning="#c27c00",
+        info="#0c56d0",
+    )
+    ui.add_head_html(
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700'
+        '&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">'
+        f"<style>{_THEME_CSS}</style>"
+    )
+
 
 def advice_card(message: str) -> None:
-    with ui.row().classes(
-        "w-full items-center gap-2 px-3 py-2 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200"
-    ):
+    with ui.row().classes("pe-status w-full items-center gap-2 rounded-2xl bg-emerald-50 px-3 py-2 text-emerald-900"):
         ui.icon("lightbulb").classes("text-lg")
         ui.label(message).classes("text-sm")
+
+
+def page_header(
+    title: str,
+    description: Optional[str] = None,
+    eyebrow: Optional[str] = None,
+    variant: str = "section",
+) -> None:
+    wrapper_classes = "pe-heading w-full gap-2 rounded-2xl p-5"
+    title_classes = "font-bold"
+    if variant == "hero":
+        wrapper_classes += " pe-hero"
+        title_classes += " text-4xl"
+        eyebrow_classes = "text-xs font-semibold uppercase tracking-[0.2em] text-slate-300"
+        description_classes = "max-w-3xl text-base font-semibold text-slate-200"
+    else:
+        wrapper_classes += " pe-surface-panel pe-ghost-outline"
+        title_classes += " text-3xl text-slate-900"
+        eyebrow_classes = "text-xs font-semibold uppercase tracking-[0.2em] text-slate-500"
+        description_classes = "max-w-3xl text-sm text-slate-600"
+    with ui.column().classes(wrapper_classes):
+        if eyebrow:
+            ui.label(eyebrow).classes(eyebrow_classes)
+        ui.label(title).classes(title_classes)
+        if description:
+            ui.label(description).classes(description_classes)
+
+
+def section_intro(title: str, description: str) -> None:
+    with ui.column().classes("w-full gap-1"):
+        ui.label(title).classes("pe-heading text-base font-semibold text-slate-900")
+        ui.label(description).classes("text-sm text-slate-600")
+
+
+def summary_card(title: str, headline: str, detail: str, caption: str = "", tone: str = "primary") -> None:
+    styles = {
+        "primary": "pe-summary-card--primary",
+        "info": "pe-summary-card--info",
+        "neutral": "pe-summary-card--neutral",
+    }
+    css = styles.get(tone, styles["primary"])
+    with ui.card().classes(f"pe-summary-card pe-heading w-full rounded-2xl p-4 {css}"):
+        ui.label(title).classes("text-xs font-semibold uppercase tracking-[0.15em] opacity-70")
+        ui.label(headline).classes("text-xl font-semibold")
+        ui.label(detail).classes("text-sm opacity-90")
+        if caption:
+            ui.label(caption).classes("text-xs opacity-70")
+
+
+def insight_card(title: str, description: str, icon: str, muted: bool = False) -> None:
+    card_classes = "pe-surface-card w-full rounded-2xl p-4"
+    if muted:
+        card_classes += " pe-ghost-outline bg-slate-50"
+    else:
+        card_classes += " pe-ghost-outline"
+    with ui.card().classes(card_classes):
+        with ui.row().classes("items-start gap-3"):
+            ui.icon(icon).classes("mt-1 text-xl text-slate-500")
+            with ui.column().classes("gap-1"):
+                ui.label(title).classes("pe-heading text-base font-semibold text-slate-900")
+                ui.label(description).classes("text-sm text-slate-600")
+
+
+_NAV_ACTIVE_STYLE = {
+    "primary": (
+        "background: linear-gradient(135deg, rgba(0,61,155,0.96), rgba(12,86,208,0.90)) !important;"
+        "color: white !important;"
+        "box-shadow: 0 24px 48px rgba(11,28,48,0.10) !important;"
+    ),
+    "secondary": (
+        "background: linear-gradient(135deg, rgba(11,28,48,0.94), rgba(0,61,155,0.88)) !important;"
+        "color: white !important;"
+        "box-shadow: 0 24px 48px rgba(11,28,48,0.08) !important;"
+    ),
+}
+
+
+def card_nav(
+    items: List[Dict[str, str]],
+    active_key: str,
+    on_select: Callable[[str], None],
+    tone: str = "primary",
+) -> None:
+    with ui.row().classes("w-full gap-3 flex-wrap"):
+        for item in items:
+            is_active = item["key"] == active_key
+            card_classes = "pe-nav-card pe-heading min-w-44 flex-1 rounded-2xl p-4 cursor-pointer"
+            if tone == "secondary":
+                card_classes += " pe-nav-card--secondary"
+            label_classes = "text-base font-semibold"
+            description_classes = "text-xs"
+            card = ui.card().classes(card_classes).on("click", lambda _, key=item["key"]: on_select(key))
+            if is_active:
+                card.style(_NAV_ACTIVE_STYLE[tone])
+                label_classes += " text-white"
+                description_classes += " text-slate-200"
+            with card:
+                ui.label(item["label"]).classes(label_classes)
+                if item.get("description"):
+                    ui.label(item["description"]).classes(description_classes)
 
 
 def geolocation_button(address_input: ui.input) -> None:
@@ -50,43 +171,57 @@ def geolocation_button(address_input: ui.input) -> None:
         elif isinstance(result, dict) and "error" in result:
             ui.notify(result["error"], type="warning")
 
-    ui.button(icon="my_location", on_click=_on_click).props("flat dense round color=grey-7").tooltip(
+    ui.button(icon="my_location", on_click=_on_click).props("flat dense round").classes("pe-secondary-btn").tooltip(
         "Usar mi ubicacion"
     )
 
 
 def fuel_type_select(label: str = "Tipo de combustible", on_change: Optional[Callable] = None) -> ui.select:
     options = {ft.value: FUEL_DISPLAY_NAMES.get(ft.value, ft.value.replace("_", " ").title()) for ft in FuelType}
-    return ui.select(options, value=FuelType.gasoline_95_e5_price.value, label=label, on_change=on_change).classes(
-        "w-72"
+    return (
+        ui.select(options, value=FuelType.gasoline_95_e5_price.value, label=label, on_change=on_change)
+        .props("outlined")
+        .classes("pe-input w-72")
     )
 
 
 def trend_period_select(label: str = "Periodo", on_change: Optional[Callable] = None) -> ui.select:
     options = {tp.value: TREND_PERIOD_LABELS[tp.value] for tp in TrendPeriod}
-    return ui.select(options, value=TrendPeriod.month.value, label=label, on_change=on_change).classes("w-40")
+    return (
+        ui.select(options, value=TrendPeriod.month.value, label=label, on_change=on_change)
+        .props("outlined")
+        .classes("pe-input w-40")
+    )
 
 
 def historical_period_select(label: str = "Periodo", on_change: Optional[Callable] = None) -> ui.select:
     options = {hp.value: HISTORICAL_PERIOD_LABELS[hp] for hp in HistoricalPeriod}
-    return ui.select(options, value=HistoricalPeriod.quarter.value, label=label, on_change=on_change).classes("w-40")
+    return (
+        ui.select(options, value=HistoricalPeriod.quarter.value, label=label, on_change=on_change)
+        .props("outlined")
+        .classes("pe-input w-40")
+    )
 
 
-def search_mode_select(label: str = "Modo de busqueda", on_change: Optional[Callable] = None) -> ui.select:
-    return ui.select(SEARCH_MODE_OPTIONS, value="best_by_address", label=label, on_change=on_change).classes("w-72")
+def search_mode_select(label: str = "Como quieres comparar", on_change: Optional[Callable] = None) -> Toggle:
+    return (
+        ui.toggle(SEARCH_MODE_OPTIONS, value="best_by_address", on_change=on_change)
+        .props("spread unelevated no-caps color=grey-2 text-color=grey-8 toggle-color=primary")
+        .classes("pe-toggle w-full rounded-2xl overflow-hidden")
+    )
 
 
 def status_banner(status: str, message: str) -> None:
     styles: Dict[str, str] = {
-        "info": "bg-slate-50 text-slate-700 border border-slate-200",
-        "loading": "bg-blue-50 text-blue-700 border border-blue-200",
-        "success": "bg-emerald-50 text-emerald-700 border border-emerald-200",
-        "warning": "bg-amber-50 text-amber-700 border border-amber-200",
-        "empty": "bg-gray-50 text-gray-700 border border-gray-200",
-        "error": "bg-red-50 text-red-700 border border-red-200",
+        "info": "bg-slate-50 text-slate-700",
+        "loading": "bg-blue-50 text-blue-700",
+        "success": "bg-emerald-50 text-emerald-900",
+        "warning": "bg-amber-50 text-amber-900",
+        "empty": "bg-slate-100 text-slate-700",
+        "error": "bg-red-50 text-red-800",
     }
     css = styles.get(status, styles["info"])
-    with ui.row().classes(f"w-full items-center gap-2 px-3 py-2 rounded-md {css}"):
+    with ui.row().classes(f"pe-status w-full items-center gap-2 rounded-2xl px-3 py-2 {css}"):
         if status == "loading":
             ui.spinner(size="sm")
         ui.label(message).classes("text-sm")
@@ -103,7 +238,7 @@ def empty_state(message: str = "No hay datos para mostrar.") -> None:
 def kpi_row(kpis: List[Dict[str, str]]) -> None:
     with ui.row().classes("w-full gap-3 flex-wrap"):
         for kpi in kpis:
-            with ui.card().classes("p-3 min-w-44 flex-1").style("flex-basis:0; min-height:5.5rem"):
+            with ui.card().classes("pe-kpi pe-heading min-w-44 flex-1 rounded-2xl p-3"):
                 ui.label(kpi["label"]).classes("text-xs text-gray-500 uppercase")
                 value_color = kpi.get("color", "")
                 ui.label(kpi["value"]).classes(f"text-lg font-semibold {value_color}")
@@ -193,7 +328,7 @@ def station_results_table(
             row["score"] = round(station.score, 1)
         rows.append(row)
 
-    table = ui.table(columns=columns, rows=rows, row_key="label").classes("w-full")
+    table = ui.table(columns=columns, rows=rows, row_key="label").classes("pe-table w-full")
     table.props("dense flat bordered separator=cell wrap-cells")
     if mode in ("nearest_by_address", "best_by_address"):
         table.props("rows-per-page-options=[3,5,10]")
@@ -296,7 +431,7 @@ def zone_results_table(zones: List[ZoneResult]) -> None:
         }
         for zone in zones
     ]
-    table = ui.table(columns=columns, rows=rows, row_key="zip_code").classes("w-full")
+    table = ui.table(columns=columns, rows=rows, row_key="zip_code").classes("pe-table w-full")
     table.props("dense flat bordered separator=cell")
 
 
@@ -334,7 +469,7 @@ def trip_stops_table(stops: List[TripStop]) -> None:
         }
         for i, stop in enumerate(stops)
     ]
-    table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+    table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("pe-table w-full")
     table.props("dense flat bordered separator=cell")
 
 
@@ -363,5 +498,5 @@ def top_cheapest_table(candidates: List[StationResult], top_n: int = 5) -> None:
         }
         for i, c in enumerate(sorted_candidates)
     ]
-    table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("w-full")
+    table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("pe-table w-full")
     table.props("dense flat bordered separator=cell")
