@@ -1,3 +1,4 @@
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 from typing import Dict
@@ -5,7 +6,10 @@ from typing import List
 from typing import Optional
 from typing import Sequence
 
+import pandas as pd
 from api.schemas import AlternativePlan
+from api.schemas import FUEL_SINGLETONS
+from api.schemas import FuelGroup
 from api.schemas import HistoricalPeriod
 from api.schemas import StationResult
 from api.schemas import TrendPeriod
@@ -28,6 +32,21 @@ FUEL_DISPLAY_NAMES: Dict[str, str] = {
     "liquefied_natural_gas_price": "Gas Natural Licuado",
     "liquefied_petroleum_gases_price": "Gases Licuados del Petroleo",
     "hydrogen_price": "Hidrogeno",
+}
+
+FUEL_VARIANT_SHORT_NAMES: Dict[str, str] = {
+    "diesel_a_price": "Estandar",
+    "diesel_b_price": "B",
+    "diesel_premium_price": "Premium",
+    "gasoline_95_e5_price": "E5",
+    "gasoline_95_e10_price": "E10",
+    "gasoline_95_e5_premium_price": "Premium",
+    "gasoline_98_e5_price": "E5",
+    "gasoline_98_e10_price": "E10",
+    "biodiesel_price": "Biodiesel",
+    "bioethanol_price": "Bioetanol",
+    "compressed_natural_gas_price": "Comprimido",
+    "liquefied_natural_gas_price": "Licuado",
 }
 
 
@@ -62,6 +81,8 @@ TREND_PERIOD_LABELS: Dict[str, str] = {
     TrendPeriod.week.value: "7 dias",
     TrendPeriod.month.value: "30 dias",
     TrendPeriod.quarter.value: "90 dias",
+    TrendPeriod.half_year.value: "6 meses",
+    TrendPeriod.year.value: "12 meses",
 }
 
 
@@ -276,6 +297,249 @@ def trend_summary_cards(metrics: Dict[str, Optional[float]]) -> List[Dict[str, s
             "delta_icon": delta_icon,
         },
     ]
+
+
+FUEL_GROUP_DISPLAY_NAMES: Dict[str, str] = {
+    "diesel": "Diesel",
+    "gasoline_95": "Gasolina 95",
+    "gasoline_98": "Gasolina 98",
+    "biofuel": "Biocombustible",
+    "natural_gas": "Gas Natural",
+}
+
+
+SEARCH_FUEL_OPTIONS: Dict[str, str] = {}
+for _fg in FuelGroup:
+    SEARCH_FUEL_OPTIONS[f"group:{_fg.value}"] = FUEL_GROUP_DISPLAY_NAMES.get(_fg.value, _fg.value)
+for _ft in FUEL_SINGLETONS:
+    SEARCH_FUEL_OPTIONS[f"single:{_ft.value}"] = FUEL_DISPLAY_NAMES.get(_ft.value, _ft.value)
+
+
+def fuel_group_label(group: str) -> str:
+    return FUEL_GROUP_DISPLAY_NAMES.get(group, group.replace("_", " ").title())
+
+
+def _latest_group_snapshot(group_trends: Dict[str, List[TrendPoint]]) -> Dict[str, Any]:
+    by_date: Dict[str, Dict[str, float]] = defaultdict(dict)
+    for fuel_type, points in group_trends.items():
+        for point in points:
+            by_date[point.date][fuel_type] = point.avg_price
+
+    comparable_dates = [date for date, prices in by_date.items() if len(prices) >= 2]
+    if not comparable_dates:
+        return {"date": None, "variants": []}
+
+    snapshot_date = max(comparable_dates)
+    variants = [
+        {"fuel_type": fuel_type, "label": fuel_label(fuel_type), "current_avg": price}
+        for fuel_type, price in by_date[snapshot_date].items()
+    ]
+    return {"date": snapshot_date, "variants": variants}
+
+
+def group_trend_kpis(group_trends: Dict[str, List[TrendPoint]]) -> Dict[str, Any]:
+    if not group_trends:
+        return {"variant_count": 0, "variants": [], "premium_spread": None, "snapshot_date": None}
+
+    snapshot = _latest_group_snapshot(group_trends)
+    variants = snapshot["variants"]
+
+    if not variants:
+        return {"variant_count": 0, "variants": [], "premium_spread": None, "snapshot_date": None}
+
+    variants.sort(key=lambda v: v["current_avg"])
+    cheapest = variants[0]["current_avg"]
+    most_expensive = variants[-1]["current_avg"]
+    premium_spread = most_expensive - cheapest
+
+    return {
+        "variant_count": len(variants),
+        "variants": variants,
+        "snapshot_date": snapshot["date"],
+        "cheapest_label": variants[0]["label"],
+        "cheapest_price": cheapest,
+        "most_expensive_label": variants[-1]["label"],
+        "most_expensive_price": most_expensive,
+        "premium_spread": premium_spread,
+    }
+
+
+def group_trend_summary_cards(kpis: Dict[str, Any]) -> List[Dict[str, str]]:
+    if not kpis.get("variants"):
+        return []
+
+    cards = [
+        {
+            "label": "Variantes encontradas",
+            "value": str(kpis["variant_count"]),
+        },
+        {
+            "label": "Mas barato",
+            "value": format_price(kpis.get("cheapest_price")),
+            "color": "text-green-600",
+            "description": kpis.get("cheapest_label", ""),
+        },
+        {
+            "label": "Mas caro",
+            "value": format_price(kpis.get("most_expensive_price")),
+            "color": "text-red-600",
+            "description": kpis.get("most_expensive_label", ""),
+        },
+    ]
+    spread = kpis.get("premium_spread")
+    if spread is not None:
+        cards.append(
+            {
+                "label": "Diferencia premium",
+                "value": f"{spread:.3f} EUR/L",
+                "color": "text-blue-600",
+                "description": "entre la variante mas barata y la mas cara",
+            }
+        )
+    return cards
+
+
+@dataclass(frozen=True)
+class DailySpread:
+    date: str
+    spread: float
+    max_variant: str
+    min_variant: str
+
+
+def compute_daily_spread(group_trends: Dict[str, List[TrendPoint]]) -> List[DailySpread]:
+    if len(group_trends) < 2:
+        return []
+
+    by_date: Dict[str, Dict[str, float]] = defaultdict(dict)
+    for fuel_type, points in group_trends.items():
+        for p in points:
+            by_date[p.date][fuel_type] = p.avg_price
+
+    result = []
+    for date in sorted(by_date):
+        prices = by_date[date]
+        if len(prices) < 2:
+            continue
+        max_ft = max(prices, key=prices.__getitem__)
+        min_ft = min(prices, key=prices.__getitem__)
+        result.append(
+            DailySpread(
+                date=date,
+                spread=prices[max_ft] - prices[min_ft],
+                max_variant=max_ft,
+                min_variant=min_ft,
+            )
+        )
+    return result
+
+
+def spread_kpis(daily_spreads: List[DailySpread]) -> Dict[str, Any]:
+    if not daily_spreads:
+        return {
+            "current_spread": None,
+            "avg_spread": None,
+            "max_spread": None,
+            "max_spread_date": None,
+            "min_spread": None,
+            "min_spread_date": None,
+            "spread_trend": None,
+        }
+
+    spreads = [ds.spread for ds in daily_spreads]
+    avg_spread = sum(spreads) / len(spreads)
+    max_entry = max(daily_spreads, key=lambda ds: ds.spread)
+    min_entry = min(daily_spreads, key=lambda ds: ds.spread)
+
+    spread_trend = "stable"
+    if len(daily_spreads) >= 14:
+        first_avg = sum(ds.spread for ds in daily_spreads[:7]) / 7
+        last_avg = sum(ds.spread for ds in daily_spreads[-7:]) / 7
+        diff = last_avg - first_avg
+        if diff > 0.001:
+            spread_trend = "widening"
+        elif diff < -0.001:
+            spread_trend = "narrowing"
+
+    return {
+        "current_spread": daily_spreads[-1].spread,
+        "avg_spread": avg_spread,
+        "max_spread": max_entry.spread,
+        "max_spread_date": max_entry.date,
+        "min_spread": min_entry.spread,
+        "min_spread_date": min_entry.date,
+        "spread_trend": spread_trend,
+    }
+
+
+_SPREAD_TREND_LABELS = {
+    "widening": "Se esta ampliando",
+    "narrowing": "Se esta reduciendo",
+    "stable": "Estable",
+}
+
+
+def spread_summary_cards(kpis: Dict[str, Any]) -> List[Dict[str, str]]:
+    if kpis.get("current_spread") is None:
+        return []
+
+    trend_label = _SPREAD_TREND_LABELS.get(kpis.get("spread_trend", ""), "")
+    trend_color = ""
+    if kpis.get("spread_trend") == "widening":
+        trend_color = "text-red-600"
+    elif kpis.get("spread_trend") == "narrowing":
+        trend_color = "text-green-600"
+
+    return [
+        {
+            "label": "Diferencia actual",
+            "value": format_price(kpis["current_spread"]),
+            "color": "text-blue-600",
+        },
+        {
+            "label": "Diferencia promedio",
+            "value": format_price(kpis["avg_spread"]),
+        },
+        {
+            "label": "Maxima diferencia",
+            "value": format_price(kpis["max_spread"]),
+            "color": "text-red-600",
+            "description": kpis.get("max_spread_date", ""),
+        },
+        {
+            "label": "Minima diferencia",
+            "value": format_price(kpis["min_spread"]),
+            "color": "text-green-600",
+            "description": kpis.get("min_spread_date", ""),
+        },
+        {
+            "label": "Tendencia",
+            "value": trend_label,
+            "color": trend_color,
+        },
+    ]
+
+
+def monthly_spread_pattern(daily_spreads: List[DailySpread]) -> Optional[pd.DataFrame]:
+    if len(daily_spreads) < 15:
+        return None
+
+    rows = [{"month": ds.date[:7], "spread": ds.spread} for ds in daily_spreads]
+    df = pd.DataFrame(rows)
+    monthly = (
+        df.groupby("month")
+        .agg(
+            avg_spread=("spread", "mean"),
+            min_spread=("spread", "min"),
+            max_spread=("spread", "max"),
+            count=("spread", "count"),
+        )
+        .reset_index()
+    )
+    monthly = monthly[monthly["count"] >= 15]
+    if len(monthly) < 3:
+        return None
+    return monthly.drop(columns=["count"])
 
 
 def zone_kpis(zones: Sequence[ZoneResult]) -> Dict[str, Any]:

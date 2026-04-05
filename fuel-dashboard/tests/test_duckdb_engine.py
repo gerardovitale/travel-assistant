@@ -8,10 +8,13 @@ import data.duckdb_engine as duckdb_engine_module
 from data.duckdb_engine import _validate_fuel_column
 from data.duckdb_engine import query_cached_zip_code_price_trend
 from data.duckdb_engine import query_cheapest_by_zip
+from data.duckdb_engine import query_cheapest_by_zip_group
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_nearest_stations
+from data.duckdb_engine import query_nearest_stations_group
 from data.duckdb_engine import query_stations_within_radius
+from data.duckdb_engine import query_stations_within_radius_group
 from data.duckdb_engine import refresh_zip_code_trend_snapshot
 
 
@@ -229,3 +232,123 @@ def test_query_cached_zip_code_price_trend_returns_empty_when_not_ready():
     result = query_cached_zip_code_price_trend("28001", "diesel_a_price", 90)
 
     assert result.empty
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_cached_group_price_trend_returns_multiple_fuel_types(mock_conn):
+    from data.duckdb_engine import query_cached_group_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = pd.DataFrame(  # noqa: F841
+        {
+            "date": pd.to_datetime(["2026-03-29", "2026-03-30", "2026-03-29", "2026-03-30"]).date,
+            "zip_code": ["28001"] * 4,
+            "province": ["madrid"] * 4,
+            "fuel_type": ["diesel_a_price", "diesel_a_price", "diesel_premium_price", "diesel_premium_price"],
+            "avg_price": [1.45, 1.47, 1.55, 1.57],
+            "min_price": [1.40, 1.42, 1.50, 1.52],
+            "max_price": [1.50, 1.52, 1.60, 1.62],
+            "station_count": [5, 4, 3, 3],
+        }
+    )  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_cached_group_price_trend("28001", ["diesel_a_price", "diesel_premium_price"], 90)
+
+    assert len(result) == 4
+    assert set(result.columns) == {"date", "fuel_type", "avg_price", "min_price", "max_price"}
+    assert set(result["fuel_type"].unique()) == {"diesel_a_price", "diesel_premium_price"}
+
+
+def test_query_cached_group_price_trend_returns_empty_when_not_ready():
+    from data.duckdb_engine import query_cached_group_price_trend
+
+    duckdb_engine_module._zip_code_trend_ready.clear()
+
+    result = query_cached_group_price_trend("28001", ["diesel_a_price", "diesel_premium_price"], 90)
+
+    assert result.empty
+    assert "fuel_type" in result.columns
+
+
+def test_query_cached_group_price_trend_rejects_invalid_fuel_column():
+    from data.duckdb_engine import query_cached_group_price_trend
+
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    with pytest.raises(ValueError, match="Invalid fuel column"):
+        query_cached_group_price_trend("28001", ["diesel_a_price", "malicious_column"], 90)
+
+
+# --- Multi-column group query tests ---
+
+
+def _setup_multi_fuel_table(conn):
+    df = pd.DataFrame(  # noqa: F841
+        {
+            "label": ["station_primary_only", "station_variant_only", "station_primary_and_variant", "station_far"],
+            "address": ["calle a", "calle b", "calle c", "calle d"],
+            "municipality": ["madrid", "madrid", "madrid", "barcelona"],
+            "province": ["madrid", "madrid", "madrid", "barcelona"],
+            "zip_code": ["28001", "28001", "28001", "08001"],
+            "latitude": [40.4168, 40.4172, 40.4180, 41.3851],
+            "longitude": [-3.7038, -3.7032, -3.7025, 2.1734],
+            "diesel_a_price": [1.50, None, 1.60, 1.55],
+            "diesel_b_price": [None, 1.20, 1.10, None],
+            "diesel_premium_price": [None, None, 1.30, 1.45],
+        }
+    )
+    conn.execute("DROP TABLE IF EXISTS latest_stations")
+    conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_cheapest_by_zip_group_filters_by_primary(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_multi_fuel_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_cheapest_by_zip_group("28001", "diesel_a_price", ["diesel_a_price", "diesel_b_price"], 3)
+    # station_variant_only has no diesel_a_price, so it's excluded
+    assert len(result) == 2
+    assert result.iloc[0]["label"] == "station_primary_only"  # 1.50 < 1.60
+    assert result.iloc[1]["label"] == "station_primary_and_variant"
+    assert "diesel_a_price" in result.columns
+    assert "diesel_b_price" in result.columns
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_nearest_stations_group_filters_by_primary(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_multi_fuel_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_nearest_stations_group(
+        40.4168, -3.7038, "diesel_a_price", ["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 3
+    )
+    # station_variant_only excluded (no diesel_a_price)
+    assert len(result) == 3
+    assert "station_variant_only" not in result["label"].tolist()
+    assert "distance_km" in result.columns
+    assert "diesel_a_price" in result.columns
+    assert "diesel_premium_price" in result.columns
+    assert result.iloc[0]["distance_km"] < result.iloc[1]["distance_km"]
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_stations_within_radius_group_filters_by_primary(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_multi_fuel_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_stations_within_radius_group(
+        40.4168, -3.7038, "diesel_a_price", ["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 5.0
+    )
+    # Only Madrid stations with diesel_a_price (station_primary_only + station_primary_and_variant)
+    assert len(result) == 2
+    assert "station_variant_only" not in result["label"].tolist()
+    assert all(result["distance_km"] <= 5.0)
+    assert "diesel_b_price" in result.columns
+    assert "diesel_premium_price" in result.columns

@@ -1,5 +1,6 @@
 import logging
 import math
+from typing import Dict
 from typing import List
 from typing import Optional
 from typing import Tuple
@@ -12,6 +13,8 @@ from api.schemas import StationResult
 from api.schemas import TrendPoint
 from api.schemas import TripPlan
 from api.schemas import ZoneResult
+from ui.view_models import DailySpread
+from ui.view_models import fuel_group_label
 from ui.view_models import fuel_label
 
 from data.geojson_loader import _NON_MAINLAND_PROVINCES
@@ -171,6 +174,143 @@ def build_trend_chart(trend_data: List[TrendPoint], fuel_type: str, zip_code: st
         height=420,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
+        margin=dict(l=50, r=30, t=70, b=50),
+    )
+    fig.update_yaxes(tickformat=".3f")
+    return fig
+
+
+_GROUP_CHART_COLORS = [
+    "#2563eb",
+    "#dc2626",
+    "#16a34a",
+    "#d97706",
+    "#7c3aed",
+]
+
+
+def build_group_trend_chart(
+    group_trends: Dict[str, List[TrendPoint]],
+    fuel_group: str,
+    zip_code: str,
+) -> go.Figure:
+    fig = go.Figure()
+    group_name = fuel_group_label(fuel_group)
+
+    for idx, (fuel_type, points) in enumerate(group_trends.items()):
+        if not points:
+            continue
+        color = _GROUP_CHART_COLORS[idx % len(_GROUP_CHART_COLORS)]
+        dates = [p.date for p in points]
+        avg_prices = [p.avg_price for p in points]
+        name = fuel_label(fuel_type)
+        fig.add_trace(
+            go.Scatter(
+                x=dates,
+                y=avg_prices,
+                mode="lines+markers",
+                name=name,
+                line=dict(color=color, width=2.5),
+                marker=dict(size=5, color=color),
+                hovertemplate=f"{name}<br>Fecha: %{{x}}<br>Precio: %{{y:.3f}} EUR/L<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        title=f"Comparacion {group_name} — CP {zip_code}",
+        xaxis_title="Fecha",
+        yaxis_title="Precio (EUR/L)",
+        template="plotly_white",
+        height=420,
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
+        margin=dict(l=50, r=30, t=70, b=50),
+    )
+    fig.update_yaxes(tickformat=".3f")
+    return fig
+
+
+def build_spread_trend_chart(
+    daily_spreads: List[DailySpread],
+    fuel_group: str,
+    zip_code: str,
+) -> go.Figure:
+    group_name = fuel_group_label(fuel_group)
+    dates = [ds.date for ds in daily_spreads]
+    spreads = [ds.spread for ds in daily_spreads]
+    max_variants = [fuel_label(ds.max_variant) for ds in daily_spreads]
+    min_variants = [fuel_label(ds.min_variant) for ds in daily_spreads]
+    avg_spread = sum(spreads) / len(spreads) if spreads else 0
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=dates,
+            y=spreads,
+            mode="lines+markers",
+            name="Diferencia",
+            line=dict(color="#2563eb", width=2.5),
+            marker=dict(size=5, color="#1d4ed8"),
+            customdata=list(zip(max_variants, min_variants)),
+            hovertemplate=(
+                "Fecha: %{x}<br>"
+                "Diferencia: %{y:.3f} EUR/L<br>"
+                "Mas caro: %{customdata[0]}<br>"
+                "Mas barato: %{customdata[1]}"
+                "<extra></extra>"
+            ),
+        )
+    )
+    fig.add_hline(y=avg_spread, line_dash="dash", line_color="gray", annotation_text="Promedio")
+    fig.update_layout(
+        title=f"Diferencia premium — {group_name} — CP {zip_code}",
+        xaxis_title="Fecha",
+        yaxis_title="Diferencia (EUR/L)",
+        template="plotly_white",
+        height=380,
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
+        margin=dict(l=50, r=30, t=70, b=50),
+    )
+    fig.update_yaxes(tickformat=".3f")
+    return fig
+
+
+def build_monthly_spread_chart(
+    monthly_df: pd.DataFrame,
+    fuel_group: str,
+    zip_code: str,
+) -> go.Figure:
+    group_name = fuel_group_label(fuel_group)
+    months = monthly_df["month"].tolist()
+    avg_spreads = monthly_df["avg_spread"].tolist()
+
+    max_idx = avg_spreads.index(max(avg_spreads)) if avg_spreads else -1
+    colors = ["#dc2626" if i == max_idx else "#2563eb" for i in range(len(avg_spreads))]
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=months,
+            y=avg_spreads,
+            marker_color=colors,
+            hovertemplate="Mes: %{x}<br>Diferencia media: %{y:.3f} EUR/L<extra></extra>",
+        )
+    )
+
+    if avg_spreads:
+        y_min = min(avg_spreads)
+        y_max = max(avg_spreads)
+        y_range_val = y_max - y_min if y_max != y_min else y_max * 0.1
+        padding = y_range_val * 0.3
+        fig.update_yaxes(range=[max(0, y_min - padding), y_max + padding])
+
+    fig.update_layout(
+        title=f"Patron mensual — {group_name} — CP {zip_code}",
+        xaxis_title="Mes",
+        yaxis_title="Diferencia media (EUR/L)",
+        template="plotly_white",
+        height=380,
         margin=dict(l=50, r=30, t=70, b=50),
     )
     fig.update_yaxes(tickformat=".3f")

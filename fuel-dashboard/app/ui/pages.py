@@ -5,6 +5,8 @@ from datetime import timedelta
 from typing import Any
 from typing import Dict
 
+from api.schemas import FUEL_GROUP_PRIMARY
+from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import HISTORICAL_PERIOD_DAYS
 from api.schemas import HistoricalPeriod
@@ -20,15 +22,20 @@ from services.data_quality_service import get_latest_day_stats
 from services.data_quality_service import get_missing_days
 from services.geocoding import geocode_address
 from services.station_service import get_best_by_address
+from services.station_service import get_best_by_address_group
 from services.station_service import get_brand_price_trend
 from services.station_service import get_brand_ranking
 from services.station_service import get_cheapest_by_address
+from services.station_service import get_cheapest_by_address_group
 from services.station_service import get_cheapest_by_zip
+from services.station_service import get_cheapest_by_zip_group
 from services.station_service import get_cheapest_zones
 from services.station_service import get_day_of_week_pattern
 from services.station_service import get_district_price_map
+from services.station_service import get_group_price_trends
 from services.station_service import get_municipalities
 from services.station_service import get_nearest_by_address
+from services.station_service import get_nearest_by_address_group
 from services.station_service import get_postal_code_geojson
 from services.station_service import get_price_trends
 from services.station_service import get_province_price_map
@@ -44,15 +51,20 @@ from services.trip_planner import plan_trip
 from ui.charts import build_brand_trend_chart
 from ui.charts import build_day_of_week_chart
 from ui.charts import build_district_choropleth
+from ui.charts import build_group_trend_chart
 from ui.charts import build_ingestion_stats_chart
+from ui.charts import build_monthly_spread_chart
 from ui.charts import build_province_choropleth
+from ui.charts import build_spread_trend_chart
 from ui.charts import build_station_map
 from ui.charts import build_trend_chart
 from ui.charts import build_trip_map
 from ui.charts import build_zip_code_choropleth
 from ui.components import advice_card
 from ui.components import card_nav
+from ui.components import comparison_period_select
 from ui.components import empty_state
+from ui.components import fuel_group_select
 from ui.components import fuel_type_select
 from ui.components import geolocation_button
 from ui.components import historical_period_select
@@ -60,6 +72,7 @@ from ui.components import init_theme
 from ui.components import kpi_row
 from ui.components import loading_state
 from ui.components import page_header
+from ui.components import search_fuel_select
 from ui.components import search_mode_select
 from ui.components import section_intro
 from ui.components import station_results_table
@@ -71,19 +84,25 @@ from ui.components import trip_stops_table
 from ui.view_models import alternative_plan_cards
 from ui.view_models import best_day_advice
 from ui.view_models import brand_ranking_kpis
+from ui.view_models import compute_daily_spread
 from ui.view_models import data_inventory_kpis
 from ui.view_models import day_of_week_kpis
 from ui.view_models import format_percentage
+from ui.view_models import group_trend_kpis
+from ui.view_models import group_trend_summary_cards
 from ui.view_models import HISTORICAL_PERIOD_LABELS
 from ui.view_models import INSIGHT_SECTION_CARDS
 from ui.view_models import latest_day_kpis
 from ui.view_models import missing_days_kpis
+from ui.view_models import monthly_spread_pattern
 from ui.view_models import PRIMARY_NAV_ITEMS
 from ui.view_models import province_ranking_kpis
 from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_recommendation
 from ui.view_models import search_summary_cards
+from ui.view_models import spread_kpis
+from ui.view_models import spread_summary_cards
 from ui.view_models import station_summary
 from ui.view_models import trend_kpis
 from ui.view_models import trend_summary_cards
@@ -213,7 +232,7 @@ def _build_search_panel() -> None:
             with ui.row().classes("w-full items-start gap-4 flex-wrap"):
                 dynamic_container = ui.column().classes("min-w-72 flex-1 gap-3")
                 state["dynamic_container"] = dynamic_container
-                fuel = fuel_type_select()
+                fuel = search_fuel_select()
 
             with ui.expansion("Ajustes avanzados").classes("w-full").props("dense"):
                 ui.label(
@@ -258,11 +277,19 @@ def _build_search_panel() -> None:
                 ui.spinner(size="lg").classes("text-primary")
         search_button.disable()
         try:
-            fuel_type = FuelType(fuel.value)
             current_mode = mode.value
             radius_input = state.get("radius_input")
             radius_km = radius_input.value if radius_input else None
             limit = int(limit_input.value)
+
+            # Parse fuel selection: "group:xxx" or "single:xxx"
+            fuel_value = fuel.value
+            is_group = fuel_value.startswith("group:")
+            if is_group:
+                fuel_group = FuelGroup(fuel_value.removeprefix("group:"))
+                fuel_type = FUEL_GROUP_PRIMARY[fuel_group]
+            else:
+                fuel_type = FuelType(fuel_value.removeprefix("single:"))
 
             search_lat = None
             search_lon = None
@@ -273,7 +300,10 @@ def _build_search_panel() -> None:
                 coords = await run.io_bound(geocode_address, f"{query_value}, Spain")
                 if coords:
                     search_lat, search_lon = coords
-                stations = await run.io_bound(get_cheapest_by_zip, query_value, fuel_type, limit)
+                if is_group:
+                    stations = await run.io_bound(get_cheapest_by_zip_group, query_value, fuel_group, limit)
+                else:
+                    stations = await run.io_bound(get_cheapest_by_zip, query_value, fuel_type, limit)
                 zip_boundary = await run.io_bound(get_zip_code_boundary, query_value)
             elif current_mode in ("nearest_by_address", "cheapest_by_address", "best_by_address"):
                 coords = await run.io_bound(geocode_address, query_value)
@@ -283,19 +313,41 @@ def _build_search_panel() -> None:
                     return
                 search_lat, search_lon = coords
                 if current_mode == "nearest_by_address":
-                    stations = await run.io_bound(get_nearest_by_address, search_lat, search_lon, fuel_type, limit)
+                    if is_group:
+                        stations = await run.io_bound(
+                            get_nearest_by_address_group, search_lat, search_lon, fuel_group, limit
+                        )
+                    else:
+                        stations = await run.io_bound(get_nearest_by_address, search_lat, search_lon, fuel_type, limit)
                 elif current_mode == "cheapest_by_address":
-                    stations = await run.io_bound(
-                        get_cheapest_by_address, search_lat, search_lon, fuel_type, radius_km, limit
-                    )
+                    if is_group:
+                        stations = await run.io_bound(
+                            get_cheapest_by_address_group, search_lat, search_lon, fuel_group, radius_km, limit
+                        )
+                    else:
+                        stations = await run.io_bound(
+                            get_cheapest_by_address, search_lat, search_lon, fuel_type, radius_km, limit
+                        )
                 elif current_mode == "best_by_address":
                     consumption_input = state.get("consumption_input")
                     consumption = consumption_input.value if consumption_input else None
                     tank_input = state.get("tank_input")
                     tank = tank_input.value if tank_input else None
-                    stations = await run.io_bound(
-                        get_best_by_address, search_lat, search_lon, fuel_type, radius_km, limit, consumption, tank
-                    )
+                    if is_group:
+                        stations = await run.io_bound(
+                            get_best_by_address_group,
+                            search_lat,
+                            search_lon,
+                            fuel_group,
+                            radius_km,
+                            limit,
+                            consumption,
+                            tank,
+                        )
+                    else:
+                        stations = await run.io_bound(
+                            get_best_by_address, search_lat, search_lon, fuel_type, radius_km, limit, consumption, tank
+                        )
                 else:
                     stations = []
             else:
@@ -344,6 +396,7 @@ def _build_search_panel() -> None:
                 table = station_results_table(
                     stations,
                     current_mode,
+                    primary_fuel=fuel_type.value if is_group else None,
                     plotly_element_id=plotly_id,
                     stations_trace_idx=stations_trace_idx,
                     highlight_trace_idx=highlight_trace_idx,
@@ -469,6 +522,20 @@ def _render_query_inputs(
 
 def _build_trends_panel() -> None:
     with ui.column().classes("w-full gap-3"):
+        tabs = ui.tabs().classes("w-full")
+        with tabs:
+            ui.tab("individual", label="Tendencia individual")
+            ui.tab("compare", label="Comparar variantes")
+
+        with ui.tab_panels(tabs, value="individual").classes("w-full"):
+            with ui.tab_panel("individual"):
+                _build_individual_trend_tab()
+            with ui.tab_panel("compare"):
+                _build_group_comparison_tab()
+
+
+def _build_individual_trend_tab() -> None:
+    with ui.column().classes("w-full gap-3"):
         with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label("Consulta la evolucion de precios por codigo postal.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
@@ -529,6 +596,96 @@ def _build_trends_panel() -> None:
 
     trend_button.on("click", lambda _: on_load_trend())
     set_status("info", "Carga una tendencia para comparar minimos, maximos y variacion promedio.")
+
+
+def _build_group_comparison_tab() -> None:
+    with ui.column().classes("w-full gap-3"):
+        with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
+            ui.label("Compara variantes de un mismo combustible (estandar vs premium).").classes(
+                "text-sm text-gray-600"
+            )
+            with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                zip_input = ui.input(label="Codigo postal", placeholder="Ejemplo: 28001").classes("w-56")
+                group = fuel_group_select()
+                compare_button = ui.button("Comparar").props("unelevated color=primary")
+            with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
+                with ui.row().classes("w-full items-end gap-4 flex-wrap"):
+                    period = comparison_period_select()
+                    ui.label("Periodo: de 7 dias a 12 meses.").classes("text-xs text-gray-500")
+
+        status_container = ui.column().classes("w-full")
+        summary_container = ui.column().classes("w-full")
+        chart_container = ui.column().classes("w-full")
+        spread_summary_container = ui.column().classes("w-full")
+        spread_chart_container = ui.column().classes("w-full")
+        monthly_chart_container = ui.column().classes("w-full")
+
+    set_status = _make_set_status(status_container)
+
+    async def on_compare() -> None:
+        summary_container.clear()
+        chart_container.clear()
+        spread_summary_container.clear()
+        spread_chart_container.clear()
+        monthly_chart_container.clear()
+        zip_code = (zip_input.value or "").strip()
+        if not zip_code:
+            set_status("warning", "Introduce un codigo postal para comparar variantes.")
+            return
+
+        set_status("loading", "Cargando comparacion de variantes...")
+        with chart_container:
+            with ui.column().classes("w-full items-center py-8"):
+                ui.spinner(size="lg").classes("text-primary")
+        compare_button.disable()
+        try:
+            fuel_group = FuelGroup(group.value)
+            trend_period = TrendPeriod(period.value)
+            group_trends = await run.io_bound(get_group_price_trends, zip_code, fuel_group, trend_period)
+            chart_container.clear()
+            if not group_trends:
+                set_status("empty", "No hay datos para esta combinacion.")
+                with chart_container:
+                    empty_state("Prueba otro codigo postal, familia de combustible o periodo.")
+                return
+
+            kpis = group_trend_kpis(group_trends)
+            with summary_container:
+                kpi_row(group_trend_summary_cards(kpis))
+
+            with chart_container:
+                fig = build_group_trend_chart(group_trends, fuel_group.value, zip_code)
+                ui.plotly(fig).classes("w-full")
+
+            daily_spreads = compute_daily_spread(group_trends)
+            if len(daily_spreads) >= 2:
+                s_kpis = spread_kpis(daily_spreads)
+                with spread_summary_container:
+                    ui.label("Analisis de diferencia premium").classes("text-lg font-semibold mt-4")
+                    kpi_row(spread_summary_cards(s_kpis))
+                with spread_chart_container:
+                    fig = build_spread_trend_chart(daily_spreads, fuel_group.value, zip_code)
+                    ui.plotly(fig).classes("w-full")
+
+                monthly_df = monthly_spread_pattern(daily_spreads)
+                if monthly_df is not None:
+                    with monthly_chart_container:
+                        ui.label("Patron mensual de la diferencia").classes("text-lg font-semibold mt-4")
+                        fig = build_monthly_spread_chart(monthly_df, fuel_group.value, zip_code)
+                        ui.plotly(fig).classes("w-full")
+
+            set_status("success", f"Comparacion cargada para {zip_code}.")
+        except ValueError as exc:
+            logger.warning("Group trend validation error: %s", exc)
+            set_status("warning", str(exc))
+        except Exception:
+            logger.exception("Group trend error")
+            set_status("error", "No se pudo cargar la comparacion. Intentalo de nuevo.")
+        finally:
+            compare_button.enable()
+
+    compare_button.on("click", lambda _: on_compare())
+    set_status("info", "Selecciona una familia de combustible para comparar sus variantes.")
 
 
 def _build_zones_panel() -> None:
@@ -1286,7 +1443,7 @@ def _build_zone_volatility_subtab() -> None:
             if df.empty:
                 set_status(
                     "empty",
-                    "No hay datos de volatilidad disponibles. Actualiza la agregacion historica y vuelve a intentarlo.",
+                    "No hay datos de volatilidad disponibles.",
                 )
                 return
 

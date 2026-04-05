@@ -375,3 +375,224 @@ def test_volatility_kpis_populated():
 
 def test_volatility_kpis_empty():
     assert volatility_kpis(pd.DataFrame()) == []
+
+
+def test_group_trend_kpis_computes_spread():
+    from ui.view_models import group_trend_kpis
+
+    group_trends = {
+        "diesel_a_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.45, min_price=1.40, max_price=1.50),
+            TrendPoint(date="2025-01-02", avg_price=1.47, min_price=1.42, max_price=1.52),
+        ],
+        "diesel_premium_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.55, min_price=1.50, max_price=1.60),
+            TrendPoint(date="2025-01-02", avg_price=1.57, min_price=1.52, max_price=1.62),
+        ],
+    }
+    kpis = group_trend_kpis(group_trends)
+    assert kpis["variant_count"] == 2
+    assert kpis["cheapest_price"] == pytest.approx(1.47)
+    assert kpis["most_expensive_price"] == pytest.approx(1.57)
+    assert kpis["premium_spread"] == pytest.approx(0.10, abs=0.001)
+    assert kpis["cheapest_label"] == "Diesel A"
+    assert kpis["most_expensive_label"] == "Diesel Premium"
+
+
+def test_group_trend_kpis_empty():
+    from ui.view_models import group_trend_kpis
+
+    assert group_trend_kpis({})["variant_count"] == 0
+    assert group_trend_kpis({})["premium_spread"] is None
+
+
+def test_group_trend_kpis_uses_latest_comparable_date():
+    from ui.view_models import group_trend_kpis
+
+    group_trends = {
+        "diesel_a_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.45, min_price=1.40, max_price=1.50),
+            TrendPoint(date="2025-01-02", avg_price=1.47, min_price=1.42, max_price=1.52),
+        ],
+        "diesel_premium_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.55, min_price=1.50, max_price=1.60),
+        ],
+        "diesel_b_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.50, min_price=1.45, max_price=1.55),
+        ],
+    }
+
+    kpis = group_trend_kpis(group_trends)
+
+    assert kpis["snapshot_date"] == "2025-01-01"
+    assert kpis["variant_count"] == 3
+    assert kpis["cheapest_price"] == pytest.approx(1.45)
+    assert kpis["most_expensive_price"] == pytest.approx(1.55)
+    assert kpis["premium_spread"] == pytest.approx(0.10, abs=0.001)
+    assert [variant["fuel_type"] for variant in kpis["variants"]] == [
+        "diesel_a_price",
+        "diesel_b_price",
+        "diesel_premium_price",
+    ]
+
+
+def test_group_trend_summary_cards():
+    from ui.view_models import group_trend_kpis
+    from ui.view_models import group_trend_summary_cards
+
+    group_trends = {
+        "diesel_a_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.47, min_price=1.42, max_price=1.52),
+        ],
+        "diesel_premium_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.57, min_price=1.52, max_price=1.62),
+        ],
+    }
+    kpis = group_trend_kpis(group_trends)
+    cards = group_trend_summary_cards(kpis)
+    assert len(cards) == 4
+    assert cards[0]["value"] == "2"
+    assert "1.470" in cards[1]["value"]
+    assert "1.570" in cards[2]["value"]
+    assert "0.100" in cards[3]["value"]
+
+
+def test_fuel_group_label():
+    from ui.view_models import fuel_group_label
+
+    assert fuel_group_label("diesel") == "Diesel"
+    assert fuel_group_label("gasoline_95") == "Gasolina 95"
+    assert fuel_group_label("unknown_group") == "Unknown Group"
+
+
+def test_compute_daily_spread_two_variants():
+    from ui.view_models import compute_daily_spread
+
+    group_trends = {
+        "diesel_a_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.45, min_price=1.40, max_price=1.50),
+            TrendPoint(date="2025-01-02", avg_price=1.47, min_price=1.42, max_price=1.52),
+        ],
+        "diesel_premium_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.55, min_price=1.50, max_price=1.60),
+            TrendPoint(date="2025-01-02", avg_price=1.60, min_price=1.55, max_price=1.65),
+        ],
+    }
+    result = compute_daily_spread(group_trends)
+    assert len(result) == 2
+    assert result[0].date == "2025-01-01"
+    assert result[0].spread == pytest.approx(0.10)
+    assert result[0].max_variant == "diesel_premium_price"
+    assert result[0].min_variant == "diesel_a_price"
+    assert result[1].spread == pytest.approx(0.13)
+
+
+def test_compute_daily_spread_single_variant():
+    from ui.view_models import compute_daily_spread
+
+    group_trends = {
+        "diesel_a_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.45, min_price=1.40, max_price=1.50),
+        ],
+    }
+    assert compute_daily_spread(group_trends) == []
+
+
+def test_compute_daily_spread_missing_dates():
+    from ui.view_models import compute_daily_spread
+
+    group_trends = {
+        "diesel_a_price": [
+            TrendPoint(date="2025-01-01", avg_price=1.45, min_price=1.40, max_price=1.50),
+            TrendPoint(date="2025-01-02", avg_price=1.47, min_price=1.42, max_price=1.52),
+        ],
+        "diesel_premium_price": [
+            TrendPoint(date="2025-01-02", avg_price=1.60, min_price=1.55, max_price=1.65),
+        ],
+    }
+    result = compute_daily_spread(group_trends)
+    assert len(result) == 1
+    assert result[0].date == "2025-01-02"
+
+
+def test_spread_kpis():
+    from ui.view_models import DailySpread
+    from ui.view_models import spread_kpis
+
+    spreads = [
+        DailySpread(date="2025-01-01", spread=0.10, max_variant="premium", min_variant="standard"),
+        DailySpread(date="2025-01-02", spread=0.15, max_variant="premium", min_variant="standard"),
+        DailySpread(date="2025-01-03", spread=0.08, max_variant="premium", min_variant="standard"),
+    ]
+    kpis = spread_kpis(spreads)
+    assert kpis["current_spread"] == pytest.approx(0.08)
+    assert kpis["avg_spread"] == pytest.approx(0.11, abs=0.001)
+    assert kpis["max_spread"] == pytest.approx(0.15)
+    assert kpis["max_spread_date"] == "2025-01-02"
+    assert kpis["min_spread"] == pytest.approx(0.08)
+    assert kpis["min_spread_date"] == "2025-01-03"
+    assert kpis["spread_trend"] == "stable"
+
+
+def test_spread_kpis_empty():
+    from ui.view_models import spread_kpis
+
+    kpis = spread_kpis([])
+    assert kpis["current_spread"] is None
+    assert kpis["avg_spread"] is None
+    assert kpis["max_spread"] is None
+
+
+def test_spread_summary_cards():
+    from ui.view_models import spread_summary_cards
+
+    kpis = {
+        "current_spread": 0.10,
+        "avg_spread": 0.12,
+        "max_spread": 0.15,
+        "max_spread_date": "2025-01-02",
+        "min_spread": 0.08,
+        "min_spread_date": "2025-01-03",
+        "spread_trend": "widening",
+    }
+    cards = spread_summary_cards(kpis)
+    assert len(cards) == 5
+    assert cards[0]["label"] == "Diferencia actual"
+    assert "0.100" in cards[0]["value"]
+    assert cards[4]["label"] == "Tendencia"
+    assert cards[4]["color"] == "text-red-600"
+
+
+def test_monthly_spread_pattern_short_period():
+    from ui.view_models import DailySpread
+    from ui.view_models import monthly_spread_pattern
+
+    spreads = [
+        DailySpread(date="2025-01-01", spread=0.10, max_variant="p", min_variant="s"),
+        DailySpread(date="2025-01-15", spread=0.12, max_variant="p", min_variant="s"),
+    ]
+    assert monthly_spread_pattern(spreads) is None
+
+
+def test_monthly_spread_pattern_long_period():
+    from ui.view_models import DailySpread
+    from ui.view_models import monthly_spread_pattern
+
+    spreads = []
+    for month in ["2025-01", "2025-02", "2025-03"]:
+        for day in range(1, 21):
+            spreads.append(
+                DailySpread(
+                    date=f"{month}-{day:02d}",
+                    spread=0.10 + (int(month[-2:]) - 1) * 0.02,
+                    max_variant="p",
+                    min_variant="s",
+                )
+            )
+    result = monthly_spread_pattern(spreads)
+    assert result is not None
+    assert len(result) == 3
+    assert "month" in result.columns
+    assert "avg_spread" in result.columns
+    assert result.iloc[0]["avg_spread"] == pytest.approx(0.10)
+    assert result.iloc[2]["avg_spread"] == pytest.approx(0.14)

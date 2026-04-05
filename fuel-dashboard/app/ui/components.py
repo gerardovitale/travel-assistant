@@ -5,6 +5,8 @@ from typing import Dict
 from typing import List
 from typing import Optional
 
+from api.schemas import FUEL_GROUP_MEMBERS
+from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import HistoricalPeriod
 from api.schemas import StationResult
@@ -14,7 +16,10 @@ from api.schemas import ZoneResult
 from nicegui import ui
 from nicegui.elements.toggle import Toggle
 from ui.view_models import FUEL_DISPLAY_NAMES
+from ui.view_models import FUEL_GROUP_DISPLAY_NAMES
+from ui.view_models import FUEL_VARIANT_SHORT_NAMES
 from ui.view_models import HISTORICAL_PERIOD_LABELS
+from ui.view_models import SEARCH_FUEL_OPTIONS
 from ui.view_models import SEARCH_MODE_OPTIONS
 from ui.view_models import TREND_PERIOD_LABELS
 
@@ -185,10 +190,39 @@ def fuel_type_select(label: str = "Tipo de combustible", on_change: Optional[Cal
     )
 
 
+def fuel_group_select(label: str = "Familia de combustible", on_change: Optional[Callable] = None) -> ui.select:
+    options = {fg.value: FUEL_GROUP_DISPLAY_NAMES.get(fg.value, fg.value.replace("_", " ").title()) for fg in FuelGroup}
+    return (
+        ui.select(options, value=FuelGroup.diesel.value, label=label, on_change=on_change)
+        .props("outlined")
+        .classes("pe-input w-72")
+    )
+
+
+def search_fuel_select(label: str = "Tipo de combustible", on_change: Optional[Callable] = None) -> ui.select:
+    return (
+        ui.select(SEARCH_FUEL_OPTIONS, value="group:diesel", label=label, on_change=on_change)
+        .props("outlined")
+        .classes("pe-input w-72")
+    )
+
+
+_SHORT_PERIODS = {TrendPeriod.week, TrendPeriod.month, TrendPeriod.quarter}
+
+
 def trend_period_select(label: str = "Periodo", on_change: Optional[Callable] = None) -> ui.select:
-    options = {tp.value: TREND_PERIOD_LABELS[tp.value] for tp in TrendPeriod}
+    options = {tp.value: TREND_PERIOD_LABELS[tp.value] for tp in TrendPeriod if tp in _SHORT_PERIODS}
     return (
         ui.select(options, value=TrendPeriod.month.value, label=label, on_change=on_change)
+        .props("outlined")
+        .classes("pe-input w-40")
+    )
+
+
+def comparison_period_select(label: str = "Periodo", on_change: Optional[Callable] = None) -> ui.select:
+    options = {tp.value: TREND_PERIOD_LABELS[tp.value] for tp in TrendPeriod}
+    return (
+        ui.select(options, value=TrendPeriod.quarter.value, label=label, on_change=on_change)
         .props("outlined")
         .classes("pe-input w-40")
     )
@@ -258,6 +292,7 @@ def kpi_row(kpis: List[Dict[str, str]]) -> None:
 def station_results_table(
     stations: List[StationResult],
     mode: str,
+    primary_fuel: Optional[str] = None,
     plotly_element_id: Optional[str] = None,
     stations_trace_idx: Optional[int] = None,
     highlight_trace_idx: Optional[int] = None,
@@ -271,12 +306,41 @@ def station_results_table(
     has_score = any(s.score is not None for s in stations)
     has_cost = any(s.estimated_total_cost is not None for s in stations)
     has_pct = any(s.pct_vs_avg is not None for s in stations)
+    has_variants = any(s.variant_prices for s in stations)
+    variant_keys: List[str] = []
+    if has_variants:
+        seen: Dict[str, None] = {}
+        for s in stations:
+            if s.variant_prices:
+                for k in s.variant_prices:
+                    seen.setdefault(k, None)
+        if primary_fuel:
+            canonical = [ft.value for group in FUEL_GROUP_MEMBERS.values() for ft in group]
+            order = {k: i for i, k in enumerate(canonical)}
+            variant_keys = sorted(seen, key=lambda k: order.get(k, len(canonical)))
+        else:
+            variant_keys = list(seen)
+
     columns = [
         {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
         {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
         {"name": "address", "label": "Direccion", "field": "address", "align": "left"},
-        {"name": "price", "label": "Precio (EUR/L)", "field": "price", "align": "right", "sortable": True},
     ]
+    if has_variants:
+        for vk in variant_keys:
+            if primary_fuel:
+                col_label = FUEL_VARIANT_SHORT_NAMES.get(vk, FUEL_DISPLAY_NAMES.get(vk, vk))
+            else:
+                col_label = FUEL_DISPLAY_NAMES.get(vk, vk.replace("_price", "").replace("_", " ").title())
+            if vk == primary_fuel:
+                col_label += " (EUR/L)"
+            elif primary_fuel:
+                col_label += " (vs base)"
+            columns.append({"name": vk, "label": col_label, "field": vk, "align": "right", "sortable": True})
+    else:
+        columns.append(
+            {"name": "price", "label": "Precio (EUR/L)", "field": "price", "align": "right", "sortable": True}
+        )
     if has_pct:
         columns.append(
             {
@@ -316,14 +380,40 @@ def station_results_table(
             "ranking": idx + 1,
             "label": station.label,
             "address": f"{station.address}, {station.municipality}, {station.province}, {station.zip_code}",
-            "price": round(station.price, 3),
         }
+        if has_variants and station.variant_prices:
+            base_price = station.variant_prices.get(primary_fuel) if primary_fuel else None
+            for vk in variant_keys:
+                val = station.variant_prices.get(vk)
+                if val is None:
+                    row[vk] = "-"
+                elif base_price is not None and vk != primary_fuel and base_price > 0:
+                    delta = val - base_price
+                    row[vk] = f"{delta:+.3f}"
+                else:
+                    row[vk] = round(val, 3)
+        else:
+            row["price"] = round(station.price, 3)
         if station.pct_vs_avg is not None:
             row["pct_vs_avg"] = f"{station.pct_vs_avg:+.1f}%"
         if station.distance_km is not None:
             row["distance_km"] = round(station.distance_km, 2)
         if station.estimated_total_cost is not None:
-            row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
+            if has_variants and primary_fuel and station.variant_prices and station.price > 0:
+                primary_price = station.variant_prices.get(primary_fuel)
+                multiplier = station.estimated_total_cost / station.price
+                if primary_price is not None and primary_price > 0:
+                    primary_cost = round(primary_price * multiplier, 2)
+                    max_variant_price = max(station.variant_prices.values())
+                    if max_variant_price > primary_price:
+                        premium_extra = round((max_variant_price - primary_price) * multiplier, 2)
+                        row["estimated_total_cost"] = f"{primary_cost} (+{premium_extra})"
+                    else:
+                        row["estimated_total_cost"] = primary_cost
+                else:
+                    row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
+            else:
+                row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
         if station.score is not None:
             row["score"] = round(station.score, 1)
         rows.append(row)

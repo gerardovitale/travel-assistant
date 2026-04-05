@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Dict
 from typing import List
 from typing import Optional
 
@@ -22,16 +23,69 @@ class FuelType(str, Enum):
     hydrogen_price = "hydrogen_price"
 
 
+class FuelGroup(str, Enum):
+    diesel = "diesel"
+    gasoline_95 = "gasoline_95"
+    gasoline_98 = "gasoline_98"
+    biofuel = "biofuel"
+    natural_gas = "natural_gas"
+
+
+FUEL_GROUP_MEMBERS: Dict[FuelGroup, List[FuelType]] = {
+    FuelGroup.diesel: [
+        FuelType.diesel_a_price,
+        FuelType.diesel_b_price,
+        FuelType.diesel_premium_price,
+    ],
+    FuelGroup.gasoline_95: [
+        FuelType.gasoline_95_e5_price,
+        FuelType.gasoline_95_e10_price,
+        FuelType.gasoline_95_e5_premium_price,
+    ],
+    FuelGroup.gasoline_98: [
+        FuelType.gasoline_98_e5_price,
+        FuelType.gasoline_98_e10_price,
+    ],
+    FuelGroup.biofuel: [
+        FuelType.biodiesel_price,
+        FuelType.bioethanol_price,
+    ],
+    FuelGroup.natural_gas: [
+        FuelType.compressed_natural_gas_price,
+        FuelType.liquefied_natural_gas_price,
+    ],
+}
+
+
+FUEL_GROUP_PRIMARY: Dict[FuelGroup, FuelType] = {
+    FuelGroup.diesel: FuelType.diesel_a_price,
+    FuelGroup.gasoline_95: FuelType.gasoline_95_e5_price,
+    FuelGroup.gasoline_98: FuelType.gasoline_98_e5_price,
+    FuelGroup.biofuel: FuelType.biodiesel_price,
+    FuelGroup.natural_gas: FuelType.compressed_natural_gas_price,
+}
+
+# Fuel types that don't belong to any group (shown as standalone in search)
+FUEL_SINGLETONS: List[FuelType] = [
+    FuelType.liquefied_petroleum_gases_price,
+    FuelType.hydrogen_price,
+]
+
+
 class TrendPeriod(str, Enum):
     week = "week"
     month = "month"
     quarter = "quarter"
+    half_year = "half_year"
+    year = "year"
 
 
 TREND_PERIOD_DAYS = {
     TrendPeriod.week: 7,
     TrendPeriod.month: 30,
     TrendPeriod.quarter: 90,
+    TrendPeriod.half_year: 180,
+    TrendPeriod.year: 365,
 }
 
 
@@ -63,6 +117,7 @@ class StationResult(BaseModel):
     route_km: Optional[float] = None
     detour_minutes: Optional[float] = None
     pct_vs_avg: Optional[float] = None
+    variant_prices: Optional[Dict[str, float]] = None
 
 
 class ZoneResult(BaseModel):

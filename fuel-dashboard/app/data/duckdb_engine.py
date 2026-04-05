@@ -215,6 +215,92 @@ def query_nearest_stations(lat: float, lon: float, fuel_type: str, limit: int = 
         ).fetchdf()
 
 
+def _validate_fuel_columns(fuel_types: List[str]) -> List[str]:
+    if not fuel_types:
+        raise ValueError("At least one fuel column is required")
+    for ft in fuel_types:
+        _validate_fuel_column(ft)
+    return fuel_types
+
+
+def _primary_availability_predicate(primary_fuel: str) -> str:
+    return f"{primary_fuel} IS NOT NULL AND {primary_fuel} > 0"
+
+
+def query_cheapest_by_zip_group(zip_code: str, primary_fuel: str, all_fuels: List[str], limit: int = 5) -> pd.DataFrame:
+    primary_fuel = _validate_fuel_column(primary_fuel)
+    fuel_types = _validate_fuel_columns(all_fuels)
+    fuel_cols = ", ".join(fuel_types)
+    predicate = _primary_availability_predicate(primary_fuel)
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            SELECT label, address, municipality, province, zip_code, latitude, longitude, {fuel_cols}
+            FROM latest_stations
+            WHERE zip_code = $1 AND {predicate}
+            ORDER BY {primary_fuel} ASC
+            LIMIT $2
+            """,
+            [zip_code, limit],
+        ).fetchdf()
+
+
+def query_nearest_stations_group(
+    lat: float, lon: float, primary_fuel: str, all_fuels: List[str], limit: int = 5
+) -> pd.DataFrame:
+    primary_fuel = _validate_fuel_column(primary_fuel)
+    fuel_types = _validate_fuel_columns(all_fuels)
+    fuel_cols = ", ".join(fuel_types)
+    predicate = _primary_availability_predicate(primary_fuel)
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            SELECT label, address, municipality, province, zip_code, latitude, longitude, {fuel_cols},
+                2 * 6371 * ASIN(SQRT(
+                    POWER(SIN(RADIANS(latitude - $1) / 2), 2) +
+                    COS(RADIANS($1)) * COS(RADIANS(latitude)) *
+                    POWER(SIN(RADIANS(longitude - $2) / 2), 2)
+                )) AS distance_km
+            FROM latest_stations
+            WHERE {predicate}
+                AND latitude IS NOT NULL AND longitude IS NOT NULL
+            ORDER BY distance_km ASC
+            LIMIT $3
+            """,
+            [lat, lon, limit],
+        ).fetchdf()
+
+
+def query_stations_within_radius_group(
+    lat: float, lon: float, primary_fuel: str, all_fuels: List[str], radius_km: float
+) -> pd.DataFrame:
+    primary_fuel = _validate_fuel_column(primary_fuel)
+    fuel_types = _validate_fuel_columns(all_fuels)
+    fuel_cols = ", ".join(fuel_types)
+    predicate = _primary_availability_predicate(primary_fuel)
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            SELECT * FROM (
+                SELECT label, address, municipality, province, zip_code, latitude, longitude, {fuel_cols},
+                    2 * 6371 * ASIN(SQRT(
+                        POWER(SIN(RADIANS(latitude - $1) / 2), 2) +
+                        COS(RADIANS($1)) * COS(RADIANS(latitude)) *
+                        POWER(SIN(RADIANS(longitude - $2) / 2), 2)
+                    )) AS distance_km
+                FROM latest_stations
+                WHERE {predicate}
+                    AND latitude IS NOT NULL AND longitude IS NOT NULL
+            ) WHERE distance_km <= $3
+            ORDER BY distance_km ASC
+            """,
+            [lat, lon, radius_km],
+        ).fetchdf()
+
+
 def query_cheapest_zones(province: str, fuel_type: str) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     with _lock:
@@ -317,6 +403,39 @@ def query_cached_zip_code_price_trend(zip_code: str, fuel_type: str, days_back: 
         "Served zip-code trend query from DuckDB cache (%s/%s, %s days, %s rows, %.1f ms)",
         zip_code,
         fuel_type,
+        days_back,
+        len(result),
+        duration_ms,
+    )
+    return result
+
+
+def query_cached_group_price_trend(zip_code: str, fuel_types: List[str], days_back: int) -> pd.DataFrame:
+    """Query daily price trend for multiple fuel types in a zip code from the DuckDB trend cache."""
+    for ft in fuel_types:
+        _validate_fuel_column(ft)
+    if not _zip_code_trend_ready.is_set():
+        return pd.DataFrame(columns=["date", "fuel_type", "avg_price", "min_price", "max_price"])
+
+    started = time.perf_counter()
+    with _lock:
+        conn = get_connection()
+        result = conn.execute(
+            f"""
+            SELECT date, fuel_type, avg_price, min_price, max_price
+            FROM {ZIP_CODE_TREND_TABLE}
+            WHERE zip_code = $1
+                AND fuel_type = ANY($2)
+                AND date >= CURRENT_DATE - INTERVAL ($3) DAY
+            ORDER BY fuel_type, date ASC
+            """,
+            [zip_code, fuel_types, days_back],
+        ).fetchdf()
+    duration_ms = (time.perf_counter() - started) * 1000
+    logger.info(
+        "Served group trend query from DuckDB cache (%s/%s, %s days, %s rows, %.1f ms)",
+        zip_code,
+        fuel_types,
         days_back,
         len(result),
         duration_ms,

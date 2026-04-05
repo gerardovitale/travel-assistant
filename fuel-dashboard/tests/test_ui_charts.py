@@ -167,3 +167,40 @@ def test_build_station_map_route_trace_is_lines():
     assert route_trace.mode == "lines"
     assert route_trace.line.color == "#6366f1"
     assert route_trace.line.width == 4
+
+
+def test_build_spread_trend_chart():
+    from ui.view_models import DailySpread
+
+    from ui.charts import build_spread_trend_chart
+
+    spreads = [
+        DailySpread(date="2025-01-01", spread=0.10, max_variant="diesel_premium_price", min_variant="diesel_a_price"),
+        DailySpread(date="2025-01-02", spread=0.12, max_variant="diesel_premium_price", min_variant="diesel_a_price"),
+    ]
+    fig = build_spread_trend_chart(spreads, "diesel", "28001")
+    assert "Diferencia premium" in fig.layout.title.text
+    assert len(fig.data) == 1
+    assert fig.layout.shapes is not None or hasattr(fig.layout, "_props")
+
+
+def test_build_monthly_spread_chart():
+    import pandas as pd
+
+    from ui.charts import build_monthly_spread_chart
+
+    monthly_df = pd.DataFrame(
+        {
+            "month": ["2025-01", "2025-02", "2025-03"],
+            "avg_spread": [0.10, 0.15, 0.12],
+            "min_spread": [0.08, 0.10, 0.09],
+            "max_spread": [0.12, 0.18, 0.14],
+        }
+    )
+    fig = build_monthly_spread_chart(monthly_df, "diesel", "28001")
+    assert "Patron mensual" in fig.layout.title.text
+    assert len(fig.data) == 1
+    assert len(fig.data[0].x) == 3
+    colors = list(fig.data[0].marker.color)
+    assert colors[1] == "#dc2626"
+    assert colors[0] == "#2563eb"

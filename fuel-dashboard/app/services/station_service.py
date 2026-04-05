@@ -7,6 +7,9 @@ from typing import Optional
 
 import pandas as pd
 from api.schemas import DistrictPriceResult
+from api.schemas import FUEL_GROUP_MEMBERS
+from api.schemas import FUEL_GROUP_PRIMARY
+from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import ProvincePriceResult
 from api.schemas import StationResult
@@ -23,16 +26,20 @@ from services.routing import get_route_geometries
 from data.duckdb_engine import get_distinct_provinces
 from data.duckdb_engine import is_zip_code_trend_ready
 from data.duckdb_engine import query_avg_price_by_province
+from data.duckdb_engine import query_cached_group_price_trend
 from data.duckdb_engine import query_cached_zip_code_price_trend
 from data.duckdb_engine import query_cheapest_by_zip
+from data.duckdb_engine import query_cheapest_by_zip_group
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_cheapest_zones_by_municipality
 from data.duckdb_engine import query_municipalities_by_province
 from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_nearest_stations
+from data.duckdb_engine import query_nearest_stations_group
 from data.duckdb_engine import query_price_trends
 from data.duckdb_engine import query_stations_by_province
 from data.duckdb_engine import query_stations_within_radius
+from data.duckdb_engine import query_stations_within_radius_group
 from data.duckdb_engine import query_volatility_by_zone
 from data.duckdb_engine import query_zip_codes_by_district
 from data.gcs_client import download_aggregate
@@ -49,6 +56,18 @@ def _validate_zip_code(zip_code: str) -> str:
     if not re.fullmatch(r"\d{5}", zip_code):
         raise ValueError(f"Invalid zip code: {zip_code!r}. Must be exactly 5 digits.")
     return zip_code
+
+
+def _trend_points_from_df(df: pd.DataFrame) -> List[TrendPoint]:
+    return [
+        TrendPoint(
+            date=str(row["date"]),
+            avg_price=row["avg_price"],
+            min_price=row["min_price"],
+            max_price=row["max_price"],
+        )
+        for _, row in df.iterrows()
+    ]
 
 
 def _df_to_station_results(
@@ -73,6 +92,46 @@ def _df_to_station_results(
                 score=row.get("score"),
                 estimated_total_cost=row.get("estimated_total_cost"),
                 pct_vs_avg=pct_vs_avg,
+            )
+        )
+    return results
+
+
+def _resolve_fuel_group(fuel_group: FuelGroup):
+    primary = FUEL_GROUP_PRIMARY[fuel_group].value
+    all_fuels = [ft.value for ft in FUEL_GROUP_MEMBERS[fuel_group]]
+    return primary, all_fuels
+
+
+def _df_to_station_results_group(
+    df: pd.DataFrame, primary_fuel: str, all_fuels: List[str], national_avg: Optional[float] = None
+) -> List[StationResult]:
+    results = []
+    for _, row in df.iterrows():
+        primary_price = float(row[primary_fuel])
+        pct_vs_avg = None
+        if national_avg and national_avg > 0:
+            pct_vs_avg = round((primary_price - national_avg) / national_avg * 100, 1)
+        variant_prices = {}
+        for ft in all_fuels:
+            val = row.get(ft)
+            if val is not None and pd.notna(val) and val > 0:
+                variant_prices[ft] = float(val)
+        results.append(
+            StationResult(
+                label=row["label"],
+                address=row["address"],
+                municipality=row["municipality"],
+                province=row["province"],
+                zip_code=str(row["zip_code"]),
+                latitude=row["latitude"],
+                longitude=row["longitude"],
+                price=primary_price,
+                distance_km=row.get("distance_km"),
+                score=row.get("score"),
+                estimated_total_cost=row.get("estimated_total_cost"),
+                pct_vs_avg=pct_vs_avg,
+                variant_prices=variant_prices if variant_prices else None,
             )
         )
     return results
@@ -210,6 +269,79 @@ def get_provinces() -> dict[str, str]:
     return get_distinct_provinces()
 
 
+def get_cheapest_by_zip_group(zip_code: str, fuel_group: FuelGroup, limit: int = 5) -> List[StationResult]:
+    _validate_zip_code(zip_code)
+    primary, all_fuels = _resolve_fuel_group(fuel_group)
+    df = query_cheapest_by_zip_group(zip_code, primary, all_fuels, limit)
+    national_avg = query_national_avg_price(primary)
+    return _df_to_station_results_group(df, primary, all_fuels, national_avg)
+
+
+def get_nearest_by_address_group(lat: float, lon: float, fuel_group: FuelGroup, limit: int = 5) -> List[StationResult]:
+    primary, all_fuels = _resolve_fuel_group(fuel_group)
+    oversample = limit * 3 if settings.osrm_enabled else limit
+    df = query_nearest_stations_group(lat, lon, primary, all_fuels, oversample)
+    df = _enrich_with_road_distances(lat, lon, df)
+    df = df.sort_values("distance_km").head(limit)
+    national_avg = query_national_avg_price(primary)
+    return _df_to_station_results_group(df, primary, all_fuels, national_avg)
+
+
+def get_cheapest_by_address_group(
+    lat: float, lon: float, fuel_group: FuelGroup, radius_km: float = None, limit: int = 5
+) -> List[StationResult]:
+    primary, all_fuels = _resolve_fuel_group(fuel_group)
+    if radius_km is None:
+        radius_km = settings.default_radius_km
+    fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
+    df = query_stations_within_radius_group(lat, lon, primary, all_fuels, fetch_radius)
+    if df.empty:
+        return []
+    df = _enrich_with_road_distances(lat, lon, df)
+    if df.empty:
+        return []
+    df = df[df["distance_km"] <= radius_km]
+    df = df.sort_values([primary, "distance_km"]).head(limit)
+    national_avg = query_national_avg_price(primary)
+    return _df_to_station_results_group(df, primary, all_fuels, national_avg)
+
+
+def get_best_by_address_group(
+    lat: float,
+    lon: float,
+    fuel_group: FuelGroup,
+    radius_km: Optional[float] = None,
+    limit: int = 5,
+    consumption_lper100km: Optional[float] = None,
+    tank_liters: Optional[float] = None,
+) -> List[StationResult]:
+    primary, all_fuels = _resolve_fuel_group(fuel_group)
+    if radius_km is None:
+        radius_km = settings.default_radius_km
+    consumption = consumption_lper100km or settings.default_consumption_lper100km
+    tank = tank_liters or settings.default_tank_liters
+    fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
+    df = query_stations_within_radius_group(lat, lon, primary, all_fuels, fetch_radius)
+    if df.empty:
+        return []
+    df = _enrich_with_road_distances(lat, lon, df)
+    if df.empty:
+        return []
+    df = df[df["distance_km"] <= radius_km]
+    trip_liters = 2.0 * df["distance_km"] * consumption / 100.0
+    df["estimated_total_cost"] = (df[primary] * (tank + trip_liters)).round(2)
+    costs = df["estimated_total_cost"]
+    min_cost, max_cost = costs.min(), costs.max()
+    cost_range = max_cost - min_cost
+    if cost_range > 0:
+        df["score"] = ((max_cost - df["estimated_total_cost"]) / cost_range * 10).round(1)
+    else:
+        df["score"] = 10.0
+    df = df.sort_values("score", ascending=False).head(limit)
+    national_avg = query_national_avg_price(primary)
+    return _df_to_station_results_group(df, primary, all_fuels, national_avg)
+
+
 def get_cheapest_zones(province: str, fuel_type: FuelType) -> List[ZoneResult]:
     df = query_cheapest_zones(province, fuel_type.value)
     return [
@@ -323,15 +455,7 @@ def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) ->
         logger.warning("Zip-code trend cache not ready; falling back to raw history for %s", zip_code)
         files = list_parquet_files(days_back=days_back)
         df = query_price_trends(files, zip_code, fuel_type.value)
-    trend = [
-        TrendPoint(
-            date=str(row["date"]),
-            avg_price=row["avg_price"],
-            min_price=row["min_price"],
-            max_price=row["max_price"],
-        )
-        for _, row in df.iterrows()
-    ]
+    trend = _trend_points_from_df(df)
     duration_ms = (time.perf_counter() - started) * 1000
     logger.info(
         "Loaded price trends for %s from %s (%s rows, %.1f ms)",
@@ -341,6 +465,39 @@ def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) ->
         duration_ms,
     )
     return trend
+
+
+def get_group_price_trends(zip_code: str, fuel_group: FuelGroup, period: TrendPeriod) -> Dict[str, List[TrendPoint]]:
+    _validate_zip_code(zip_code)
+    days_back = TREND_PERIOD_DAYS[period]
+    fuel_types = [ft.value for ft in FUEL_GROUP_MEMBERS[fuel_group]]
+    started = time.perf_counter()
+    result: Dict[str, List[TrendPoint]] = {}
+    source = "duckdb_trend_cache"
+
+    if is_zip_code_trend_ready():
+        df = query_cached_group_price_trend(zip_code, fuel_types, days_back)
+        for fuel_type, group_df in df.groupby("fuel_type"):
+            result[str(fuel_type)] = _trend_points_from_df(group_df)
+    else:
+        source = "raw_history_fallback"
+        logger.warning("Zip-code trend cache not ready; falling back to raw history for grouped trends in %s", zip_code)
+        files = list_parquet_files(days_back=days_back)
+        for fuel_type in fuel_types:
+            group_df = query_price_trends(files, zip_code, fuel_type)
+            if not group_df.empty:
+                result[fuel_type] = _trend_points_from_df(group_df)
+
+    duration_ms = (time.perf_counter() - started) * 1000
+    logger.info(
+        "Loaded group price trends for %s/%s from %s (%s variants, %.1f ms)",
+        zip_code,
+        fuel_group.value,
+        source,
+        len(result),
+        duration_ms,
+    )
+    return result
 
 
 def get_province_ranking(fuel_type: FuelType, days_back: int) -> pd.DataFrame:
