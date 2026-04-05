@@ -115,7 +115,7 @@ def test_search_recommendation_for_best_option_uses_total_cost():
 
     recommendation = search_recommendation(stations, "best_by_address")
 
-    assert "Mejor opcion" == recommendation["title"]
+    assert "Mejor opción" == recommendation["title"]
     assert "s1" in recommendation["headline"]
     assert "58.20 EUR" in recommendation["detail"]
     assert "puntuacion" not in recommendation["detail"].lower()
@@ -478,8 +478,7 @@ def test_group_trend_kpis_uses_latest_comparable_date():
 
 
 def test_group_trend_summary_cards():
-    from ui.view_models import group_trend_kpis
-    from ui.view_models import group_trend_summary_cards
+    from ui.view_models import group_trend_kpis, group_trend_summary_cards
 
     group_trends = {
         "diesel_a_price": [
@@ -557,8 +556,7 @@ def test_compute_daily_spread_missing_dates():
 
 
 def test_spread_kpis():
-    from ui.view_models import DailySpread
-    from ui.view_models import spread_kpis
+    from ui.view_models import DailySpread, spread_kpis
 
     spreads = [
         DailySpread(date="2025-01-01", spread=0.10, max_variant="premium", min_variant="standard"),
@@ -605,8 +603,7 @@ def test_spread_summary_cards():
 
 
 def test_monthly_spread_pattern_short_period():
-    from ui.view_models import DailySpread
-    from ui.view_models import monthly_spread_pattern
+    from ui.view_models import DailySpread, monthly_spread_pattern
 
     spreads = [
         DailySpread(date="2025-01-01", spread=0.10, max_variant="p", min_variant="s"),
@@ -616,8 +613,7 @@ def test_monthly_spread_pattern_short_period():
 
 
 def test_monthly_spread_pattern_long_period():
-    from ui.view_models import DailySpread
-    from ui.view_models import monthly_spread_pattern
+    from ui.view_models import DailySpread, monthly_spread_pattern
 
     spreads = []
     for month in ["2025-01", "2025-02", "2025-03"]:

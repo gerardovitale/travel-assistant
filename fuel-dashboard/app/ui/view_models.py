@@ -71,7 +71,7 @@ INSIGHT_SECTION_CARDS: List[NavigationItem] = [
 ]
 
 SEARCH_MODE_OPTIONS: Dict[str, str] = {
-    "best_by_address": "Mejor opcion",
+    "best_by_address": "Mejor opción",
     "nearest_by_address": "Mas cercano",
     "cheapest_by_address": "Mas barato",
     "cheapest_by_zip": "Mas barato por CP",
@@ -129,7 +129,7 @@ SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
     "best_by_address": SearchModeMeta(
         query_label="Direccion o referencia",
         query_placeholder="Ejemplo: Atocha, Madrid",
-        helper_text="Estima el coste total de repostar y desplazarte para recomendar la mejor opcion.",
+        helper_text="Estima el coste total de repostar y desplazarte para recomendar la mejor opción.",
         requires_radius=True,
         success_metric_label="Mejor coste total",
         action_label="Buscar estaciones",
@@ -140,7 +140,7 @@ SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
 
 
 BEST_OPTION_METHODOLOGY_LINES: List[str] = [
-    "La mejor opcion se calcula con el coste total estimado de repostar en cada estacion:",
+    "La mejor opción se calcula con el coste total estimado de repostar en cada estacion:",
     "",
     "Coste total = precio x (litros del deposito + combustible del viaje ida y vuelta)",
     "",
@@ -656,12 +656,12 @@ def search_recommendation(stations: Sequence[StationResult], mode: str) -> Dict[
             cost_advantage = second_best.estimated_total_cost - recommended.estimated_total_cost
         detail = f"Coste total estimado {format_currency(recommended.estimated_total_cost)}."
         caption = (
-            f"Ahorras {cost_advantage:.2f} EUR frente a la siguiente opcion."
+            f"Ahorras {cost_advantage:.2f} EUR frente a la siguiente opción."
             if cost_advantage is not None and cost_advantage > 0
             else "Equilibra precio por litro y coste de desplazamiento."
         )
         return {
-            "title": "Mejor opcion",
+            "title": "Mejor opción",
             "headline": f"{recommended.label} compensa mejor el viaje y el repostaje.",
             "detail": detail,
             "caption": caption,
@@ -671,7 +671,7 @@ def search_recommendation(stations: Sequence[StationResult], mode: str) -> Dict[
     caption = (
         f"Ahorro medio de {price_savings_vs_avg:.3f} EUR/L frente al conjunto analizado."
         if price_savings_vs_avg > 0
-        else "Es la opcion mas competitiva dentro de los resultados cargados."
+        else "Es la opción mas competitiva dentro de los resultados cargados."
     )
     return {
         "title": "Mejor precio detectado",

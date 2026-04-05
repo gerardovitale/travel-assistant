@@ -236,7 +236,7 @@ def _build_search_panel() -> None:
 
             with ui.expansion("Ajustes avanzados").classes("w-full").props("dense"):
                 ui.label(
-                    "Ajusta el numero de resultados y, si buscas la mejor opcion, tus parametros de vehiculo."
+                    "Ajusta el numero de resultados y, si buscas la mejor opción, tus parametros de vehiculo."
                 ).classes("text-xs text-gray-500")
                 advanced_container = ui.column().classes("w-full gap-2")
                 state["advanced_container"] = advanced_container
@@ -499,7 +499,7 @@ def _render_query_inputs(
         with advanced_container:
             section_intro(
                 "Ajustes del vehiculo",
-                "Solo se usan para la estrategia de mejor opcion.",
+                "Solo se usan para la estrategia de mejor opción.",
             )
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 state["consumption_input"] = ui.number(
