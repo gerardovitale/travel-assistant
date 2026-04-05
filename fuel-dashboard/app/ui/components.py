@@ -303,7 +303,6 @@ def station_results_table(
         return None
 
     has_distance = any(s.distance_km is not None for s in stations)
-    has_score = any(s.score is not None for s in stations)
     has_cost = any(s.estimated_total_cost is not None for s in stations)
     has_pct = any(s.pct_vs_avg is not None for s in stations)
     has_variants = any(s.variant_prices for s in stations)
@@ -371,9 +370,6 @@ def station_results_table(
                 "sortable": True,
             }
         )
-    if has_score:
-        columns.append({"name": "score", "label": "Puntuacion", "field": "score", "align": "right", "sortable": True})
-
     rows = []
     for idx, station in enumerate(stations):
         row = {
@@ -414,8 +410,6 @@ def station_results_table(
                     row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
             else:
                 row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
-        if station.score is not None:
-            row["score"] = round(station.score, 1)
         rows.append(row)
 
     table = ui.table(columns=columns, rows=rows, row_key="label").classes("pe-table w-full")

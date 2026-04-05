@@ -83,6 +83,7 @@ from ui.components import trend_period_select
 from ui.components import trip_stops_table
 from ui.view_models import alternative_plan_cards
 from ui.view_models import best_day_advice
+from ui.view_models import BEST_OPTION_METHODOLOGY_LINES
 from ui.view_models import brand_ranking_kpis
 from ui.view_models import compute_daily_spread
 from ui.view_models import data_inventory_kpis
@@ -97,7 +98,6 @@ from ui.view_models import missing_days_kpis
 from ui.view_models import monthly_spread_pattern
 from ui.view_models import PRIMARY_NAV_ITEMS
 from ui.view_models import province_ranking_kpis
-from ui.view_models import SCORE_METHODOLOGY_LINES
 from ui.view_models import search_mode_metadata
 from ui.view_models import search_recommendation
 from ui.view_models import search_summary_cards
@@ -512,8 +512,8 @@ def _render_query_inputs(
                 state["tank_input"] = ui.number(
                     label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
                 ).classes("w-40")
-            with ui.expansion("Como se calcula la puntuacion?").classes("w-full text-sm").props("dense"):
-                for line in SCORE_METHODOLOGY_LINES:
+            with ui.expansion("Como estimamos el coste total?").classes("w-full text-sm").props("dense"):
+                for line in BEST_OPTION_METHODOLOGY_LINES:
                     if line:
                         ui.label(line).classes("text-xs text-gray-600")
                     else:

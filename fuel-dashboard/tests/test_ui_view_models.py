@@ -33,6 +33,8 @@ def test_search_mode_metadata_radius_by_mode():
     address_meta = search_mode_metadata("best_by_address")
     assert address_meta.requires_radius is True
     assert address_meta.requires_consumption is True
+    assert address_meta.success_metric_label == "Mejor coste total"
+    assert "coste total" in address_meta.helper_text
 
 
 def test_fuel_label_uses_known_mappings_and_fallback():
@@ -69,6 +71,7 @@ def test_station_summary_and_cards_include_distance():
     assert summary["count"] == 2
     assert summary["best_price"] == 1.45
     assert summary["min_distance_km"] == 2.5
+    assert "best_score" not in summary
     cards = search_summary_cards(summary, "cheapest_by_address")
     assert len(cards) == 4
     assert cards[0]["value"] == "2"
@@ -115,7 +118,45 @@ def test_search_recommendation_for_best_option_uses_total_cost():
     assert "Mejor opcion" == recommendation["title"]
     assert "s1" in recommendation["headline"]
     assert "58.20 EUR" in recommendation["detail"]
+    assert "puntuacion" not in recommendation["detail"].lower()
     assert "0.90 EUR" in recommendation["caption"]
+
+
+def test_search_summary_cards_for_best_option_use_total_cost_copy():
+    stations = [
+        StationResult(
+            label="s1",
+            address="a1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.50,
+            distance_km=3.0,
+            score=9.8,
+            estimated_total_cost=58.20,
+        ),
+        StationResult(
+            label="s2",
+            address="a2",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.2,
+            longitude=-3.8,
+            price=1.47,
+            distance_km=6.0,
+            score=8.9,
+            estimated_total_cost=59.10,
+        ),
+    ]
+
+    cards = search_summary_cards(station_summary(stations), "best_by_address")
+
+    assert cards[-1]["label"] == "Mejor coste total"
+    assert cards[-1]["value"] == "58.20 EUR"
+    assert cards[-1]["description"] == "incluye repostaje y desplazamiento"
 
 
 def test_search_recommendation_for_nearest_station_mentions_distance_gap():

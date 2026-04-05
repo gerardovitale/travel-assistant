@@ -129,9 +129,9 @@ SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
     "best_by_address": SearchModeMeta(
         query_label="Direccion o referencia",
         query_placeholder="Ejemplo: Atocha, Madrid",
-        helper_text="Combina precio, distancia y consumo para recomendar la mejor opcion.",
+        helper_text="Estima el coste total de repostar y desplazarte para recomendar la mejor opcion.",
         requires_radius=True,
-        success_metric_label="Mejor puntuacion",
+        success_metric_label="Mejor coste total",
         action_label="Buscar estaciones",
         empty_state_hint="Amplia el radio o revisa los ajustes del vehiculo.",
         requires_consumption=True,
@@ -139,17 +139,17 @@ SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
 }
 
 
-SCORE_METHODOLOGY_LINES: List[str] = [
-    "La puntuacion (0-10) se basa en el coste total real de repostar en cada estacion:",
+BEST_OPTION_METHODOLOGY_LINES: List[str] = [
+    "La mejor opcion se calcula con el coste total estimado de repostar en cada estacion:",
     "",
     "Coste total = precio x (litros del deposito + combustible del viaje ida y vuelta)",
     "",
     "El combustible del viaje = 2 x distancia (km) x consumo (l/100km) / 100.",
     "Esto incluye el coste real de ir a la estacion y volver.",
     "",
-    "La estacion con menor coste total recibe un 10; la de mayor coste un 0.",
-    "No hay pesos arbitrarios: tu consumo y la distancia determinan",
-    "automaticamente cuando compensa ir mas lejos por un precio mas bajo.",
+    "La estacion con menor coste total se recomienda primero.",
+    "Tu consumo y la distancia determinan automaticamente",
+    "cuando compensa ir mas lejos por un precio mas bajo.",
     "",
     "Ejemplo: con 7 l/100km y deposito de 40L, una estacion a 5 km",
     "gasta 1.05 EUR extra en combustible del viaje (ida y vuelta).",
@@ -204,12 +204,10 @@ def station_summary(stations: Sequence[StationResult]) -> Dict[str, Any]:
             "best_station_label": None,
             "min_distance_km": None,
             "max_distance_km": None,
-            "best_score": None,
             "best_estimated_cost": None,
         }
 
     distances = [s.distance_km for s in stations if s.distance_km is not None]
-    scores = [s.score for s in stations if s.score is not None]
     costs = [s.estimated_total_cost for s in stations if s.estimated_total_cost is not None]
     prices = [s.price for s in stations]
     best_station = min(stations, key=lambda s: s.price)
@@ -220,7 +218,6 @@ def station_summary(stations: Sequence[StationResult]) -> Dict[str, Any]:
         "best_station_label": best_station.label,
         "min_distance_km": min(distances) if distances else None,
         "max_distance_km": max(distances) if distances else None,
-        "best_score": max(scores) if scores else None,
         "best_estimated_cost": min(costs) if costs else None,
     }
 
@@ -617,7 +614,7 @@ def search_recommendation(stations: Sequence[StationResult], mode: str) -> Dict[
     """Build a recommendation card dict from the top search result.
 
     Assumes *stations* are already sorted by the caller (price, distance, or
-    score depending on *mode*), so ``stations[0]`` is the best match.
+    estimated total cost depending on *mode*), so ``stations[0]`` is the best match.
     """
     if not stations:
         return {
@@ -657,12 +654,7 @@ def search_recommendation(stations: Sequence[StationResult], mode: str) -> Dict[
             and second_best.estimated_total_cost is not None
         ):
             cost_advantage = second_best.estimated_total_cost - recommended.estimated_total_cost
-        detail = (
-            f"Coste total estimado {format_currency(recommended.estimated_total_cost)}"
-            f" con puntuacion {recommended.score:.1f}/10."
-            if recommended.score is not None
-            else f"Coste total estimado {format_currency(recommended.estimated_total_cost)}."
-        )
+        detail = f"Coste total estimado {format_currency(recommended.estimated_total_cost)}."
         caption = (
             f"Ahorras {cost_advantage:.2f} EUR frente a la siguiente opcion."
             if cost_advantage is not None and cost_advantage > 0
@@ -710,13 +702,12 @@ def search_summary_cards(summary: Dict[str, Any], mode: str) -> List[Dict[str, s
     ]
     if mode == "best_by_address":
         best_cost = summary["best_estimated_cost"]
-        best_score = summary["best_score"]
         cards.append(
             {
                 "label": "Mejor coste total",
                 "value": "-" if best_cost is None else f"{best_cost:.2f} EUR",
                 "color": "text-green-600",
-                "description": "-" if best_score is None else f"Puntuacion: {best_score:.1f}/10",
+                "description": "incluye repostaje y desplazamiento",
             }
         )
     else:
