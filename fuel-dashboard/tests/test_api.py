@@ -92,6 +92,17 @@ def test_best_by_address_with_consumption_and_tank(mock_service, mock_geocode):
     mock_service.assert_called_once_with(40.4168, -3.7038, mock_service.call_args[0][2], 5.0, 5, 4.5, 50.0)
 
 
+@patch("api.router.geocode_address")
+@patch("api.router.get_best_by_address")
+def test_best_by_address_uses_default_refill_liters(mock_service, mock_geocode):
+    mock_geocode.return_value = (40.4168, -3.7038)
+    mock_service.return_value = []
+    client = _get_client()
+    response = client.get("/api/v1/stations/best-by-address?address=Madrid&fuel_type=diesel_a_price")
+    assert response.status_code == 404
+    mock_service.assert_called_once_with(40.4168, -3.7038, mock_service.call_args[0][2], 5.0, 5, 7.0, 30.0)
+
+
 @patch("api.router.get_price_trends")
 def test_price_trends_endpoint(mock_service):
     from api.schemas import TrendPoint

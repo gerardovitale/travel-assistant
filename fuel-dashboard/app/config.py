@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     default_consumption_lper100km: float = 7.0
     default_tank_liters: float = 40.0
+    default_refill_liters: float = 30.0
     default_fuel_level_pct: float = 25.0
     default_max_detour_minutes: float = 5.0
 

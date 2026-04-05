@@ -9,6 +9,7 @@ from api.schemas import TripPlan
 from api.schemas import TripStop
 from api.schemas import ZoneResult
 from ui.view_models import best_day_advice
+from ui.view_models import BEST_OPTION_METHODOLOGY_LINES
 from ui.view_models import format_delta
 from ui.view_models import format_distance
 from ui.view_models import format_price
@@ -120,6 +121,15 @@ def test_search_recommendation_for_best_option_uses_total_cost():
     assert "58.20 EUR" in recommendation["detail"]
     assert "puntuacion" not in recommendation["detail"].lower()
     assert "0.90 EUR" in recommendation["caption"]
+
+
+def test_best_option_methodology_copy_uses_refill_liters():
+    joined = " ".join(BEST_OPTION_METHODOLOGY_LINES)
+    assert "litros a repostar" in joined
+    assert "30L a repostar" in joined
+    assert "0.04 EUR/L mas barato" in joined
+    assert "1.20 EUR en el repostaje" in joined
+    assert "deposito de 40L" not in joined
 
 
 def test_search_summary_cards_for_best_option_use_total_cost_copy():

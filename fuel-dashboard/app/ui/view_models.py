@@ -142,7 +142,7 @@ SEARCH_MODE_META: Dict[str, SearchModeMeta] = {
 BEST_OPTION_METHODOLOGY_LINES: List[str] = [
     "La mejor opción se calcula con el coste total estimado de repostar en cada estacion:",
     "",
-    "Coste total = precio x (litros del deposito + combustible del viaje ida y vuelta)",
+    "Coste total = precio x (litros a repostar + combustible del viaje ida y vuelta)",
     "",
     "El combustible del viaje = 2 x distancia (km) x consumo (l/100km) / 100.",
     "Esto incluye el coste real de ir a la estacion y volver.",
@@ -151,9 +151,9 @@ BEST_OPTION_METHODOLOGY_LINES: List[str] = [
     "Tu consumo y la distancia determinan automaticamente",
     "cuando compensa ir mas lejos por un precio mas bajo.",
     "",
-    "Ejemplo: con 7 l/100km y deposito de 40L, una estacion a 5 km",
+    "Ejemplo: con 7 l/100km y 30L a repostar, una estacion a 5 km",
     "gasta 1.05 EUR extra en combustible del viaje (ida y vuelta).",
-    "Si su precio es 0.03 EUR/L mas barato, ahorras 1.20 EUR en el deposito,",
+    "Si su precio es 0.04 EUR/L mas barato, ahorras 1.20 EUR en el repostaje,",
     "con un ahorro neto de 0.15 EUR.",
 ]
 

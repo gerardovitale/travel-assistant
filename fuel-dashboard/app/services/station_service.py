@@ -221,7 +221,7 @@ def get_best_by_address(
     ``total_cost = price * (tank_liters + 2 * distance_km * consumption / 100)``
 
     - **price**: station fuel price (EUR/L).
-    - **tank_liters**: how many liters the user plans to fill.
+    - **tank_liters**: how many liters the user plans to refill.
     - **2 * distance_km**: round-trip distance to the station.
     - **consumption / 100**: liters burned per km of driving.
 
@@ -238,7 +238,7 @@ def get_best_by_address(
     if consumption_lper100km is None:
         consumption_lper100km = settings.default_consumption_lper100km
     if tank_liters is None:
-        tank_liters = settings.default_tank_liters
+        tank_liters = settings.default_refill_liters
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
     df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius)
     if df.empty:
@@ -318,8 +318,8 @@ def get_best_by_address_group(
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     if radius_km is None:
         radius_km = settings.default_radius_km
-    consumption = consumption_lper100km or settings.default_consumption_lper100km
-    tank = tank_liters or settings.default_tank_liters
+    consumption = consumption_lper100km if consumption_lper100km is not None else settings.default_consumption_lper100km
+    tank = tank_liters if tank_liters is not None else settings.default_refill_liters
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
     df = query_stations_within_radius_group(lat, lon, primary, all_fuels, fetch_radius)
     if df.empty:

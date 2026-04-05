@@ -82,6 +82,21 @@ def test_get_best_by_address_total_cost_calculation(mock_query, mock_road):
 
 @patch("services.station_service.get_road_distances")
 @patch("services.station_service.query_stations_within_radius")
+def test_get_best_by_address_uses_default_refill_liters(mock_query, mock_road):
+    from services.station_service import get_best_by_address
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 1)
+    mock_road.return_value = [5.0]
+    results = get_best_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 10.0, 5, consumption_lper100km=7.0)
+    # default refill liters = 30.0
+    # trip_liters = 2 * 5.0 * 7.0 / 100 = 0.7
+    # total_cost = 1.50 * (30.0 + 0.7) = 46.05
+    assert len(results) == 1
+    assert results[0].estimated_total_cost == 46.05
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
 def test_get_best_by_address_high_consumption_favors_cheapest(mock_query, mock_road):
     from services.station_service import get_best_by_address
 

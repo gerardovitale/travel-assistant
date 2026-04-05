@@ -510,7 +510,7 @@ def _render_query_inputs(
                     step=0.5,
                 ).classes("w-44")
                 state["tank_input"] = ui.number(
-                    label="Litros a repostar", value=settings.default_tank_liters, min=5.0, max=120.0, step=5.0
+                    label="Litros a repostar", value=settings.default_refill_liters, min=5.0, max=120.0, step=5.0
                 ).classes("w-40")
             with ui.expansion("Como estimamos el coste total?").classes("w-full text-sm").props("dense"):
                 for line in BEST_OPTION_METHODOLOGY_LINES:
