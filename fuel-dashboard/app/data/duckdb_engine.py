@@ -27,6 +27,12 @@ def _validate_fuel_column(fuel_type: str) -> str:
     return fuel_type
 
 
+def _label_filter_clause(labels: Optional[List[str]], next_param_idx: int) -> tuple[str, list]:
+    if not labels:
+        return "", []
+    return f"AND label = ANY(${next_param_idx}::VARCHAR[])", [labels]
+
+
 _connection: Optional[duckdb.DuckDBPyConnection] = None
 _lock = threading.Lock()
 _zip_code_trend_ready = threading.Event()
@@ -154,8 +160,11 @@ def refresh_zip_code_trend_snapshot() -> bool:
     return True
 
 
-def query_cheapest_by_zip(zip_code: str, fuel_type: str, limit: int = 5) -> pd.DataFrame:
+def query_cheapest_by_zip(
+    zip_code: str, fuel_type: str, limit: int = 5, labels: Optional[List[str]] = None
+) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
+    label_clause, label_params = _label_filter_clause(labels, 3)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -163,15 +172,19 @@ def query_cheapest_by_zip(zip_code: str, fuel_type: str, limit: int = 5) -> pd.D
             SELECT label, address, municipality, province, zip_code, latitude, longitude, {fuel_type}
             FROM latest_stations
             WHERE zip_code = $1 AND {fuel_type} IS NOT NULL AND {fuel_type} > 0
+                {label_clause}
             ORDER BY {fuel_type} ASC
             LIMIT $2
             """,
-            [zip_code, limit],
+            [zip_code, limit] + label_params,
         ).fetchdf()
 
 
-def query_stations_within_radius(lat: float, lon: float, fuel_type: str, radius_km: float) -> pd.DataFrame:
+def query_stations_within_radius(
+    lat: float, lon: float, fuel_type: str, radius_km: float, labels: Optional[List[str]] = None
+) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
+    label_clause, label_params = _label_filter_clause(labels, 4)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -186,15 +199,19 @@ def query_stations_within_radius(lat: float, lon: float, fuel_type: str, radius_
                 FROM latest_stations
                 WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
                     AND latitude IS NOT NULL AND longitude IS NOT NULL
+                    {label_clause}
             ) WHERE distance_km <= $3
             ORDER BY distance_km ASC
             """,
-            [lat, lon, radius_km],
+            [lat, lon, radius_km] + label_params,
         ).fetchdf()
 
 
-def query_nearest_stations(lat: float, lon: float, fuel_type: str, limit: int = 5) -> pd.DataFrame:
+def query_nearest_stations(
+    lat: float, lon: float, fuel_type: str, limit: int = 5, labels: Optional[List[str]] = None
+) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
+    label_clause, label_params = _label_filter_clause(labels, 4)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -208,10 +225,11 @@ def query_nearest_stations(lat: float, lon: float, fuel_type: str, limit: int = 
             FROM latest_stations
             WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
                 AND latitude IS NOT NULL AND longitude IS NOT NULL
+                {label_clause}
             ORDER BY distance_km ASC
             LIMIT $3
             """,
-            [lat, lon, limit],
+            [lat, lon, limit] + label_params,
         ).fetchdf()
 
 
@@ -227,11 +245,14 @@ def _primary_availability_predicate(primary_fuel: str) -> str:
     return f"{primary_fuel} IS NOT NULL AND {primary_fuel} > 0"
 
 
-def query_cheapest_by_zip_group(zip_code: str, primary_fuel: str, all_fuels: List[str], limit: int = 5) -> pd.DataFrame:
+def query_cheapest_by_zip_group(
+    zip_code: str, primary_fuel: str, all_fuels: List[str], limit: int = 5, labels: Optional[List[str]] = None
+) -> pd.DataFrame:
     primary_fuel = _validate_fuel_column(primary_fuel)
     fuel_types = _validate_fuel_columns(all_fuels)
     fuel_cols = ", ".join(fuel_types)
     predicate = _primary_availability_predicate(primary_fuel)
+    label_clause, label_params = _label_filter_clause(labels, 3)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -239,20 +260,22 @@ def query_cheapest_by_zip_group(zip_code: str, primary_fuel: str, all_fuels: Lis
             SELECT label, address, municipality, province, zip_code, latitude, longitude, {fuel_cols}
             FROM latest_stations
             WHERE zip_code = $1 AND {predicate}
+                {label_clause}
             ORDER BY {primary_fuel} ASC
             LIMIT $2
             """,
-            [zip_code, limit],
+            [zip_code, limit] + label_params,
         ).fetchdf()
 
 
 def query_nearest_stations_group(
-    lat: float, lon: float, primary_fuel: str, all_fuels: List[str], limit: int = 5
+    lat: float, lon: float, primary_fuel: str, all_fuels: List[str], limit: int = 5, labels: Optional[List[str]] = None
 ) -> pd.DataFrame:
     primary_fuel = _validate_fuel_column(primary_fuel)
     fuel_types = _validate_fuel_columns(all_fuels)
     fuel_cols = ", ".join(fuel_types)
     predicate = _primary_availability_predicate(primary_fuel)
+    label_clause, label_params = _label_filter_clause(labels, 4)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -266,20 +289,27 @@ def query_nearest_stations_group(
             FROM latest_stations
             WHERE {predicate}
                 AND latitude IS NOT NULL AND longitude IS NOT NULL
+                {label_clause}
             ORDER BY distance_km ASC
             LIMIT $3
             """,
-            [lat, lon, limit],
+            [lat, lon, limit] + label_params,
         ).fetchdf()
 
 
 def query_stations_within_radius_group(
-    lat: float, lon: float, primary_fuel: str, all_fuels: List[str], radius_km: float
+    lat: float,
+    lon: float,
+    primary_fuel: str,
+    all_fuels: List[str],
+    radius_km: float,
+    labels: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     primary_fuel = _validate_fuel_column(primary_fuel)
     fuel_types = _validate_fuel_columns(all_fuels)
     fuel_cols = ", ".join(fuel_types)
     predicate = _primary_availability_predicate(primary_fuel)
+    label_clause, label_params = _label_filter_clause(labels, 4)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -294,10 +324,11 @@ def query_stations_within_radius_group(
                 FROM latest_stations
                 WHERE {predicate}
                     AND latitude IS NOT NULL AND longitude IS NOT NULL
+                    {label_clause}
             ) WHERE distance_km <= $3
             ORDER BY distance_km ASC
             """,
-            [lat, lon, radius_km],
+            [lat, lon, radius_km] + label_params,
         ).fetchdf()
 
 
@@ -624,6 +655,28 @@ def get_distinct_provinces() -> dict[str, str]:
         result = conn.execute("SELECT DISTINCT province FROM latest_stations ORDER BY province").fetchdf()
     provinces = result["province"].tolist()
     return {p: p.title() for p in provinces}
+
+
+def get_distinct_labels(top_n: int = 0) -> dict[str, str]:
+    """Return distinct station labels as {raw: Title Case} ordered by station count (most popular first).
+
+    If top_n > 0, only return the top N most popular labels.
+    """
+    limit_clause = f"LIMIT {int(top_n)}" if top_n > 0 else ""
+    with _lock:
+        conn = get_connection()
+        result = conn.execute(
+            f"""
+            SELECT label, COUNT(*) AS cnt
+            FROM latest_stations
+            WHERE label IS NOT NULL AND label != ''
+            GROUP BY label
+            ORDER BY cnt DESC, label ASC
+            {limit_clause}
+            """
+        ).fetchdf()
+    labels = result["label"].tolist()
+    return {label: label.title() for label in labels}
 
 
 def query_province_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back: int) -> pd.DataFrame:

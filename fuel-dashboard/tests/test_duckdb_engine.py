@@ -6,6 +6,7 @@ import pytest
 
 import data.duckdb_engine as duckdb_engine_module
 from data.duckdb_engine import _validate_fuel_column
+from data.duckdb_engine import get_distinct_labels
 from data.duckdb_engine import query_cached_zip_code_price_trend
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_by_zip_group
@@ -352,3 +353,97 @@ def test_query_stations_within_radius_group_filters_by_primary(mock_conn):
     assert all(result["distance_km"] <= 5.0)
     assert "diesel_b_price" in result.columns
     assert "diesel_premium_price" in result.columns
+
+
+# --- Label filter tests ---
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_get_distinct_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = get_distinct_labels()
+    assert isinstance(result, dict)
+    assert len(result) == 3
+    assert result["station_a"] == "Station_A"
+    assert result["station_b"] == "Station_B"
+    assert result["station_c"] == "Station_C"
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_get_distinct_labels_top_n(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = get_distinct_labels(top_n=2)
+    assert isinstance(result, dict)
+    assert len(result) == 2
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_cheapest_by_zip_with_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_cheapest_by_zip("28001", "diesel_a_price", 3, labels=["station_a"])
+    assert len(result) == 1
+    assert result.iloc[0]["label"] == "station_a"
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_cheapest_by_zip_with_no_labels_returns_all(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_cheapest_by_zip("28001", "diesel_a_price", 3, labels=None)
+    assert len(result) == 2
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_cheapest_by_zip_with_empty_labels_returns_all(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_cheapest_by_zip("28001", "diesel_a_price", 3, labels=[])
+    assert len(result) == 2
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_nearest_stations_with_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_nearest_stations(40.4168, -3.7038, "diesel_a_price", 5, labels=["station_a"])
+    assert len(result) == 1
+    assert result.iloc[0]["label"] == "station_a"
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_stations_within_radius_with_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_stations_within_radius(40.4168, -3.7038, "diesel_a_price", 5.0, labels=["station_b"])
+    assert len(result) == 1
+    assert result.iloc[0]["label"] == "station_b"
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_cheapest_by_zip_group_with_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_multi_fuel_table(conn)
+    mock_conn.return_value = conn
+
+    result = query_cheapest_by_zip_group(
+        "28001", "diesel_a_price", ["diesel_a_price", "diesel_b_price"], 3, labels=["station_primary_only"]
+    )
+    assert len(result) == 1
+    assert result.iloc[0]["label"] == "station_primary_only"

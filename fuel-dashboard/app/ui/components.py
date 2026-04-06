@@ -236,6 +236,16 @@ def search_fuel_select(label: str = "Tipo de combustible", on_change: Optional[C
     )
 
 
+def brand_multi_select(
+    options: Dict[str, str], label: str = "Filtrar por marca", on_change: Optional[Callable] = None
+) -> ui.select:
+    return (
+        ui.select(options, multiple=True, label=label, on_change=on_change, value=[])
+        .props('outlined use-chips clearable use-input input-debounce="200"')
+        .classes("pe-input pe-brand-select w-full sm:w-72")
+    )
+
+
 _SHORT_PERIODS = {TrendPeriod.week, TrendPeriod.month, TrendPeriod.quarter}
 
 

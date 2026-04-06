@@ -42,6 +42,7 @@ from services.station_service import get_province_price_map
 from services.station_service import get_province_ranking
 from services.station_service import get_provinces
 from services.station_service import get_route_geometries_for_stations
+from services.station_service import get_station_labels
 from services.station_service import get_zip_code_boundary
 from services.station_service import get_zip_code_price_map_by_municipality
 from services.station_service import get_zip_code_price_map_for_zips
@@ -61,6 +62,7 @@ from ui.charts import build_trend_chart
 from ui.charts import build_trip_map
 from ui.charts import build_zip_code_choropleth
 from ui.components import advice_card
+from ui.components import brand_multi_select
 from ui.components import card_nav
 from ui.components import comparison_period_select
 from ui.components import empty_state
@@ -234,6 +236,8 @@ def _build_search_panel() -> None:
                 dynamic_container = ui.column().classes("min-w-0 sm:min-w-72 flex-1 gap-3")
                 state["dynamic_container"] = dynamic_container
                 fuel = search_fuel_select()
+                brand_options = get_station_labels(top_n=25)
+                brand_select = brand_multi_select(brand_options)
 
             with ui.expansion("Ajustes avanzados").classes("w-full").props("dense"):
                 ui.label(
@@ -292,6 +296,8 @@ def _build_search_panel() -> None:
             else:
                 fuel_type = FuelType(fuel_value.removeprefix("single:"))
 
+            selected_labels = brand_select.value if brand_select.value else None
+
             search_lat = None
             search_lon = None
 
@@ -302,9 +308,11 @@ def _build_search_panel() -> None:
                 if coords:
                     search_lat, search_lon = coords
                 if is_group:
-                    stations = await run.io_bound(get_cheapest_by_zip_group, query_value, fuel_group, limit)
+                    stations = await run.io_bound(
+                        get_cheapest_by_zip_group, query_value, fuel_group, limit, selected_labels
+                    )
                 else:
-                    stations = await run.io_bound(get_cheapest_by_zip, query_value, fuel_type, limit)
+                    stations = await run.io_bound(get_cheapest_by_zip, query_value, fuel_type, limit, selected_labels)
                 zip_boundary = await run.io_bound(get_zip_code_boundary, query_value)
             elif current_mode in ("nearest_by_address", "cheapest_by_address", "best_by_address"):
                 coords = await run.io_bound(geocode_address, query_value)
@@ -316,18 +324,32 @@ def _build_search_panel() -> None:
                 if current_mode == "nearest_by_address":
                     if is_group:
                         stations = await run.io_bound(
-                            get_nearest_by_address_group, search_lat, search_lon, fuel_group, limit
+                            get_nearest_by_address_group, search_lat, search_lon, fuel_group, limit, selected_labels
                         )
                     else:
-                        stations = await run.io_bound(get_nearest_by_address, search_lat, search_lon, fuel_type, limit)
+                        stations = await run.io_bound(
+                            get_nearest_by_address, search_lat, search_lon, fuel_type, limit, selected_labels
+                        )
                 elif current_mode == "cheapest_by_address":
                     if is_group:
                         stations = await run.io_bound(
-                            get_cheapest_by_address_group, search_lat, search_lon, fuel_group, radius_km, limit
+                            get_cheapest_by_address_group,
+                            search_lat,
+                            search_lon,
+                            fuel_group,
+                            radius_km,
+                            limit,
+                            selected_labels,
                         )
                     else:
                         stations = await run.io_bound(
-                            get_cheapest_by_address, search_lat, search_lon, fuel_type, radius_km, limit
+                            get_cheapest_by_address,
+                            search_lat,
+                            search_lon,
+                            fuel_type,
+                            radius_km,
+                            limit,
+                            selected_labels,
                         )
                 elif current_mode == "best_by_address":
                     consumption_input = state.get("consumption_input")
@@ -344,10 +366,19 @@ def _build_search_panel() -> None:
                             limit,
                             consumption,
                             tank,
+                            selected_labels,
                         )
                     else:
                         stations = await run.io_bound(
-                            get_best_by_address, search_lat, search_lon, fuel_type, radius_km, limit, consumption, tank
+                            get_best_by_address,
+                            search_lat,
+                            search_lon,
+                            fuel_type,
+                            radius_km,
+                            limit,
+                            consumption,
+                            tank,
+                            selected_labels,
                         )
                 else:
                     stations = []

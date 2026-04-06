@@ -29,7 +29,7 @@ def test_get_cheapest_by_zip(mock_query):
     assert results[0].pct_vs_avg is not None
     # pct_vs_avg = (1.50 - 1.60) / 1.60 * 100 = -6.2%
     assert results[0].pct_vs_avg == pytest.approx(-6.2, abs=0.1)
-    mock_query.assert_called_once_with("28001", SAMPLE_FUEL_TYPE, 3)
+    mock_query.assert_called_once_with("28001", SAMPLE_FUEL_TYPE, 3, labels=None)
 
 
 @patch("services.station_service.get_road_distances")
@@ -41,7 +41,7 @@ def test_get_nearest_by_address(mock_query, mock_road):
     mock_road.return_value = [1.2, 0.8, 2.5, 1.0, 3.1, 2.0, 4.0, 1.5, 0.9]
     results = get_nearest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 3)
     assert len(results) == 3
-    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 9)
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 9, labels=None)
     mock_road.assert_called_once()
 
 
@@ -59,7 +59,7 @@ def test_get_best_by_address(mock_query, mock_road):
     assert all(r.estimated_total_cost is not None for r in results)
     assert results[0].score >= results[-1].score  # sorted descending by score
     assert results[0].estimated_total_cost <= results[-1].estimated_total_cost  # lowest cost first
-    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5)
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5, labels=None)
 
 
 @patch("services.station_service.get_road_distances")
@@ -183,7 +183,7 @@ def test_get_cheapest_by_address(mock_query, mock_road):
     results = get_cheapest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 3)
     assert len(results) == 3
     assert results[0].price <= results[1].price
-    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5)
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5, labels=None)
 
 
 @patch("services.station_service.query_cheapest_zones")
@@ -411,7 +411,7 @@ def test_get_cheapest_by_zip_group(mock_query):
     assert results[1].variant_prices is not None
     assert "diesel_a_price" in results[1].variant_prices
     assert "diesel_premium_price" in results[1].variant_prices
-    mock_query.assert_called_once_with("28001", "diesel_a_price", ALL_DIESEL_FUELS, 3)
+    mock_query.assert_called_once_with("28001", "diesel_a_price", ALL_DIESEL_FUELS, 3, labels=None)
 
 
 @patch("services.station_service.get_road_distances")
@@ -424,7 +424,7 @@ def test_get_nearest_by_address_group(mock_query, mock_road):
     results = get_nearest_by_address_group(40.4168, -3.7038, FuelGroup.diesel, 3)
     assert len(results) == 3
     assert results[0].variant_prices is not None
-    mock_query.assert_called_once_with(40.4168, -3.7038, "diesel_a_price", ALL_DIESEL_FUELS, 9)
+    mock_query.assert_called_once_with(40.4168, -3.7038, "diesel_a_price", ALL_DIESEL_FUELS, 9, labels=None)
 
 
 @patch("services.station_service.get_road_distances")
@@ -469,7 +469,7 @@ def test_get_cheapest_by_address_group(mock_query, mock_road):
     assert [r.label for r in results] == ["primary_only", "primary_and_variant"]
     assert [r.price for r in results] == [1.50, 1.60]
     assert results[1].variant_prices is not None
-    mock_query.assert_called_once_with(40.4168, -3.7038, "diesel_a_price", ALL_DIESEL_FUELS, 6.5)
+    mock_query.assert_called_once_with(40.4168, -3.7038, "diesel_a_price", ALL_DIESEL_FUELS, 6.5, labels=None)
 
 
 @patch("services.station_service.get_road_distances")
@@ -523,3 +523,40 @@ def test_get_best_by_address_group(mock_query, mock_road):
     # price is the primary fuel price; cheap_far wins on total cost
     assert results[0].price == 1.40
     assert results[0].label == "cheap_far"
+
+
+# --- Label filter pass-through tests ---
+
+
+@patch("services.station_service.query_cheapest_by_zip")
+def test_get_cheapest_by_zip_passes_labels(mock_query):
+    from services.station_service import get_cheapest_by_zip
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 1)
+    results = get_cheapest_by_zip("28001", FuelType.diesel_a_price, 5, labels=["repsol"])
+    assert len(results) == 1
+    mock_query.assert_called_once_with("28001", SAMPLE_FUEL_TYPE, 5, labels=["repsol"])
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_nearest_stations")
+def test_get_nearest_by_address_passes_labels(mock_query, mock_road):
+    from services.station_service import get_nearest_by_address
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 3)
+    mock_road.return_value = [1.0, 2.0, 3.0]
+    results = get_nearest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 3, labels=["cepsa"])
+    assert len(results) == 3
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 9, labels=["cepsa"])
+
+
+@patch("services.station_service.get_road_distances")
+@patch("services.station_service.query_stations_within_radius")
+def test_get_cheapest_by_address_passes_labels(mock_query, mock_road):
+    from services.station_service import get_cheapest_by_address
+
+    mock_query.return_value = make_stations_df(SAMPLE_FUEL_TYPE, 3)
+    mock_road.return_value = [1.0, 2.0, 3.0]
+    results = get_cheapest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 3, labels=["bp"])
+    assert len(results) == 3
+    mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5, labels=["bp"])

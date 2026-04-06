@@ -23,6 +23,7 @@ from services.geo_utils import point_in_multipolygon
 from services.routing import get_road_distances
 from services.routing import get_route_geometries
 
+from data.duckdb_engine import get_distinct_labels
 from data.duckdb_engine import get_distinct_provinces
 from data.duckdb_engine import is_zip_code_trend_ready
 from data.duckdb_engine import query_avg_price_by_province
@@ -168,16 +169,20 @@ def get_zip_code_boundary(zip_code: str) -> Optional[dict]:
     return load_postal_code_boundary(zip_code)
 
 
-def get_cheapest_by_zip(zip_code: str, fuel_type: FuelType, limit: int = 5) -> List[StationResult]:
+def get_cheapest_by_zip(
+    zip_code: str, fuel_type: FuelType, limit: int = 5, labels: Optional[List[str]] = None
+) -> List[StationResult]:
     _validate_zip_code(zip_code)
-    df = query_cheapest_by_zip(zip_code, fuel_type.value, limit)
+    df = query_cheapest_by_zip(zip_code, fuel_type.value, limit, labels=labels)
     national_avg = query_national_avg_price(fuel_type.value)
     return _df_to_station_results(df, fuel_type.value, national_avg)
 
 
-def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: int = 5) -> List[StationResult]:
+def get_nearest_by_address(
+    lat: float, lon: float, fuel_type: FuelType, limit: int = 5, labels: Optional[List[str]] = None
+) -> List[StationResult]:
     oversample = limit * 3 if settings.osrm_enabled else limit
-    df = query_nearest_stations(lat, lon, fuel_type.value, oversample)
+    df = query_nearest_stations(lat, lon, fuel_type.value, oversample, labels=labels)
     df = _enrich_with_road_distances(lat, lon, df)
     df = df.sort_values("distance_km").head(limit)
     national_avg = query_national_avg_price(fuel_type.value)
@@ -185,12 +190,17 @@ def get_nearest_by_address(lat: float, lon: float, fuel_type: FuelType, limit: i
 
 
 def get_cheapest_by_address(
-    lat: float, lon: float, fuel_type: FuelType, radius_km: float = None, limit: int = 5
+    lat: float,
+    lon: float,
+    fuel_type: FuelType,
+    radius_km: float = None,
+    limit: int = 5,
+    labels: Optional[List[str]] = None,
 ) -> List[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
-    df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius)
+    df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius, labels=labels)
     if df.empty:
         return []
     df = _enrich_with_road_distances(lat, lon, df)
@@ -210,6 +220,7 @@ def get_best_by_address(
     limit: int = 5,
     consumption_lper100km: Optional[float] = None,
     tank_liters: Optional[float] = None,
+    labels: Optional[List[str]] = None,
 ) -> List[StationResult]:
     """Rank stations by estimated total cost on a 0-10 scale (10 = cheapest).
 
@@ -240,7 +251,7 @@ def get_best_by_address(
     if tank_liters is None:
         tank_liters = settings.default_refill_liters
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
-    df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius)
+    df = query_stations_within_radius(lat, lon, fuel_type.value, fetch_radius, labels=labels)
     if df.empty:
         return []
     df = _enrich_with_road_distances(lat, lon, df)
@@ -269,18 +280,26 @@ def get_provinces() -> dict[str, str]:
     return get_distinct_provinces()
 
 
-def get_cheapest_by_zip_group(zip_code: str, fuel_group: FuelGroup, limit: int = 5) -> List[StationResult]:
+def get_station_labels(top_n: int = 0) -> dict[str, str]:
+    return get_distinct_labels(top_n=top_n)
+
+
+def get_cheapest_by_zip_group(
+    zip_code: str, fuel_group: FuelGroup, limit: int = 5, labels: Optional[List[str]] = None
+) -> List[StationResult]:
     _validate_zip_code(zip_code)
     primary, all_fuels = _resolve_fuel_group(fuel_group)
-    df = query_cheapest_by_zip_group(zip_code, primary, all_fuels, limit)
+    df = query_cheapest_by_zip_group(zip_code, primary, all_fuels, limit, labels=labels)
     national_avg = query_national_avg_price(primary)
     return _df_to_station_results_group(df, primary, all_fuels, national_avg)
 
 
-def get_nearest_by_address_group(lat: float, lon: float, fuel_group: FuelGroup, limit: int = 5) -> List[StationResult]:
+def get_nearest_by_address_group(
+    lat: float, lon: float, fuel_group: FuelGroup, limit: int = 5, labels: Optional[List[str]] = None
+) -> List[StationResult]:
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     oversample = limit * 3 if settings.osrm_enabled else limit
-    df = query_nearest_stations_group(lat, lon, primary, all_fuels, oversample)
+    df = query_nearest_stations_group(lat, lon, primary, all_fuels, oversample, labels=labels)
     df = _enrich_with_road_distances(lat, lon, df)
     df = df.sort_values("distance_km").head(limit)
     national_avg = query_national_avg_price(primary)
@@ -288,13 +307,18 @@ def get_nearest_by_address_group(lat: float, lon: float, fuel_group: FuelGroup, 
 
 
 def get_cheapest_by_address_group(
-    lat: float, lon: float, fuel_group: FuelGroup, radius_km: float = None, limit: int = 5
+    lat: float,
+    lon: float,
+    fuel_group: FuelGroup,
+    radius_km: float = None,
+    limit: int = 5,
+    labels: Optional[List[str]] = None,
 ) -> List[StationResult]:
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     if radius_km is None:
         radius_km = settings.default_radius_km
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
-    df = query_stations_within_radius_group(lat, lon, primary, all_fuels, fetch_radius)
+    df = query_stations_within_radius_group(lat, lon, primary, all_fuels, fetch_radius, labels=labels)
     if df.empty:
         return []
     df = _enrich_with_road_distances(lat, lon, df)
@@ -314,6 +338,7 @@ def get_best_by_address_group(
     limit: int = 5,
     consumption_lper100km: Optional[float] = None,
     tank_liters: Optional[float] = None,
+    labels: Optional[List[str]] = None,
 ) -> List[StationResult]:
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     if radius_km is None:
@@ -321,7 +346,7 @@ def get_best_by_address_group(
     consumption = consumption_lper100km if consumption_lper100km is not None else settings.default_consumption_lper100km
     tank = tank_liters if tank_liters is not None else settings.default_refill_liters
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
-    df = query_stations_within_radius_group(lat, lon, primary, all_fuels, fetch_radius)
+    df = query_stations_within_radius_group(lat, lon, primary, all_fuels, fetch_radius, labels=labels)
     if df.empty:
         return []
     df = _enrich_with_road_distances(lat, lon, df)
