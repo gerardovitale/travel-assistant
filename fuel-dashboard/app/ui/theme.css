@@ -232,3 +232,77 @@ body,
   background: linear-gradient(135deg, var(--pe-primary), var(--pe-primary-container)) !important;
   color: white !important;
 }
+
+/* ── Mobile responsive ─────────────────────────────── */
+
+@media (max-width: 640px) {
+  /* Page spacing */
+  .pe-page {
+    gap: 1rem;
+    padding: 0.75rem !important;
+  }
+
+  /* Navigation cards — stack vertically */
+  .pe-nav-card {
+    flex-basis: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* KPI cards — stack vertically */
+  .pe-kpi {
+    flex: 0 0 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Summary cards — stack vertically */
+  .pe-summary-card {
+    flex: 0 0 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Tables — horizontal scroll */
+  .pe-table .q-table__container,
+  .q-table__container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pe-table .q-table,
+  .q-table {
+    min-width: 600px;
+  }
+
+  /* Touch targets (44-48px minimum per Apple/Google guidelines) */
+  .pe-input .q-field__control,
+  .q-field .q-field__control {
+    min-height: 48px;
+  }
+  .q-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .pe-toggle .q-btn {
+    min-height: 44px;
+  }
+
+  /* Hero/heading text scaling */
+  .pe-hero .text-4xl,
+  .pe-heading .text-4xl {
+    font-size: 1.5rem !important;
+    line-height: 2rem !important;
+  }
+  .pe-hero .text-3xl,
+  .pe-heading .text-3xl {
+    font-size: 1.25rem !important;
+    line-height: 1.75rem !important;
+  }
+
+  /* Chart containers — constrain height */
+  .nicegui-plotly {
+    max-height: 350px;
+  }
+
+  /* Hide Plotly modebar on mobile — avoids legend/toolbar overlap */
+  .modebar {
+    display: none !important;
+  }
+}

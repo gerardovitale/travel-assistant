@@ -5,6 +5,7 @@ from typing import Dict
 from typing import List
 from typing import Optional
 
+import plotly.graph_objects as go
 from api.schemas import FUEL_GROUP_MEMBERS
 from api.schemas import FuelGroup
 from api.schemas import FuelType
@@ -25,6 +26,15 @@ from ui.view_models import TREND_PERIOD_LABELS
 
 _THEME_CSS = (Path(__file__).parent / "theme.css").read_text()
 
+_PLOTLY_CONFIG = {"displayModeBar": False}
+
+
+def responsive_plotly(fig: go.Figure) -> ui.plotly:
+    """Render a Plotly figure with the modebar hidden to avoid overlap on mobile."""
+    fig_dict = fig.to_plotly_json()
+    fig_dict["config"] = _PLOTLY_CONFIG
+    return ui.plotly(fig_dict)
+
 
 def init_theme() -> None:
     # Keep ui.colors() in sync with the --pe-* tokens in theme.css
@@ -37,6 +47,7 @@ def init_theme() -> None:
         info="#0c56d0",
     )
     ui.add_head_html(
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
         '<link rel="preconnect" href="https://fonts.googleapis.com">'
         '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
         '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700'
@@ -186,7 +197,7 @@ def fuel_type_select(label: str = "Tipo de combustible", on_change: Optional[Cal
     return (
         ui.select(options, value=FuelType.gasoline_95_e5_price.value, label=label, on_change=on_change)
         .props("outlined")
-        .classes("pe-input w-72")
+        .classes("pe-input w-full sm:w-72")
     )
 
 
@@ -195,7 +206,7 @@ def fuel_group_select(label: str = "Familia de combustible", on_change: Optional
     return (
         ui.select(options, value=FuelGroup.diesel.value, label=label, on_change=on_change)
         .props("outlined")
-        .classes("pe-input w-72")
+        .classes("pe-input w-full sm:w-72")
     )
 
 
@@ -203,7 +214,7 @@ def search_fuel_select(label: str = "Tipo de combustible", on_change: Optional[C
     return (
         ui.select(SEARCH_FUEL_OPTIONS, value="group:diesel", label=label, on_change=on_change)
         .props("outlined")
-        .classes("pe-input w-72")
+        .classes("pe-input w-full sm:w-72")
     )
 
 
@@ -215,7 +226,7 @@ def trend_period_select(label: str = "Periodo", on_change: Optional[Callable] = 
     return (
         ui.select(options, value=TrendPeriod.month.value, label=label, on_change=on_change)
         .props("outlined")
-        .classes("pe-input w-40")
+        .classes("pe-input w-full sm:w-40")
     )
 
 
@@ -224,7 +235,7 @@ def comparison_period_select(label: str = "Periodo", on_change: Optional[Callabl
     return (
         ui.select(options, value=TrendPeriod.quarter.value, label=label, on_change=on_change)
         .props("outlined")
-        .classes("pe-input w-40")
+        .classes("pe-input w-full sm:w-40")
     )
 
 
@@ -233,7 +244,7 @@ def historical_period_select(label: str = "Periodo", on_change: Optional[Callabl
     return (
         ui.select(options, value=HistoricalPeriod.quarter.value, label=label, on_change=on_change)
         .props("outlined")
-        .classes("pe-input w-40")
+        .classes("pe-input w-full sm:w-40")
     )
 
 
@@ -272,7 +283,7 @@ def empty_state(message: str = "No hay datos para mostrar.") -> None:
 def kpi_row(kpis: List[Dict[str, str]]) -> None:
     with ui.row().classes("w-full gap-3 flex-wrap"):
         for kpi in kpis:
-            with ui.card().classes("pe-kpi pe-heading min-w-44 flex-1 rounded-2xl p-3"):
+            with ui.card().classes("pe-kpi pe-heading min-w-36 flex-1 rounded-2xl p-3"):
                 ui.label(kpi["label"]).classes("text-xs text-gray-500 uppercase")
                 value_color = kpi.get("color", "")
                 ui.label(kpi["value"]).classes(f"text-lg font-semibold {value_color}")

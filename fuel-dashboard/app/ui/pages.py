@@ -72,6 +72,7 @@ from ui.components import init_theme
 from ui.components import kpi_row
 from ui.components import loading_state
 from ui.components import page_header
+from ui.components import responsive_plotly
 from ui.components import search_fuel_select
 from ui.components import search_mode_select
 from ui.components import section_intro
@@ -230,7 +231,7 @@ def _build_search_panel() -> None:
         with ui.card().classes("pe-surface-panel w-full rounded-2xl p-5"):
             mode = search_mode_select(on_change=on_mode_change)
             with ui.row().classes("w-full items-start gap-4 flex-wrap"):
-                dynamic_container = ui.column().classes("min-w-72 flex-1 gap-3")
+                dynamic_container = ui.column().classes("min-w-0 sm:min-w-72 flex-1 gap-3")
                 state["dynamic_container"] = dynamic_container
                 fuel = search_fuel_select()
 
@@ -240,7 +241,7 @@ def _build_search_panel() -> None:
                 ).classes("text-xs text-gray-500")
                 advanced_container = ui.column().classes("w-full gap-2")
                 state["advanced_container"] = advanced_container
-                limit_input = ui.number(label="Numero de estaciones", value=5, min=1, max=20).classes("w-48")
+                limit_input = ui.number(label="Numero de estaciones", value=5, min=1, max=20).classes("w-full sm:w-48")
 
             with ui.row().classes("w-full justify-end"):
                 search_button = ui.button("Buscar estaciones").props("unelevated color=primary")
@@ -390,7 +391,7 @@ def _build_search_panel() -> None:
                     query_value,
                     zip_boundary=zip_boundary,
                 )
-                plotly_el = ui.plotly(fig).classes("w-full")
+                plotly_el = responsive_plotly(fig).classes("w-full")
                 plotly_id = f"c{plotly_el.id}"
             with results_container:
                 table = station_results_table(
@@ -489,7 +490,7 @@ def _render_query_inputs(
                 value=settings.default_radius_km,
                 min=0.1,
                 max=50.0,
-            ).classes("w-48")
+            ).classes("w-full sm:w-48")
         if metadata.requires_consumption:
             ui.label(
                 "Usaremos tus ajustes del vehiculo para estimar si compensa desplazarte a una estacion mas barata."
@@ -508,10 +509,10 @@ def _render_query_inputs(
                     min=1.0,
                     max=30.0,
                     step=0.5,
-                ).classes("w-44")
+                ).classes("w-full sm:w-44")
                 state["tank_input"] = ui.number(
                     label="Litros a repostar", value=settings.default_refill_liters, min=5.0, max=120.0, step=5.0
-                ).classes("w-40")
+                ).classes("w-full sm:w-40")
             with ui.expansion("Como estimamos el coste total?").classes("w-full text-sm").props("dense"):
                 for line in BEST_OPTION_METHODOLOGY_LINES:
                     if line:
@@ -539,7 +540,7 @@ def _build_individual_trend_tab() -> None:
         with ui.card().classes("pe-surface-panel w-full rounded-2xl p-4"):
             ui.label("Consulta la evolucion de precios por codigo postal.").classes("text-sm text-gray-600")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                zip_input = ui.input(label="Codigo postal", placeholder="Ejemplo: 28001").classes("w-56")
+                zip_input = ui.input(label="Codigo postal", placeholder="Ejemplo: 28001").classes("w-full sm:w-56")
                 fuel = fuel_type_select()
                 trend_button = ui.button("Ver tendencia").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
@@ -583,7 +584,7 @@ def _build_individual_trend_tab() -> None:
 
             with chart_container:
                 fig = build_trend_chart(trend_data, fuel_type.value, zip_code)
-                ui.plotly(fig).classes("w-full")
+                responsive_plotly(fig).classes("w-full")
             set_status("success", f"Tendencia cargada para {zip_code}.")
         except ValueError as exc:
             logger.warning("Trend validation error: %s", exc)
@@ -605,7 +606,7 @@ def _build_group_comparison_tab() -> None:
                 "text-sm text-gray-600"
             )
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                zip_input = ui.input(label="Codigo postal", placeholder="Ejemplo: 28001").classes("w-56")
+                zip_input = ui.input(label="Codigo postal", placeholder="Ejemplo: 28001").classes("w-full sm:w-56")
                 group = fuel_group_select()
                 compare_button = ui.button("Comparar").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
@@ -655,7 +656,7 @@ def _build_group_comparison_tab() -> None:
 
             with chart_container:
                 fig = build_group_trend_chart(group_trends, fuel_group.value, zip_code)
-                ui.plotly(fig).classes("w-full")
+                responsive_plotly(fig).classes("w-full")
 
             daily_spreads = compute_daily_spread(group_trends)
             if len(daily_spreads) >= 2:
@@ -665,14 +666,14 @@ def _build_group_comparison_tab() -> None:
                     kpi_row(spread_summary_cards(s_kpis))
                 with spread_chart_container:
                     fig = build_spread_trend_chart(daily_spreads, fuel_group.value, zip_code)
-                    ui.plotly(fig).classes("w-full")
+                    responsive_plotly(fig).classes("w-full")
 
                 monthly_df = monthly_spread_pattern(daily_spreads)
                 if monthly_df is not None:
                     with monthly_chart_container:
                         ui.label("Patron mensual de la diferencia").classes("text-lg font-semibold mt-4")
                         fig = build_monthly_spread_chart(monthly_df, fuel_group.value, zip_code)
-                        ui.plotly(fig).classes("w-full")
+                        responsive_plotly(fig).classes("w-full")
 
             set_status("success", f"Comparacion cargada para {zip_code}.")
         except ValueError as exc:
@@ -701,7 +702,9 @@ def _build_zones_panel() -> None:
             ui.label("Compara zonas por precio promedio de combustible.").classes("text-sm text-gray-600")
             provinces = get_provinces()
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                province_input = ui.select(options=provinces, label="Provincia", with_input=True).classes("w-56")
+                province_input = ui.select(options=provinces, label="Provincia", with_input=True).classes(
+                    "w-full sm:w-56"
+                )
                 fuel = fuel_type_select()
                 zones_button = ui.button("Comparar zonas").props("unelevated color=primary")
 
@@ -730,7 +733,7 @@ def _build_zones_panel() -> None:
                         fuel_type.value,
                         mainland_only.value,
                     )
-                    ui.plotly(map_fig).classes("w-full")
+                    responsive_plotly(map_fig).classes("w-full")
         except Exception:
             logger.exception("Preload map error")
 
@@ -776,7 +779,7 @@ def _build_zones_panel() -> None:
                 if district_prices:
                     with detail_map_container:
                         map_fig = build_district_choropleth(district_prices, fuel_type.value)
-                        ui.plotly(map_fig).classes("w-full")
+                        responsive_plotly(map_fig).classes("w-full")
                     subregion_options = {dp.district: dp.district for dp in district_prices}
                     _render_subregion_card(subregion_options, "Distrito")
                 else:
@@ -805,7 +808,9 @@ def _build_zones_panel() -> None:
                     "text-sm text-gray-600"
                 )
                 with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                    subregion_select = ui.select(options=options, label=label, with_input=True).classes("w-56")
+                    subregion_select = ui.select(options=options, label=label, with_input=True).classes(
+                        "w-full sm:w-56"
+                    )
                     detail_button = ui.button("Cargar detalle").props("unelevated color=primary")
                 zones_state["detail_button"] = detail_button
                 detail_button.on("click", lambda _: _on_load_subregion_detail(subregion_select))
@@ -856,7 +861,7 @@ def _build_zones_panel() -> None:
 
             with postal_map_container:
                 map_fig = build_zip_code_choropleth(zip_prices, geojson, title, fuel_type.value)
-                ui.plotly(map_fig).classes("w-full")
+                responsive_plotly(map_fig).classes("w-full")
 
             metrics = zone_kpis(zip_prices)
             with postal_kpi_container:
@@ -879,7 +884,7 @@ def _build_zones_panel() -> None:
                     province,
                     fuel_type.value,
                 )
-                ui.plotly(map_fig).classes("w-full")
+                responsive_plotly(map_fig).classes("w-full")
 
     zones_button.on("click", lambda _: on_load_zones())
     mainland_only.on_value_change(lambda _: _render_preloaded_map())
@@ -900,10 +905,10 @@ def _build_trip_panel() -> None:
             section_intro("1. Ruta", "Indica el trayecto y el combustible que quieres usar en la planificacion.")
             with ui.row().classes("w-full items-end gap-4 flex-wrap"):
                 with ui.row().classes("items-end gap-1"):
-                    origin_input = ui.input(label="Origen", placeholder="Ejemplo: Madrid").classes("w-64")
+                    origin_input = ui.input(label="Origen", placeholder="Ejemplo: Madrid").classes("w-full sm:w-64")
                     geolocation_button(origin_input)
                 with ui.row().classes("items-end gap-1"):
-                    dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-64")
+                    dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-full sm:w-64")
                     geolocation_button(dest_input)
                 fuel = fuel_type_select()
 
@@ -918,28 +923,28 @@ def _build_trip_panel() -> None:
                     value=settings.default_max_detour_minutes,
                     min=1,
                     max=30,
-                ).classes("w-48")
+                ).classes("w-full sm:w-48")
                 consumption_input = ui.number(
                     label="Consumo (l/100km)",
                     value=settings.default_consumption_lper100km,
                     min=1.0,
                     max=30.0,
                     step=0.5,
-                ).classes("w-44")
+                ).classes("w-full sm:w-44")
                 tank_input = ui.number(
                     label="Deposito (L)",
                     value=settings.default_tank_liters,
                     min=5.0,
                     max=120.0,
                     step=5.0,
-                ).classes("w-40")
+                ).classes("w-full sm:w-40")
             with ui.row().classes("w-full items-center gap-4 flex-wrap"):
                 fuel_level_slider = ui.slider(
                     min=5,
                     max=100,
                     value=settings.default_fuel_level_pct,
                     step=5,
-                ).classes("w-72")
+                ).classes("w-full sm:w-72")
                 fuel_level_label = ui.label(f"Nivel actual: {int(settings.default_fuel_level_pct)}%").classes(
                     "text-sm text-gray-600"
                 )
@@ -1008,7 +1013,7 @@ def _build_trip_panel() -> None:
 
             with map_container:
                 fig = build_trip_map(trip_result)
-                ui.plotly(fig).classes("w-full")
+                responsive_plotly(fig).classes("w-full")
 
             if trip_result.stops:
                 with table_container:
@@ -1242,7 +1247,9 @@ def _build_day_of_week_subtab() -> None:
                 dow_button = ui.button("Ver patron").props("unelevated color=primary")
             with ui.expansion("Busqueda personalizada").classes("w-full").props("dense"):
                 with ui.row().classes("w-full items-end gap-4 flex-wrap"):
-                    province_input = ui.input(label="Provincia (opcional)", placeholder="Toda Espana").classes("w-56")
+                    province_input = ui.input(label="Provincia (opcional)", placeholder="Toda Espana").classes(
+                        "w-full sm:w-56"
+                    )
                     mainland_only = ui.checkbox("Solo peninsula", value=True)
 
         status_container = ui.column().classes("w-full")
@@ -1274,7 +1281,7 @@ def _build_day_of_week_subtab() -> None:
                 kpi_row(day_of_week_kpis(df))
             with chart_container:
                 fig = build_day_of_week_chart(df, fuel_type.value)
-                ui.plotly(fig).classes("w-full")
+                responsive_plotly(fig).classes("w-full")
             weeks = int(df["count_days"].iloc[0])
             set_status("success", f"Patron semanal cargado. Datos acumulados de ~{weeks} semanas.")
         except Exception:
@@ -1391,7 +1398,7 @@ def _build_brand_comparison_subtab() -> None:
             if not trend_df.empty:
                 with chart_container:
                     fig = build_brand_trend_chart(trend_df, fuel_type.value)
-                    ui.plotly(fig).classes("w-full")
+                    responsive_plotly(fig).classes("w-full")
 
             date_to = date.today()
             date_from = date_to - timedelta(days=days_back)
@@ -1595,7 +1602,7 @@ def _build_data_quality_panel() -> None:
 
             with chart_container:
                 fig = build_ingestion_stats_chart(stats_df)
-                ui.plotly(fig).classes("w-full")
+                responsive_plotly(fig).classes("w-full")
 
             set_status("success", f"Metricas cargadas. {inventory['num_days']} dias de datos disponibles.")
         except Exception:

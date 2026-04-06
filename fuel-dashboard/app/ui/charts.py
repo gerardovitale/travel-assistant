@@ -59,6 +59,7 @@ def build_district_choropleth(
             center=dict(lat=40.42, lon=-3.70),
             zoom=10,
         ),
+        autosize=True,
         height=550,
         margin=dict(l=0, r=0, t=50, b=0),
     )
@@ -118,6 +119,7 @@ def build_zip_code_choropleth(
             center=center,
             zoom=zoom,
         ),
+        autosize=True,
         height=550,
         margin=dict(l=0, r=0, t=50, b=0),
     )
@@ -171,6 +173,7 @@ def build_trend_chart(trend_data: List[TrendPoint], fuel_type: str, zip_code: st
         xaxis_title="Fecha",
         yaxis_title="Precio (EUR/L)",
         template="plotly_white",
+        autosize=True,
         height=420,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
@@ -221,6 +224,7 @@ def build_group_trend_chart(
         xaxis_title="Fecha",
         yaxis_title="Precio (EUR/L)",
         template="plotly_white",
+        autosize=True,
         height=420,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
@@ -263,10 +267,11 @@ def build_spread_trend_chart(
     )
     fig.add_hline(y=avg_spread, line_dash="dash", line_color="gray", annotation_text="Promedio")
     fig.update_layout(
-        title=f"Diferencia premium — {group_name} — CP {zip_code}",
+        title=f"Diferencia premium — {group_name} �� CP {zip_code}",
         xaxis_title="Fecha",
         yaxis_title="Diferencia (EUR/L)",
         template="plotly_white",
+        autosize=True,
         height=380,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
@@ -310,6 +315,7 @@ def build_monthly_spread_chart(
         xaxis_title="Mes",
         yaxis_title="Diferencia media (EUR/L)",
         template="plotly_white",
+        autosize=True,
         height=380,
         margin=dict(l=50, r=30, t=70, b=50),
     )
@@ -387,6 +393,7 @@ def build_province_choropleth(
             center=center,
             zoom=zoom,
         ),
+        autosize=True,
         height=550,
         margin=dict(l=0, r=0, t=50, b=0),
     )
@@ -521,6 +528,7 @@ def build_station_map(
             center=dict(lat=center_lat, lon=center_lon),
             zoom=zoom,
         ),
+        autosize=True,
         height=450,
         margin=dict(l=0, r=0, t=0, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0.0),
@@ -647,6 +655,7 @@ def build_trip_map(trip_plan: TripPlan) -> go.Figure:
             center=dict(lat=center_lat, lon=center_lon),
             zoom=zoom,
         ),
+        autosize=True,
         height=500,
         margin=dict(l=0, r=0, t=0, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0.0),
@@ -700,6 +709,7 @@ def build_day_of_week_chart(df, fuel_type: str) -> go.Figure:
         yaxis_title="Precio medio (EUR/L)",
         yaxis_range=y_range,
         template="plotly_white",
+        autosize=True,
         height=420,
         margin=dict(l=50, r=30, t=50, b=50),
         showlegend=False,
@@ -741,6 +751,7 @@ def build_ingestion_stats_chart(df: pd.DataFrame) -> go.Figure:
         xaxis_title="Fecha",
         yaxis_title="Cantidad",
         template="plotly_white",
+        autosize=True,
         height=450,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
@@ -773,7 +784,7 @@ def build_brand_trend_chart(df: pd.DataFrame, fuel_type: str) -> go.Figure:
     fig = go.Figure()
 
     if df.empty:
-        fig.update_layout(title="Sin datos disponibles", template="plotly_white", height=420)
+        fig.update_layout(title="Sin datos disponibles", template="plotly_white", autosize=True, height=420)
         return fig
 
     brands = df["brand"].unique()
@@ -798,6 +809,7 @@ def build_brand_trend_chart(df: pd.DataFrame, fuel_type: str) -> go.Figure:
         yaxis_title="Precio medio (EUR/L)",
         yaxis_tickformat=".3f",
         template="plotly_white",
+        autosize=True,
         height=420,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0.0),
