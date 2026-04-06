@@ -457,6 +457,7 @@ def _build_search_panel() -> None:
             search_button.enable()
 
     search_button.on("click", lambda _: on_search())
+    state["on_location_set"] = on_search
     _render_query_inputs(mode, state["dynamic_container"], state["advanced_container"], state)
     search_button.set_text(search_mode_metadata(mode.value).action_label)
     set_status("info", "Completa tu ubicacion, el combustible y la estrategia para ver una recomendacion clara.")
@@ -478,7 +479,7 @@ def _render_query_inputs(
                 query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
                     "flex-grow max-w-xl"
                 )
-                geolocation_button(query_input)
+                geolocation_button(query_input, on_location_set=state.get("on_location_set"))
         else:
             query_input = ui.input(label=metadata.query_label, placeholder=metadata.query_placeholder).classes(
                 "w-full max-w-xl"

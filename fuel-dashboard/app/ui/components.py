@@ -1,3 +1,4 @@
+import inspect
 import json
 from pathlib import Path
 from typing import Callable
@@ -162,34 +163,51 @@ def card_nav(
                     ui.label(item["description"]).classes(description_classes)
 
 
-def geolocation_button(address_input: ui.input) -> None:
+def geolocation_button(address_input: ui.input, on_location_set: Optional[Callable] = None) -> None:
     """Render a button that fills the address input with the user's current GPS coordinates."""
 
-    async def _on_click() -> None:
-        result = await ui.run_javascript(
-            """
-            return await new Promise((resolve) => {
-                if (!navigator.geolocation) {
-                    resolve({error: 'Geolocalizacion no soportada por el navegador.'});
-                    return;
-                }
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => resolve({lat: pos.coords.latitude, lon: pos.coords.longitude}),
-                    (err) => resolve({error: 'No se pudo obtener la ubicacion: ' + err.message}),
-                    {enableHighAccuracy: true, timeout: 10000}
-                );
-            });
-            """,
-            timeout=15.0,
-        )
-        if isinstance(result, dict) and "lat" in result:
-            address_input.set_value(f"{result['lat']:.6f}, {result['lon']:.6f}")
-        elif isinstance(result, dict) and "error" in result:
-            ui.notify(result["error"], type="warning")
-
-    ui.button(icon="my_location", on_click=_on_click).props("flat dense round").classes("pe-secondary-btn").tooltip(
-        "Usar mi ubicacion"
+    btn = (
+        ui.button(icon="my_location").props("flat dense round").classes("pe-secondary-btn").tooltip("Usar mi ubicacion")
     )
+
+    async def _on_click() -> None:
+        btn.props("loading")
+        try:
+            result = await ui.run_javascript(
+                """
+                return await new Promise((resolve) => {
+                    if (!window.isSecureContext) {
+                        resolve({error: 'La geolocalizacion requiere HTTPS o localhost. '
+                            + 'Accede a traves de https:// o http://localhost.'});
+                        return;
+                    }
+                    if (!navigator.geolocation) {
+                        resolve({error: 'Geolocalizacion no soportada por el navegador.'});
+                        return;
+                    }
+                    navigator.geolocation.getCurrentPosition(
+                        (pos) => resolve({lat: pos.coords.latitude, lon: pos.coords.longitude}),
+                        (err) => resolve({error: 'No se pudo obtener la ubicacion: ' + err.message}),
+                        {enableHighAccuracy: true, timeout: 10000}
+                    );
+                });
+                """,
+                timeout=15.0,
+            )
+            if isinstance(result, dict) and "lat" in result:
+                address_input.set_value(f"{result['lat']:.6f}, {result['lon']:.6f}")
+                ui.notify("Ubicacion obtenida", type="positive", position="bottom", timeout=2000)
+                if on_location_set is not None:
+                    if inspect.iscoroutinefunction(on_location_set):
+                        await on_location_set()
+                    else:
+                        on_location_set()
+            elif isinstance(result, dict) and "error" in result:
+                ui.notify(result["error"], type="warning")
+        finally:
+            btn.props(remove="loading")
+
+    btn.on("click", lambda _: _on_click())
 
 
 def fuel_type_select(label: str = "Tipo de combustible", on_change: Optional[Callable] = None) -> ui.select:
