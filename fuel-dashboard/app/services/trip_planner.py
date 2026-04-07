@@ -2,6 +2,7 @@ import logging
 import math
 from typing import Callable
 from typing import List
+from typing import Optional
 from typing import Tuple
 
 from api.schemas import AlternativePlan
@@ -281,6 +282,7 @@ def plan_trip(
     tank_liters: float,
     fuel_level_pct: float,
     max_detour_minutes: float,
+    labels: Optional[List[str]] = None,
 ) -> TripPlan:
     """Main trip planning orchestrator.
 
@@ -309,7 +311,7 @@ def plan_trip(
 
     # 4. Query stations along corridor
     corridor_km = max_detour_minutes * 1.5
-    stations_df = query_stations_along_corridor(waypoints, fuel_type, corridor_km)
+    stations_df = query_stations_along_corridor(waypoints, fuel_type, corridor_km, labels=labels)
 
     if stations_df.empty:
         # No stations found — return plan with no stops

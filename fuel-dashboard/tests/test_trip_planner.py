@@ -202,6 +202,55 @@ def test_plan_trip_bad_origin(mock_geocode):
         plan_trip("Invalid", "Cadiz", "diesel_a_price", 7.0, 40, 50, 5.0)
 
 
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_passes_labels(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
+    mock_route.return_value = {
+        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+        "distance_km": 650,
+        "duration_minutes": 360,
+    }
+
+    corridor_df = pd.DataFrame(
+        {
+            "label": ["S1"],
+            "address": ["addr1"],
+            "municipality": ["m1"],
+            "province": ["p1"],
+            "zip_code": ["28001"],
+            "latitude": [39.0],
+            "longitude": [-4.5],
+            "diesel_a_price": [1.45],
+            "min_distance_km": [2.0],
+            "closest_waypoint_idx": [0],
+        }
+    )
+    mock_corridor.return_value = corridor_df
+
+    plan_trip("Madrid", "Cadiz", "diesel_a_price", 7.0, 40, 50, 5.0, labels=["S1"])
+    _, kwargs = mock_corridor.call_args
+    assert kwargs.get("labels") == ["S1"]
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_without_labels_defaults_to_none(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
+    mock_route.return_value = {
+        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+        "distance_km": 650,
+        "duration_minutes": 360,
+    }
+    mock_corridor.return_value = pd.DataFrame()
+
+    plan_trip("Madrid", "Cadiz", "diesel_a_price", 7.0, 40, 50, 5.0)
+    _, kwargs = mock_corridor.call_args
+    assert kwargs.get("labels") is None
+
+
 @patch("services.trip_planner.get_full_route")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_no_route(mock_geocode, mock_route):

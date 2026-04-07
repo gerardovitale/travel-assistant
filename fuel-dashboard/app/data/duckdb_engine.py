@@ -558,6 +558,7 @@ def query_stations_along_corridor(
     waypoints: List[tuple],
     fuel_type: str,
     corridor_km: float,
+    labels: Optional[List[str]] = None,
 ) -> pd.DataFrame:
     """Query stations within a corridor around route waypoints.
 
@@ -573,6 +574,7 @@ def query_stations_along_corridor(
         DataFrame with station data + min_distance_km + closest_waypoint_idx.
     """
     fuel_type = _validate_fuel_column(fuel_type)
+    label_clause, label_params = _label_filter_clause(labels, 6)
     if not waypoints:
         return pd.DataFrame()
 
@@ -602,6 +604,7 @@ def query_stations_along_corridor(
                     AND latitude IS NOT NULL AND longitude IS NOT NULL
                     AND latitude BETWEEN $1 AND $2
                     AND longitude BETWEEN $3 AND $4
+                    {label_clause}
             ),
             station_waypoint_distances AS (
                 SELECT s.*,
@@ -624,7 +627,7 @@ def query_stations_along_corridor(
             HAVING MIN(dist_km) <= $5
             ORDER BY min_distance_km
             """,
-            [min_lat, max_lat, min_lon, max_lon, corridor_km],
+            [min_lat, max_lat, min_lon, max_lon, corridor_km] + label_params,
         ).fetchdf()
 
     return df

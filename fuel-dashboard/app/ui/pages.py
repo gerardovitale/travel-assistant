@@ -146,7 +146,7 @@ def init_ui(app: FastAPI) -> None:
                 state: Dict[str, Any] = {"active": PRIMARY_NAV_ITEMS[0].key}
 
                 page_header(
-                    "Panel de precios de combustible en España",
+                    "Precios de combustible en España",
                     "Consulta estaciones, prepara un viaje o explora tendencias e historicos de precios, "
                     "todo en un mismo lugar.",
                     eyebrow="Fuel Precision",
@@ -200,7 +200,7 @@ def init_ui(app: FastAPI) -> None:
 
             timer = ui.timer(1.5, check_ready)
 
-    ui.run_with(app, title="Panel de precios de combustible", favicon="⛽")
+    ui.run_with(app, title="Precios de combustible", favicon="⛽")
 
 
 def _build_search_panel() -> None:
@@ -943,6 +943,8 @@ def _build_trip_panel() -> None:
                     dest_input = ui.input(label="Destino", placeholder="Ejemplo: Cadiz").classes("w-full sm:w-64")
                     geolocation_button(dest_input)
                 fuel = fuel_type_select()
+                brand_options = get_station_labels(top_n=25)
+                brand_select = brand_multi_select(brand_options)
 
         with ui.card().classes("pe-surface-panel w-full rounded-2xl p-5"):
             section_intro(
@@ -1008,6 +1010,7 @@ def _build_trip_panel() -> None:
         plan_button.disable()
         try:
             fuel_type = FuelType(fuel.value)
+            selected_labels = brand_select.value if brand_select.value else None
             trip_result = await run.io_bound(
                 plan_trip,
                 origin,
@@ -1017,6 +1020,7 @@ def _build_trip_panel() -> None:
                 tank_input.value,
                 fuel_level_slider.value,
                 detour_input.value,
+                labels=selected_labels,
             )
 
             if not trip_result.stops:

@@ -14,6 +14,7 @@ from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_nearest_stations_group
+from data.duckdb_engine import query_stations_along_corridor
 from data.duckdb_engine import query_stations_within_radius
 from data.duckdb_engine import query_stations_within_radius_group
 from data.duckdb_engine import refresh_zip_code_trend_snapshot
@@ -447,3 +448,40 @@ def test_query_cheapest_by_zip_group_with_labels(mock_conn):
     )
     assert len(result) == 1
     assert result.iloc[0]["label"] == "station_primary_only"
+
+
+# --- Corridor query label filter tests ---
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_stations_along_corridor_with_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    waypoints = [(40.4168, -3.7038, 0.0), (40.4200, -3.7000, 0.5)]
+    result = query_stations_along_corridor(waypoints, "diesel_a_price", 50.0, labels=["station_a"])
+    assert len(result) >= 1
+    assert all(result["label"] == "station_a")
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_stations_along_corridor_with_empty_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    waypoints = [(40.4168, -3.7038, 0.0), (40.4200, -3.7000, 0.5)]
+    result = query_stations_along_corridor(waypoints, "diesel_a_price", 50.0, labels=[])
+    assert len(result) == 2  # station_a and station_b (both in Madrid area)
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_stations_along_corridor_with_none_labels(mock_conn):
+    conn = duckdb.connect(":memory:")
+    _setup_test_table(conn)
+    mock_conn.return_value = conn
+
+    waypoints = [(40.4168, -3.7038, 0.0), (40.4200, -3.7000, 0.5)]
+    result = query_stations_along_corridor(waypoints, "diesel_a_price", 50.0, labels=None)
+    assert len(result) == 2  # station_a and station_b (both in Madrid area)
