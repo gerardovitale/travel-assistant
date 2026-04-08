@@ -194,6 +194,11 @@ def download_aggregate(name: str) -> Optional[pd.DataFrame]:
             return None
         data = blob.download_as_bytes()
     except Exception:
+        if cached_path.exists():
+            logger.warning(
+                f"Failed to download aggregate {blob_name} (network error); serving stale cache", exc_info=True
+            )
+            return pd.read_parquet(cached_path)
         logger.warning(f"Failed to download aggregate {blob_name} (network error)", exc_info=True)
         return None
 
