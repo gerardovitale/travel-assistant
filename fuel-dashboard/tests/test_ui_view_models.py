@@ -22,7 +22,9 @@ from ui.view_models import search_recommendation
 from ui.view_models import search_summary_cards
 from ui.view_models import station_summary
 from ui.view_models import trend_kpis
+from ui.view_models import trip_kpis
 from ui.view_models import trip_recommendation
+from ui.view_models import trip_summary_cards
 from ui.view_models import volatility_kpis
 from ui.view_models import zone_kpis
 
@@ -68,14 +70,15 @@ def test_station_summary_and_cards_include_distance():
             distance_km=2.5,
         ),
     ]
-    summary = station_summary(stations)
+    summary = station_summary(stations, national_avg=1.50, national_station_count=5000, refill_liters=30.0)
     assert summary["count"] == 2
     assert summary["best_price"] == 1.45
     assert summary["min_distance_km"] == 2.5
     assert "best_score" not in summary
     cards = search_summary_cards(summary, "cheapest_by_address")
-    assert len(cards) == 4
-    assert cards[0]["value"] == "2"
+    assert any(c["label"] == "Media nacional" for c in cards)
+    assert any(c["label"] == "Mejor opcion" for c in cards)
+    assert any(c["label"] == "Coste base total" for c in cards)
 
 
 def test_primary_navigation_metadata_is_consumer_first():
@@ -162,11 +165,14 @@ def test_search_summary_cards_for_best_option_use_total_cost_copy():
         ),
     ]
 
-    cards = search_summary_cards(station_summary(stations), "best_by_address")
+    summary = station_summary(stations, national_avg=1.50, national_station_count=5000, refill_liters=30.0)
+    cards = search_summary_cards(summary, "best_by_address")
 
-    assert cards[-1]["label"] == "Mejor coste total"
-    assert cards[-1]["value"] == "58.20 EUR"
-    assert cards[-1]["description"] == "incluye repostaje y desplazamiento"
+    assert any(c["label"] == "Media nacional" for c in cards)
+    assert any(c["label"] == "Mejor opcion" for c in cards)
+    best_option = next(c for c in cards if c["label"] == "Mejor opcion")
+    assert "1.500" in best_option["value"]
+    assert "s1" in best_option["description"]
 
 
 def test_search_recommendation_for_nearest_station_mentions_distance_gap():
@@ -643,3 +649,246 @@ def test_monthly_spread_pattern_long_period():
     assert "avg_spread" in result.columns
     assert result.iloc[0]["avg_spread"] == pytest.approx(0.10)
     assert result.iloc[2]["avg_spread"] == pytest.approx(0.14)
+
+
+# --- Loyalty integration tests ---
+
+
+def test_station_summary_includes_loyalty_for_known_brands():
+    stations = [
+        StationResult(
+            label="repsol",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.500,
+        ),
+        StationResult(
+            label="ballenoil",
+            address="a2",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.2,
+            longitude=-3.8,
+            price=1.450,
+        ),
+    ]
+    summary = station_summary(stations)
+    assert summary["best_loyalty_price"] == 1.470  # repsol: 1.500 - 0.03
+    assert summary["best_loyalty_label"] == "repsol"
+    assert summary["best_loyalty_program"] == "Waylet"
+
+
+def test_station_summary_uses_ranked_station_for_cost_and_cashback_kpis():
+    stations = [
+        StationResult(
+            label="repsol",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.500,
+            estimated_total_cost=58.20,
+            variant_prices={"diesel_premium_price": 1.650},
+        ),
+        StationResult(
+            label="ballenoil",
+            address="a2",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.2,
+            longitude=-3.8,
+            price=1.450,
+            estimated_total_cost=59.10,
+        ),
+    ]
+
+    summary = station_summary(stations, national_avg=1.50, national_station_count=5000, refill_liters=30.0)
+
+    assert summary["best_price"] == 1.450
+    assert summary["best_station_label"] == "repsol"
+    assert summary["best_station_price"] == 1.500
+    assert summary["best_base_cost"] == 45.00
+    assert summary["best_premium_cost"] == 49.50
+    assert summary["best_premium_delta"] == 4.50
+    assert summary["best_cashback"] == 0.90
+    assert summary["best_cashback_program"] == "Waylet"
+
+
+def test_station_summary_includes_loyalty_for_normalized_raw_brand_labels():
+    stations = [
+        StationResult(
+            label="CEPSA ESTACIONES DE SERVICIO",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.500,
+        ),
+    ]
+
+    summary = station_summary(stations)
+
+    assert summary["best_loyalty_price"] == 1.450
+    assert summary["best_loyalty_label"] == "CEPSA ESTACIONES DE SERVICIO"
+    assert summary["best_loyalty_program"] == "Club Moeve GOW"
+
+
+def test_station_summary_no_loyalty_when_no_known_brands():
+    stations = [
+        StationResult(
+            label="ballenoil",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.450,
+        ),
+    ]
+    summary = station_summary(stations)
+    assert summary["best_loyalty_price"] is None
+    assert summary["best_loyalty_label"] is None
+
+
+def test_search_summary_cards_include_cashback_card():
+    stations = [
+        StationResult(
+            label="galp",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.500,
+            distance_km=2.0,
+        ),
+    ]
+    summary = station_summary(stations, national_avg=1.50, national_station_count=5000, refill_liters=30.0)
+    cards = search_summary_cards(summary, "cheapest_by_address")
+    cashback_cards = [c for c in cards if c["label"] == "Cashback"]
+    assert len(cashback_cards) == 1
+    assert cashback_cards[0]["value"] == "3.00 EUR"  # 0.10 * 30.0
+    assert "text-purple-600" in cashback_cards[0]["color"]
+
+
+def test_trip_kpis_loyalty_savings():
+    stop = TripStop(
+        station=StationResult(
+            label="repsol",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.50,
+        ),
+        route_km=120.0,
+        detour_minutes=3.0,
+        fuel_at_arrival_pct=20.0,
+        liters_to_fill=30.0,
+        cost_eur=45.0,
+        reasoning="test",
+    )
+    trip = TripPlan(
+        stops=[stop],
+        total_fuel_cost=45.0,
+        total_distance_km=400.0,
+        duration_minutes=240.0,
+        total_fuel_liters=30.0,
+        savings_eur=2.0,
+        route_coordinates=[],
+        candidate_stations=[],
+        origin_coords=[40.1, -3.7],
+        destination_coords=[39.5, -4.0],
+        fuel_at_destination_pct=10.0,
+    )
+    kpis = trip_kpis(trip)
+    assert kpis["loyalty_savings"] == 0.90  # 0.03 * 30.0
+
+
+def test_trip_summary_cards_include_loyalty_savings():
+    stop = TripStop(
+        station=StationResult(
+            label="galp",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.50,
+        ),
+        route_km=100.0,
+        detour_minutes=2.0,
+        fuel_at_arrival_pct=15.0,
+        liters_to_fill=40.0,
+        cost_eur=60.0,
+        reasoning="test",
+    )
+    trip = TripPlan(
+        stops=[stop],
+        total_fuel_cost=60.0,
+        total_distance_km=300.0,
+        duration_minutes=180.0,
+        total_fuel_liters=40.0,
+        savings_eur=3.0,
+        route_coordinates=[],
+        candidate_stations=[],
+        origin_coords=[40.1, -3.7],
+        destination_coords=[39.0, -3.5],
+        fuel_at_destination_pct=8.0,
+    )
+    cards = trip_summary_cards(trip)
+    loyalty_cards = [c for c in cards if c["label"] == "Ahorro fidelizacion"]
+    assert len(loyalty_cards) == 1
+    assert loyalty_cards[0]["value"] == "4.00 EUR"  # 0.10 * 40.0
+
+
+def test_trip_summary_cards_no_loyalty_card_when_zero_savings():
+    stop = TripStop(
+        station=StationResult(
+            label="ballenoil",
+            address="a1",
+            municipality="m",
+            province="p",
+            zip_code="28001",
+            latitude=40.1,
+            longitude=-3.7,
+            price=1.50,
+        ),
+        route_km=100.0,
+        detour_minutes=2.0,
+        fuel_at_arrival_pct=15.0,
+        liters_to_fill=40.0,
+        cost_eur=60.0,
+        reasoning="test",
+    )
+    trip = TripPlan(
+        stops=[stop],
+        total_fuel_cost=60.0,
+        total_distance_km=300.0,
+        duration_minutes=180.0,
+        total_fuel_liters=40.0,
+        savings_eur=0.0,
+        route_coordinates=[],
+        candidate_stations=[],
+        origin_coords=[40.1, -3.7],
+        destination_coords=[39.0, -3.5],
+        fuel_at_destination_pct=8.0,
+    )
+    cards = trip_summary_cards(trip)
+    loyalty_cards = [c for c in cards if c["label"] == "Ahorro fidelizacion"]
+    assert len(loyalty_cards) == 0

@@ -17,6 +17,10 @@ from api.schemas import TrendPoint
 from api.schemas import TripPlan
 from api.schemas import ZoneResult
 
+from data.loyalty import get_loyalty_discount
+from data.loyalty import get_loyalty_price
+from data.loyalty import get_loyalty_program
+
 FUEL_DISPLAY_NAMES: Dict[str, str] = {
     "diesel_a_price": "Diesel A",
     "diesel_b_price": "Diesel B",
@@ -195,30 +199,86 @@ def format_percentage(value: Optional[float], decimals: int = 2) -> str:
     return f"{value * 100:.{decimals}f}%"
 
 
-def station_summary(stations: Sequence[StationResult]) -> Dict[str, Any]:
+def station_summary(
+    stations: Sequence[StationResult],
+    national_avg: Optional[float] = None,
+    national_station_count: int = 0,
+    refill_liters: Optional[float] = None,
+) -> Dict[str, Any]:
     if not stations:
         return {
             "count": 0,
             "best_price": None,
+            "best_station_price": None,
             "avg_price": None,
             "best_station_label": None,
             "min_distance_km": None,
             "max_distance_km": None,
             "best_estimated_cost": None,
+            "best_loyalty_price": None,
+            "best_loyalty_label": None,
+            "best_loyalty_program": None,
+            "national_avg": national_avg,
+            "national_station_count": national_station_count,
+            "refill_liters": refill_liters,
+            "best_base_cost": None,
+            "best_premium_cost": None,
+            "best_premium_delta": None,
+            "best_cashback": None,
+            "best_cashback_program": None,
         }
 
     distances = [s.distance_km for s in stations if s.distance_km is not None]
     costs = [s.estimated_total_cost for s in stations if s.estimated_total_cost is not None]
     prices = [s.price for s in stations]
-    best_station = min(stations, key=lambda s: s.price)
+    ranked_station = stations[0]
+
+    loyalty_prices = []
+    for s in stations:
+        lp = get_loyalty_price(s.label, s.price)
+        if lp is not None:
+            loyalty_prices.append((lp, s.label))
+    best_loyalty = min(loyalty_prices, key=lambda x: x[0]) if loyalty_prices else None
+
+    # Cost and cashback calculations based on refill liters
+    best_base_cost = None
+    best_premium_cost = None
+    best_premium_delta = None
+    best_cashback = None
+    best_cashback_program = None
+
+    if refill_liters and refill_liters > 0:
+        best_base_cost = round(ranked_station.price * refill_liters, 2)
+        if ranked_station.variant_prices:
+            max_variant = max(ranked_station.variant_prices.values())
+            if max_variant > ranked_station.price:
+                best_premium_cost = round(max_variant * refill_liters, 2)
+                best_premium_delta = round(best_premium_cost - best_base_cost, 2)
+        discount = get_loyalty_discount(ranked_station.label)
+        if discount:
+            best_cashback = round(discount * refill_liters, 2)
+            best_cashback_program = get_loyalty_program(ranked_station.label).program_name
+
     return {
         "count": len(stations),
         "best_price": min(prices),
+        "best_station_price": ranked_station.price,
         "avg_price": sum(prices) / len(prices),
-        "best_station_label": best_station.label,
+        "best_station_label": ranked_station.label,
         "min_distance_km": min(distances) if distances else None,
         "max_distance_km": max(distances) if distances else None,
         "best_estimated_cost": min(costs) if costs else None,
+        "best_loyalty_price": best_loyalty[0] if best_loyalty else None,
+        "best_loyalty_label": best_loyalty[1] if best_loyalty else None,
+        "best_loyalty_program": get_loyalty_program(best_loyalty[1]).program_name if best_loyalty else None,
+        "national_avg": national_avg,
+        "national_station_count": national_station_count,
+        "refill_liters": refill_liters,
+        "best_base_cost": best_base_cost,
+        "best_premium_cost": best_premium_cost,
+        "best_premium_delta": best_premium_delta,
+        "best_cashback": best_cashback,
+        "best_cashback_program": best_cashback_program,
     }
 
 
@@ -682,42 +742,120 @@ def search_recommendation(stations: Sequence[StationResult], mode: str) -> Dict[
 
 
 def search_summary_cards(summary: Dict[str, Any], mode: str) -> List[Dict[str, str]]:
-    count = summary["count"]
-    cards: List[Dict[str, str]] = [
-        {
-            "label": "Estaciones",
-            "value": str(count),
-            "description": f"de {count} resultado{'s' if count != 1 else ''}",
-        },
-        {
-            "label": "Mejor precio",
-            "value": format_price(summary["best_price"]),
-            "color": "text-green-600",
-            "description": _truncate(summary.get("best_station_label")),
-        },
-        {
-            "label": "Precio promedio",
-            "value": format_price(summary.get("avg_price")),
-        },
-    ]
-    if mode == "best_by_address":
-        best_cost = summary["best_estimated_cost"]
+    cards: List[Dict[str, str]] = []
+
+    # 1. Media nacional
+    national_avg = summary.get("national_avg")
+    national_count = summary.get("national_station_count", 0)
+    if national_avg is not None:
+        count_desc = f"de {national_count:,} estaciones" if national_count else ""
         cards.append(
             {
-                "label": "Mejor coste total",
-                "value": "-" if best_cost is None else f"{best_cost:.2f} EUR",
-                "color": "text-green-600",
-                "description": "incluye repostaje y desplazamiento",
+                "label": "Media nacional",
+                "value": format_price(national_avg),
+                "description": count_desc,
             }
         )
-    else:
-        cards.append({"label": "Distancia minima", "value": format_distance(summary["min_distance_km"])})
+
+    # 2. Mejor opcion (best price vs national avg)
+    best_option_price = summary.get("best_station_price", summary.get("best_price"))
+    if best_option_price is not None:
+        desc_parts = [_truncate(summary.get("best_station_label"))]
+        if national_avg and national_avg > 0:
+            pct = (best_option_price - national_avg) / national_avg * 100
+            delta = best_option_price - national_avg
+            sign = "+" if delta >= 0 else ""
+            desc_parts.append(f"{sign}{pct:.1f}% ({sign}{delta:.3f}) vs media")
+        cards.append(
+            {
+                "label": "Mejor opcion",
+                "value": format_price(best_option_price),
+                "color": "text-green-600",
+                "description": " · ".join(p for p in desc_parts if p),
+            }
+        )
+
+    # 3. Coste base total
+    refill = summary.get("refill_liters")
+    best_base_cost = summary.get("best_base_cost")
+    if best_base_cost is not None and refill:
+        cards.append(
+            {
+                "label": "Coste base total",
+                "value": f"{best_base_cost:.2f} EUR/{refill:.0f}L",
+                "color": "text-blue-600",
+            }
+        )
+
+    # 4. Coste premium total
+    best_premium_cost = summary.get("best_premium_cost")
+    best_premium_delta = summary.get("best_premium_delta")
+    if best_premium_cost is not None and best_premium_delta is not None:
+        cards.append(
+            {
+                "label": "Coste premium total",
+                "value": f"{best_premium_cost:.2f} EUR",
+                "description": f"+{best_premium_delta:.2f} vs base",
+            }
+        )
+
+    # 5. Cashback
+    best_cashback = summary.get("best_cashback")
+    best_cashback_program = summary.get("best_cashback_program")
+    if best_cashback is not None and best_cashback > 0:
+        cards.append(
+            {
+                "label": "Cashback",
+                "value": f"{best_cashback:.2f} EUR",
+                "color": "text-purple-600",
+                "description": best_cashback_program or "",
+            }
+        )
+
+    # Fallback: if no national avg or cost data, show basic cards
+    if not cards:
+        count = summary["count"]
+        cards.append(
+            {
+                "label": "Estaciones",
+                "value": str(count),
+                "description": f"de {count} resultado{'s' if count != 1 else ''}",
+            }
+        )
+        cards.append(
+            {
+                "label": "Mejor precio",
+                "value": format_price(summary.get("best_price")),
+                "color": "text-green-600",
+                "description": _truncate(summary.get("best_station_label")),
+            }
+        )
+        if mode == "best_by_address":
+            best_cost = summary["best_estimated_cost"]
+            cards.append(
+                {
+                    "label": "Mejor coste total",
+                    "value": "-" if best_cost is None else f"{best_cost:.2f} EUR",
+                    "color": "text-green-600",
+                    "description": "incluye repostaje y desplazamiento",
+                }
+            )
+        else:
+            cards.append({"label": "Distancia minima", "value": format_distance(summary["min_distance_km"])})
+
     return cards
 
 
 def trip_kpis(trip_plan: TripPlan) -> Dict[str, Any]:
     hours = int(trip_plan.duration_minutes // 60)
     mins = int(trip_plan.duration_minutes % 60)
+
+    loyalty_savings = 0.0
+    for stop in trip_plan.stops:
+        discount = get_loyalty_discount(stop.station.label)
+        if discount is not None:
+            loyalty_savings += discount * stop.liters_to_fill
+
     return {
         "total_distance": f"{trip_plan.total_distance_km:.0f} km",
         "duration": f"{hours}h {mins}min",
@@ -727,12 +865,13 @@ def trip_kpis(trip_plan: TripPlan) -> Dict[str, Any]:
         "total_liters": f"{trip_plan.total_fuel_liters:.1f} L",
         "fuel_at_destination": f"{trip_plan.fuel_at_destination_pct:.0f}%",
         "total_detour": f"{sum(s.detour_minutes for s in trip_plan.stops):.0f} min",
+        "loyalty_savings": round(loyalty_savings, 2),
     }
 
 
 def trip_summary_cards(trip_plan: TripPlan) -> List[Dict[str, str]]:
     kpis = trip_kpis(trip_plan)
-    return [
+    cards = [
         {
             "label": "Distancia total",
             "value": kpis["total_distance"],
@@ -763,6 +902,16 @@ def trip_summary_cards(trip_plan: TripPlan) -> List[Dict[str, str]]:
             "value": kpis["fuel_at_destination"],
         },
     ]
+    if kpis["loyalty_savings"] > 0:
+        cards.append(
+            {
+                "label": "Ahorro fidelizacion",
+                "value": f"{kpis['loyalty_savings']:.2f} EUR",
+                "color": "text-purple-600",
+                "description": "con tarjetas de fidelizacion",
+            }
+        )
+    return cards
 
 
 def trip_recommendation(trip_plan: TripPlan) -> Dict[str, str]:

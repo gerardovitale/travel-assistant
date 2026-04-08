@@ -92,7 +92,7 @@ def replace_latest_stations(df: pd.DataFrame) -> int:
         conn.execute("DROP TABLE IF EXISTS latest_stations")
         conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
         count = conn.execute("SELECT COUNT(*) FROM latest_stations").fetchone()[0]
-    query_national_avg_price.cache_clear()
+    query_national_avg_stats.cache_clear()
     return count
 
 
@@ -634,22 +634,33 @@ def query_stations_along_corridor(
 
 
 @functools.lru_cache(maxsize=16)
-def query_national_avg_price(fuel_type: str) -> Optional[float]:
-    """Return the national average price for a fuel type, or None if unavailable.
+def query_national_avg_stats(fuel_type: str) -> tuple[Optional[float], int]:
+    """Return (avg_price, station_count) for a fuel type nationally.
 
-    Cached per fuel type; cache is cleared on ``refresh_latest_snapshot()``.
+    Cached per fuel type; cache is cleared on ``replace_latest_stations()``.
     """
     fuel_type = _validate_fuel_column(fuel_type)
     with _lock:
         conn = get_connection()
         result = conn.execute(
             f"""
-            SELECT AVG({fuel_type}) AS avg_price
+            SELECT AVG({fuel_type}) AS avg_price, COUNT(*) AS cnt
             FROM latest_stations
             WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
             """,
         ).fetchone()
-    return result[0] if result and result[0] is not None else None
+    if result and result[0] is not None:
+        return result[0], result[1]
+    return None, 0
+
+
+def query_national_avg_price(fuel_type: str) -> Optional[float]:
+    """Return the national average price for a fuel type, or None if unavailable.
+
+    Delegates to :func:`query_national_avg_stats` (which is cached).
+    """
+    avg, _ = query_national_avg_stats(fuel_type)
+    return avg
 
 
 def get_distinct_provinces() -> dict[str, str]:

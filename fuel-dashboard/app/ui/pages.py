@@ -34,6 +34,7 @@ from services.station_service import get_day_of_week_pattern
 from services.station_service import get_district_price_map
 from services.station_service import get_group_price_trends
 from services.station_service import get_municipalities
+from services.station_service import get_national_avg_stats
 from services.station_service import get_nearest_by_address
 from services.station_service import get_nearest_by_address_group
 from services.station_service import get_postal_code_geojson
@@ -393,7 +394,19 @@ def _build_search_panel() -> None:
                     empty_state(search_mode_metadata(current_mode).empty_state_hint)
                 return
 
-            summary = station_summary(stations)
+            # Fetch national average stats for the selected fuel type
+            national_avg, national_count = await run.io_bound(get_national_avg_stats, fuel_type.value)
+
+            # Determine refill liters: from tank input in best_by_address, else default
+            tank_input_ref = state.get("tank_input")
+            refill = tank_input_ref.value if tank_input_ref and tank_input_ref.value else settings.default_refill_liters
+
+            summary = station_summary(
+                stations,
+                national_avg=national_avg,
+                national_station_count=national_count,
+                refill_liters=refill,
+            )
             fetch_routes = current_mode != "cheapest_by_zip" and search_lat is not None and search_lon is not None
             if fetch_routes:
                 set_status("success", f"{summary['count']} estaciones encontradas. Cargando rutas en el mapa...")
@@ -433,6 +446,7 @@ def _build_search_panel() -> None:
                     stations_trace_idx=stations_trace_idx,
                     highlight_trace_idx=highlight_trace_idx,
                     route_trace_idx=route_trace_idx,
+                    refill_liters=refill,
                 )
 
             if fetch_routes:

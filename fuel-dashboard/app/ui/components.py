@@ -7,7 +7,6 @@ from typing import List
 from typing import Optional
 
 import plotly.graph_objects as go
-from api.schemas import FUEL_GROUP_MEMBERS
 from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import HistoricalPeriod
@@ -24,6 +23,10 @@ from ui.view_models import HISTORICAL_PERIOD_LABELS
 from ui.view_models import SEARCH_FUEL_OPTIONS
 from ui.view_models import SEARCH_MODE_OPTIONS
 from ui.view_models import TREND_PERIOD_LABELS
+
+from data.loyalty import format_loyalty_cell
+from data.loyalty import get_loyalty_discount
+from data.loyalty import get_loyalty_program
 
 _THEME_CSS = (Path(__file__).parent / "theme.css").read_text()
 
@@ -336,54 +339,62 @@ def station_results_table(
     stations_trace_idx: Optional[int] = None,
     highlight_trace_idx: Optional[int] = None,
     route_trace_idx: Optional[int] = None,
+    refill_liters: Optional[float] = None,
 ) -> Optional[ui.table]:
     if not stations:
         empty_state("No se encontraron estaciones para esta busqueda.")
         return None
 
     has_distance = any(s.distance_km is not None for s in stations)
-    has_cost = any(s.estimated_total_cost is not None for s in stations)
     has_pct = any(s.pct_vs_avg is not None for s in stations)
     has_variants = any(s.variant_prices for s in stations)
-    variant_keys: List[str] = []
-    if has_variants:
-        seen: Dict[str, None] = {}
+    has_loyalty = any(get_loyalty_program(s.label) is not None for s in stations)
+    has_refill = refill_liters is not None and refill_liters > 0
+
+    # Find the variant with the highest average premium across all stations
+    max_premium_key = None
+    if has_variants and primary_fuel:
+        premium_totals: Dict[str, list] = {}
         for s in stations:
             if s.variant_prices:
-                for k in s.variant_prices:
-                    seen.setdefault(k, None)
-        if primary_fuel:
-            canonical = [ft.value for group in FUEL_GROUP_MEMBERS.values() for ft in group]
-            order = {k: i for i, k in enumerate(canonical)}
-            variant_keys = sorted(seen, key=lambda k: order.get(k, len(canonical)))
-        else:
-            variant_keys = list(seen)
+                for k, v in s.variant_prices.items():
+                    if k != primary_fuel:
+                        premium_totals.setdefault(k, []).append(v - s.price)
+        if premium_totals:
+            max_premium_key = max(premium_totals, key=lambda k: sum(premium_totals[k]) / len(premium_totals[k]))
 
     columns = [
         {"name": "ranking", "label": "#", "field": "ranking", "align": "center"},
-        {"name": "label", "label": "Estacion", "field": "label", "align": "left"},
+        {"name": "label", "label": "Marca", "field": "label", "align": "left"},
         {"name": "address", "label": "Direccion", "field": "address", "align": "left"},
+        {"name": "price", "label": "Precio base (EUR/L)", "field": "price", "align": "right", "sortable": True},
     ]
-    if has_variants:
-        for vk in variant_keys:
-            if primary_fuel:
-                col_label = FUEL_VARIANT_SHORT_NAMES.get(vk, FUEL_DISPLAY_NAMES.get(vk, vk))
-            else:
-                col_label = FUEL_DISPLAY_NAMES.get(vk, vk.replace("_price", "").replace("_", " ").title())
-            if vk == primary_fuel:
-                col_label += " (EUR/L)"
-            elif primary_fuel:
-                col_label += " (vs base)"
-            columns.append({"name": vk, "label": col_label, "field": vk, "align": "right", "sortable": True})
-    else:
+    if has_variants and max_premium_key:
+        premium_name = FUEL_VARIANT_SHORT_NAMES.get(max_premium_key, FUEL_DISPLAY_NAMES.get(max_premium_key, "Premium"))
         columns.append(
-            {"name": "price", "label": "Precio (EUR/L)", "field": "price", "align": "right", "sortable": True}
+            {
+                "name": "premium",
+                "label": f"{premium_name} (\u00b1 base EUR/L)",
+                "field": "premium",
+                "align": "right",
+                "sortable": True,
+            }
+        )
+    if has_loyalty:
+        columns.append(
+            {
+                "name": "incentivo",
+                "label": "Incentivo (EUR/L)",
+                "field": "incentivo",
+                "align": "right",
+                "sortable": True,
+            }
         )
     if has_pct:
         columns.append(
             {
                 "name": "pct_vs_avg",
-                "label": "vs media",
+                "label": "vs Media nacional",
                 "field": "pct_vs_avg",
                 "align": "right",
                 "sortable": True,
@@ -392,63 +403,72 @@ def station_results_table(
     if has_distance:
         columns.append(
             {
-                "name": "distance_km",
+                "name": "distance",
                 "label": "Distancia (km)",
-                "field": "distance_km",
+                "field": "distance",
                 "align": "right",
                 "sortable": True,
             }
         )
-    if has_cost:
+    if has_refill:
         columns.append(
             {
-                "name": "estimated_total_cost",
-                "label": "Coste total (EUR)",
-                "field": "estimated_total_cost",
+                "name": "total_base",
+                "label": "Total base (EUR)",
+                "field": "total_base",
                 "align": "right",
                 "sortable": True,
             }
         )
+    if has_refill and has_loyalty:
+        columns.append(
+            {
+                "name": "total_cashback",
+                "label": "Total cashback (EUR)",
+                "field": "total_cashback",
+                "align": "right",
+                "sortable": True,
+            }
+        )
+
     rows = []
     for idx, station in enumerate(stations):
         row = {
             "ranking": idx + 1,
             "label": station.label,
             "address": f"{station.address}, {station.municipality}, {station.province}, {station.zip_code}",
+            "price": round(station.price, 3),
         }
-        if has_variants and station.variant_prices:
-            base_price = station.variant_prices.get(primary_fuel) if primary_fuel else None
-            for vk in variant_keys:
-                val = station.variant_prices.get(vk)
-                if val is None:
-                    row[vk] = "-"
-                elif base_price is not None and vk != primary_fuel and base_price > 0:
-                    delta = val - base_price
-                    row[vk] = f"{delta:+.3f}"
+        if has_variants and max_premium_key:
+            if station.variant_prices:
+                premium_val = station.variant_prices.get(max_premium_key)
+                if premium_val is not None:
+                    delta = premium_val - station.price
+                    row["premium"] = f"{delta:+.3f}"
                 else:
-                    row[vk] = round(val, 3)
-        else:
-            row["price"] = round(station.price, 3)
-        if station.pct_vs_avg is not None:
-            row["pct_vs_avg"] = f"{station.pct_vs_avg:+.1f}%"
-        if station.distance_km is not None:
-            row["distance_km"] = round(station.distance_km, 2)
-        if station.estimated_total_cost is not None:
-            if has_variants and primary_fuel and station.variant_prices and station.price > 0:
-                primary_price = station.variant_prices.get(primary_fuel)
-                multiplier = station.estimated_total_cost / station.price
-                if primary_price is not None and primary_price > 0:
-                    primary_cost = round(primary_price * multiplier, 2)
-                    max_variant_price = max(station.variant_prices.values())
-                    if max_variant_price > primary_price:
-                        premium_extra = round((max_variant_price - primary_price) * multiplier, 2)
-                        row["estimated_total_cost"] = f"{primary_cost} (+{premium_extra})"
-                    else:
-                        row["estimated_total_cost"] = primary_cost
-                else:
-                    row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
+                    row["premium"] = "-"
             else:
-                row["estimated_total_cost"] = round(station.estimated_total_cost, 2)
+                row["premium"] = "-"
+        if has_loyalty:
+            discount = get_loyalty_discount(station.label)
+            if discount is not None:
+                prog = get_loyalty_program(station.label)
+                row["incentivo"] = f"-{discount:.3f} ({prog.program_name})"
+            else:
+                row["incentivo"] = "-"
+        if station.pct_vs_avg is not None:
+            delta_price = station.price - (station.price / (1 + station.pct_vs_avg / 100))
+            row["pct_vs_avg"] = f"{station.pct_vs_avg:+.1f}% ({delta_price:+.3f})"
+        if station.distance_km is not None:
+            row["distance"] = round(station.distance_km, 2)
+        if has_refill:
+            row["total_base"] = round(station.price * refill_liters, 2)
+        if has_refill and has_loyalty:
+            discount = get_loyalty_discount(station.label)
+            if discount is not None:
+                row["total_cashback"] = round(discount * refill_liters, 2)
+            else:
+                row["total_cashback"] = "-"
         rows.append(row)
 
     table = ui.table(columns=columns, rows=rows, row_key="label").classes("pe-table w-full")
@@ -575,12 +595,25 @@ def trip_stops_table(stops: List[TripStop]) -> None:
         {"name": "cost", "label": "Coste (EUR)", "field": "cost", "align": "right"},
         {"name": "reasoning", "label": "Razon", "field": "reasoning", "align": "left"},
     ]
-    rows = [
-        {
+    has_loyalty = any(get_loyalty_program(s.station.label) is not None for s in stops)
+    if has_loyalty:
+        columns.insert(
+            next(i for i, c in enumerate(columns) if c["name"] == "fuel_arrival"),
+            {
+                "name": "loyalty_price",
+                "label": "Precio fidelizacion (EUR/L)",
+                "field": "loyalty_price",
+                "align": "right",
+            },
+        )
+    rows = []
+    for i, stop in enumerate(stops):
+        row = {
             "ranking": i + 1,
             "label": stop.station.label,
             "address": (
-                f"{stop.station.address}, {stop.station.municipality}, {stop.station.province}, {stop.station.zip_code}"
+                f"{stop.station.address}, {stop.station.municipality},"
+                f" {stop.station.province}, {stop.station.zip_code}"
             ),
             "route_km": round(stop.route_km, 0),
             "detour": round(stop.detour_minutes, 1),
@@ -590,8 +623,9 @@ def trip_stops_table(stops: List[TripStop]) -> None:
             "cost": round(stop.cost_eur, 2),
             "reasoning": stop.reasoning or "",
         }
-        for i, stop in enumerate(stops)
-    ]
+        if has_loyalty:
+            row["loyalty_price"] = format_loyalty_cell(stop.station.label, stop.station.price)
+        rows.append(row)
     table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("pe-table w-full")
     table.props("dense flat bordered separator=cell")
 
@@ -610,8 +644,20 @@ def top_cheapest_table(candidates: List[StationResult], top_n: int = 5) -> None:
         {"name": "route_km", "label": "Km en ruta", "field": "route_km", "align": "right"},
         {"name": "detour", "label": "Desvio (min)", "field": "detour", "align": "right"},
     ]
-    rows = [
-        {
+    has_loyalty = any(get_loyalty_program(c.label) is not None for c in sorted_candidates)
+    if has_loyalty:
+        columns.insert(
+            next(i for i, c in enumerate(columns) if c["name"] == "route_km"),
+            {
+                "name": "loyalty_price",
+                "label": "Precio fidelizacion (EUR/L)",
+                "field": "loyalty_price",
+                "align": "right",
+            },
+        )
+    rows = []
+    for i, c in enumerate(sorted_candidates):
+        row = {
             "ranking": i + 1,
             "label": c.label,
             "address": f"{c.address}, {c.municipality}, {c.province}, {c.zip_code}",
@@ -619,7 +665,8 @@ def top_cheapest_table(candidates: List[StationResult], top_n: int = 5) -> None:
             "route_km": round(c.route_km, 0) if c.route_km is not None else "-",
             "detour": round(c.detour_minutes, 1) if c.detour_minutes is not None else "-",
         }
-        for i, c in enumerate(sorted_candidates)
-    ]
+        if has_loyalty:
+            row["loyalty_price"] = format_loyalty_cell(c.label, c.price)
+        rows.append(row)
     table = ui.table(columns=columns, rows=rows, row_key="ranking").classes("pe-table w-full")
     table.props("dense flat bordered separator=cell")

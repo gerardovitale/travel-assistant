@@ -35,6 +35,7 @@ from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_cheapest_zones_by_municipality
 from data.duckdb_engine import query_municipalities_by_province
 from data.duckdb_engine import query_national_avg_price
+from data.duckdb_engine import query_national_avg_stats
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_nearest_stations_group
 from data.duckdb_engine import query_price_trends
@@ -282,6 +283,11 @@ def get_provinces() -> dict[str, str]:
 
 def get_station_labels(top_n: int = 0) -> dict[str, str]:
     return get_distinct_labels(top_n=top_n)
+
+
+def get_national_avg_stats(fuel_type: str) -> tuple[Optional[float], int]:
+    """Return (avg_price, station_count) for the national average."""
+    return query_national_avg_stats(fuel_type)
 
 
 def get_cheapest_by_zip_group(
