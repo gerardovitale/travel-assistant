@@ -135,10 +135,9 @@ def _make_set_status(container: ui.column):
 
 
 def init_ui(app: FastAPI) -> None:
-    init_theme()
-
     @ui.page("/")
     def index():
+        init_theme()
         page_container = ui.column().classes("pe-page w-full max-w-7xl mx-auto p-4")
 
         def _render_dashboard() -> None:

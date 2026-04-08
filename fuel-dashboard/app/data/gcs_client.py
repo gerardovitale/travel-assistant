@@ -137,19 +137,23 @@ def list_parquet_files(
 
 def get_latest_parquet_file() -> Optional[str]:
     """Get the latest parquet file, checking today and yesterday first."""
-    bucket = _get_bucket()
-    now = utcnow()
-    for days_ago in range(3):
-        date_str = (now - timedelta(days=days_ago)).strftime("%Y-%m-%d")
-        prefix = f"spain_fuel_prices_{date_str}"
-        blobs = list(bucket.list_blobs(prefix=prefix))
-        parquets = sorted([b.name for b in blobs if b.name.endswith(".parquet")])
-        if parquets:
-            return parquets[-1]
+    try:
+        bucket = _get_bucket()
+        now = utcnow()
+        for days_ago in range(3):
+            date_str = (now - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+            prefix = f"spain_fuel_prices_{date_str}"
+            blobs = list(bucket.list_blobs(prefix=prefix))
+            parquets = sorted([b.name for b in blobs if b.name.endswith(".parquet")])
+            if parquets:
+                return parquets[-1]
 
-    logger.warning("No recent parquet files found, falling back to full listing")
-    files = list_parquet_files()
-    return files[-1] if files else None
+        logger.warning("No recent parquet files found, falling back to full listing")
+        files = list_parquet_files()
+        return files[-1] if files else None
+    except Exception:
+        logger.warning("Failed to list parquet files from GCS (network error)", exc_info=True)
+        return None
 
 
 def download_parquet_as_df(blob_name: str) -> pd.DataFrame:
@@ -182,13 +186,17 @@ def download_aggregate(name: str) -> Optional[pd.DataFrame]:
             return pd.read_parquet(cached_path)
         logger.info(f"Aggregate cache stale ({age_hours:.1f}h old): {blob_name}")
 
-    bucket = _get_bucket()
-    blob = bucket.blob(blob_name)
-    if not blob.exists():
-        logger.warning(f"Aggregate file not found: {blob_name}")
+    try:
+        bucket = _get_bucket()
+        blob = bucket.blob(blob_name)
+        if not blob.exists():
+            logger.warning(f"Aggregate file not found: {blob_name}")
+            return None
+        data = blob.download_as_bytes()
+    except Exception:
+        logger.warning(f"Failed to download aggregate {blob_name} (network error)", exc_info=True)
         return None
 
-    data = blob.download_as_bytes()
     df = pd.read_parquet(io.BytesIO(data))
 
     try:
