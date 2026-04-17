@@ -3,11 +3,6 @@ from unittest.mock import patch
 
 import pandas as pd
 from api.schemas import FuelType
-from ui.view_models import brand_ranking_kpis
-from ui.view_models import day_of_week_kpis
-from ui.view_models import province_ranking_kpis
-from ui.view_models import SPANISH_DAY_NAMES
-from ui.view_models import volatility_kpis
 
 from data.geojson_loader import normalize_data_province_name
 
@@ -47,43 +42,6 @@ def _make_day_of_week_stats():
             }
         )
     return pd.DataFrame(rows)
-
-
-class TestProvinceRankingKpis:
-
-    def test_returns_4_cards(self):
-        df = pd.DataFrame(
-            {
-                "province": ["sevilla", "madrid", "barcelona"],
-                "avg_price": [1.42, 1.45, 1.48],
-                "min_price": [1.37, 1.40, 1.43],
-                "max_price": [1.47, 1.50, 1.53],
-                "total_observations": [500, 500, 500],
-            }
-        )
-        cards = province_ranking_kpis(df)
-        assert len(cards) == 4
-        assert "Sevilla" in cards[0]["value"]
-        assert "Barcelona" in cards[1]["value"]
-
-    def test_empty_df_returns_empty(self):
-        cards = province_ranking_kpis(pd.DataFrame())
-        assert cards == []
-
-
-class TestDayOfWeekKpis:
-
-    def test_returns_4_cards(self):
-        df = _make_day_of_week_stats()
-        df["avg_price"] = df["sum_price"] / df["count_days"]
-        cards = day_of_week_kpis(df)
-        assert len(cards) == 4
-        # Monday (day_of_week=0) should be cheapest since it has lowest sum_price
-        assert cards[0]["value"] == SPANISH_DAY_NAMES[0]
-
-    def test_empty_df_returns_empty(self):
-        cards = day_of_week_kpis(pd.DataFrame())
-        assert cards == []
 
 
 class TestQueryProvinceRanking:
@@ -244,28 +202,6 @@ def _make_zip_code_volatility_stats(days=70):
     return pd.DataFrame(rows)
 
 
-class TestBrandRankingKpis:
-
-    def test_returns_4_cards(self):
-        df = pd.DataFrame(
-            {
-                "brand": ["repsol", "cepsa", "shell"],
-                "avg_price": [1.42, 1.45, 1.48],
-                "min_price": [1.37, 1.40, 1.43],
-                "max_price": [1.47, 1.50, 1.53],
-                "total_observations": [500, 500, 500],
-            }
-        )
-        cards = brand_ranking_kpis(df)
-        assert len(cards) == 4
-        assert "Repsol" in cards[0]["value"]
-        assert "Shell" in cards[1]["value"]
-
-    def test_empty_df_returns_empty(self):
-        cards = brand_ranking_kpis(pd.DataFrame())
-        assert cards == []
-
-
 class TestQueryBrandRanking:
 
     def test_query_filters_by_fuel_type_and_groups_by_brand(self):
@@ -385,34 +321,6 @@ class TestQueryZipCodePriceTrend:
         assert result.empty
 
 
-class TestVolatilityKpis:
-
-    def test_returns_4_cards(self):
-        df = pd.DataFrame(
-            {
-                "zip_code": ["28001", "41001"],
-                "province": ["madrid", "sevilla"],
-                "avg_price": [1.50, 1.51],
-                "std_dev_price": [0.001, 0.010],
-                "coefficient_of_variation": [0.0007, 0.0066],
-                "min_price": [1.499, 1.48],
-                "max_price": [1.501, 1.54],
-                "price_range": [0.002, 0.06],
-                "observation_days": [70, 70],
-                "avg_station_count": [5, 6],
-            }
-        )
-
-        cards = volatility_kpis(df)
-
-        assert len(cards) == 4
-        assert cards[0]["value"] == "28001"
-        assert "Madrid" in cards[0]["description"]
-
-    def test_empty_df_returns_empty(self):
-        assert volatility_kpis(pd.DataFrame()) == []
-
-
 class TestQueryVolatilityByZone:
 
     def test_query_computes_metrics_and_orders_by_lowest_cv(self):
@@ -428,6 +336,7 @@ class TestQueryVolatilityByZone:
             "avg_price",
             "std_dev_price",
             "coefficient_of_variation",
+            "volatility_pct",
             "min_price",
             "max_price",
             "price_range",

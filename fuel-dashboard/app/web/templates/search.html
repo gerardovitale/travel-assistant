@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% set current_page = 'search' %}
+{% block title %}Buscar estaciones · Fuel Precision{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<section class="hero-gradient text-white px-5 md:px-8 pt-12 pb-16 md:py-20 relative overflow-hidden">
+  <div class="relative z-10 max-w-6xl mx-auto">
+    <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Fuel precision</p>
+    <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight max-w-3xl">
+      Precios de combustible en España
+    </h1>
+    <p class="mt-4 text-base md:text-lg text-primary-fixed max-w-xl">Encuentra la estación adecuada para ti, según cercanía, precio o coste total.</p>
+  </div>
+  <span class="absolute -right-10 -bottom-10 opacity-10 material-symbols-outlined text-[240px] md:text-[320px] text-white">local_gas_station</span>
+</section>
+
+<!-- Filters card -->
+<section class="max-w-6xl mx-auto px-5 md:px-8 -mt-10 relative z-20">
+  <form id="search-form" class="bg-surface-container-lowest rounded-2xl shadow-xl p-5 md:p-8 space-y-5 border border-outline-variant/40 overflow-visible">
+    <h2 class="font-label text-[11px] tracking-[0.12em] text-outline uppercase">Filtros de búsqueda</h2>
+
+    <!-- Mode segmented control -->
+    <div class="bg-surface-container rounded-xl p-1 flex gap-1" role="tablist" id="mode-tabs">
+      <button type="button" data-mode="best_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-active">MEJOR OPCIÓN</button>
+      <button type="button" data-mode="cheapest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS BARATA</button>
+      <button type="button" data-mode="nearest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS CERCANA</button>
+    </div>
+
+    <!-- Main inputs — always visible -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <!-- Unified location input -->
+      <label class="block md:col-span-2">
+        <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Ubicación</span>
+        <div class="flex gap-2">
+          <input type="text" name="location" placeholder="28001 o Calle Alcalá, Madrid" class="flex-1 rounded-lg border-outline-variant">
+          <button type="button" id="geo-btn" class="p-3 rounded-lg bg-surface-container text-primary-container hover:bg-surface-container-high transition" title="Usar mi ubicación">
+            <span class="material-symbols-outlined">my_location</span>
+          </button>
+        </div>
+      </label>
+
+      <!-- Fuel type -->
+      <label class="block">
+        <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
+        <select name="fuel_type" class="w-full rounded-lg border-outline-variant"></select>
+      </label>
+
+      <!-- Custom brands dropdown -->
+      <div class="block">
+        <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Marcas <span class="font-normal text-outline">(opcional)</span></span>
+        <div class="relative z-[200]" id="brands-dropdown">
+          <button type="button" id="brands-toggle" class="w-full h-[42px] flex items-center justify-between rounded-lg border border-outline-variant px-3 py-2 text-sm text-left bg-white hover:bg-surface-container-low transition">
+            <span id="brands-label" class="text-outline">Todas las marcas</span>
+            <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
+          </button>
+          <div id="brands-list" style="display:none" class="absolute z-[100] left-0 right-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl max-h-56 overflow-y-auto">
+            <!-- populated by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Advanced options -->
+    <details id="advanced-section" class="group">
+      <summary class="cursor-pointer text-xs font-label font-bold text-primary-container flex items-center gap-1 select-none">
+        <span class="material-symbols-outlined text-[16px] transition-transform group-open:rotate-90">chevron_right</span>
+        Opciones avanzadas
+      </summary>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+        <label class="block" data-field="radius">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Radio (km)</span>
+          <input type="number" name="radius_km" min="0.5" max="50" step="0.5" value="5" class="w-full rounded-lg border-outline-variant">
+        </label>
+
+        <label class="block" data-field="consumption">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Consumo (l/100 km)</span>
+          <input type="number" name="consumption_lper100km" min="1" max="30" step="0.1" value="6.5" class="w-full rounded-lg border-outline-variant">
+        </label>
+
+        <label class="block" data-field="tank">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Litros a repostar</span>
+          <input type="number" name="tank_liters" min="5" max="120" step="1" value="45" class="w-full rounded-lg border-outline-variant">
+        </label>
+      </div>
+    </details>
+
+    <button type="submit" class="w-full cta-gradient text-white font-headline font-extrabold py-4 rounded-xl shadow-lg hover:opacity-95 active:scale-[0.99] transition">
+      <span class="material-symbols-outlined align-middle">search</span>
+      <span class="ml-2">Buscar estaciones</span>
+    </button>
+  </form>
+</section>
+
+<!-- Results -->
+<section class="max-w-6xl mx-auto px-5 md:px-8 mt-10 space-y-6">
+  <div id="status-banner" class="hidden rounded-xl px-4 py-3 text-sm"></div>
+
+  <!-- Recommendation -->
+  <div id="recommendation" class="hidden bg-primary-container text-on-secondary-container rounded-2xl p-5 md:p-6 shadow-md fade-in">
+    <p class="font-label text-[11px] tracking-[0.12em] opacity-70 uppercase mb-2">Recomendación</p>
+    <p class="text-base md:text-lg font-headline font-bold leading-snug" id="recommendation-text"></p>
+  </div>
+
+  <!-- KPIs -->
+  <div id="kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+
+  <!-- Map + list layout -->
+  <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+    <div class="md:col-span-3 bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40 h-[380px] md:h-[520px] self-start">
+      <div id="map" class="h-full"></div>
+    </div>
+    <div class="md:col-span-2 space-y-3" id="results-list">
+      <div id="results-empty" class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">
+        Ajusta los filtros y pulsa <b>Buscar</b>.
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block page_scripts %}
+<script type="module" src="/static/js/search.js"></script>
+{% endblock %}

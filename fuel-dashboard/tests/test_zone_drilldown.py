@@ -1,13 +1,10 @@
-import importlib.util
 from unittest.mock import patch
 
 import duckdb
 import pandas as pd
-import pytest
 from api.schemas import FuelType
+from api.schemas import ProvincePriceResult
 from api.schemas import ZoneResult
-
-PLOTLY_AVAILABLE = importlib.util.find_spec("plotly") is not None
 
 SAMPLE_FUEL_TYPE = "diesel_a_price"
 
@@ -144,6 +141,58 @@ def test_get_zip_code_price_map_for_zips(mock_zones):
     assert zips == {"28001", "28003"}
 
 
+@patch("services.station_service.query_avg_price_by_province")
+def test_get_province_price_map_filtered_mainland_only(mock_query):
+    from services.station_service import get_province_price_map_filtered
+
+    mock_query.return_value = pd.DataFrame(
+        {
+            "province": ["madrid", "palmas (las)"],
+            "avg_price": [1.45, 1.62],
+            "station_count": [100, 40],
+        }
+    )
+    results = get_province_price_map_filtered(FuelType.diesel_a_price, mainland_only=True)
+    assert [result.province for result in results] == ["madrid"]
+
+
+@patch("services.station_service.get_province_price_map_filtered")
+@patch("services.station_service.load_provinces_geojson")
+def test_get_province_price_geojson_merges_metrics(mock_load_geojson, mock_map):
+    from services.station_service import get_province_price_geojson
+
+    mock_load_geojson.return_value = {
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature", "properties": {"name": "Madrid"}, "geometry": {"type": "Polygon", "coordinates": []}},
+            {
+                "type": "Feature",
+                "properties": {"name": "Las Palmas"},
+                "geometry": {"type": "Polygon", "coordinates": []},
+            },
+        ],
+    }
+    mock_map.return_value = [
+        ProvincePriceResult(province="madrid", avg_price=1.45, station_count=100),
+    ]
+
+    geojson = get_province_price_geojson(FuelType.diesel_a_price, mainland_only=False)
+    madrid = geojson["features"][0]["properties"]
+    assert madrid["province"] == "Madrid"
+    assert madrid["avg_price"] == 1.45
+    assert madrid["station_count"] == 100
+    assert geojson["features"][1]["properties"]["avg_price"] is None
+
+
+@patch("services.station_service.query_stations_by_province")
+def test_get_district_price_map_non_madrid_returns_empty(mock_query):
+    from services.station_service import get_district_price_map
+
+    result = get_district_price_map("SEVILLA", FuelType.diesel_a_price)
+    assert result == []
+    mock_query.assert_not_called()
+
+
 @patch("services.station_service.load_postal_codes_for_zip_list")
 def test_get_postal_code_geojson(mock_load):
     from services.station_service import get_postal_code_geojson
@@ -193,6 +242,13 @@ def test_get_zip_codes_for_district(mock_districts, mock_query):
     assert result == ["28001"]
 
 
+def test_get_zip_codes_for_district_non_madrid_returns_empty():
+    from services.station_service import get_zip_codes_for_district
+
+    result = get_zip_codes_for_district("BARCELONA", FuelType.diesel_a_price, "Eixample")
+    assert result == []
+
+
 @patch("services.station_service.query_zip_codes_by_district")
 @patch("services.station_service.load_madrid_districts")
 def test_get_zip_codes_for_district_empty(mock_districts, mock_query):
@@ -202,68 +258,3 @@ def test_get_zip_codes_for_district_empty(mock_districts, mock_query):
     mock_query.return_value = pd.DataFrame()
     result = get_zip_codes_for_district("MADRID", FuelType.diesel_a_price, "Centro")
     assert result == []
-
-
-# ── Chart tests ──────────────────────────────────────────────────────
-
-
-@pytest.mark.skipif(not PLOTLY_AVAILABLE, reason="plotly not installed")
-def test_build_zip_code_choropleth():
-    from ui.charts import build_zip_code_choropleth
-
-    prices = [
-        ZoneResult(zip_code="28001", avg_price=1.50, min_price=1.45, station_count=5),
-        ZoneResult(zip_code="28002", avg_price=1.55, min_price=1.50, station_count=3),
-    ]
-    geojson = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {"COD_POSTAL": "28001"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[[-3.71, 40.41], [-3.70, 40.41], [-3.70, 40.42], [-3.71, 40.42], [-3.71, 40.41]]],
-                },
-            },
-            {
-                "type": "Feature",
-                "properties": {"COD_POSTAL": "28002"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[[-3.70, 40.42], [-3.69, 40.42], [-3.69, 40.43], [-3.70, 40.43], [-3.70, 40.42]]],
-                },
-            },
-        ],
-    }
-    fig = build_zip_code_choropleth(prices, geojson, "Test title", SAMPLE_FUEL_TYPE)
-    assert "Test title" in fig.layout.title.text
-    assert "Diesel A" in fig.layout.title.text
-    assert len(fig.data) == 1
-    assert fig.data[0].featureidkey == "properties.COD_POSTAL"
-    assert list(fig.data[0].locations) == ["28001", "28002"]
-    assert fig.layout.height == 550
-
-
-@pytest.mark.skipif(not PLOTLY_AVAILABLE, reason="plotly not installed")
-def test_build_zip_code_choropleth_auto_centers():
-    from ui.charts import build_zip_code_choropleth
-
-    prices = [ZoneResult(zip_code="28001", avg_price=1.50, min_price=1.45, station_count=5)]
-    geojson = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {"COD_POSTAL": "28001"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[[-3.71, 40.41], [-3.70, 40.41], [-3.70, 40.42], [-3.71, 40.42], [-3.71, 40.41]]],
-                },
-            },
-        ],
-    }
-    fig = build_zip_code_choropleth(prices, geojson, "Test", SAMPLE_FUEL_TYPE)
-    center = fig.layout.mapbox.center
-    assert 40.41 <= center.lat <= 40.42
-    assert -3.71 <= center.lon <= -3.70

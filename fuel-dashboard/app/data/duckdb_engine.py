@@ -107,6 +107,17 @@ def refresh_latest_snapshot() -> None:
     logger.info(f"Loaded {count} stations into latest_stations table")
 
 
+def get_latest_data_timestamp() -> Optional[str]:
+    """Return the MAX(timestamp) from the loaded stations snapshot, or None if unavailable."""
+    try:
+        with _lock:
+            conn = get_connection()
+            row = conn.execute("SELECT MAX(timestamp) FROM latest_stations").fetchone()
+        return row[0] if row and row[0] else None
+    except Exception:
+        return None
+
+
 def is_zip_code_trend_ready() -> bool:
     return _zip_code_trend_ready.is_set()
 
@@ -439,6 +450,53 @@ def query_cached_zip_code_price_trend(zip_code: str, fuel_type: str, days_back: 
         duration_ms,
     )
     return result
+
+
+def query_national_price_trend(fuel_type: str, days_back: int) -> pd.DataFrame:
+    """Query national daily price trend by aggregating all zip codes in the trend cache."""
+    fuel_type = _validate_fuel_column(fuel_type)
+    if not _zip_code_trend_ready.is_set():
+        return pd.DataFrame(columns=["date", "avg_price", "min_price", "max_price"])
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            SELECT date,
+                AVG(avg_price) AS avg_price,
+                MIN(min_price) AS min_price,
+                MAX(max_price) AS max_price
+            FROM {ZIP_CODE_TREND_TABLE}
+            WHERE fuel_type = $1
+                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+            GROUP BY date
+            ORDER BY date ASC
+            """,
+            [fuel_type, days_back],
+        ).fetchdf()
+
+
+def query_national_group_price_trend(fuel_types: List[str], days_back: int) -> pd.DataFrame:
+    """Query national daily price trend for multiple fuel types from the trend cache."""
+    _validate_fuel_columns(fuel_types)
+    if not _zip_code_trend_ready.is_set():
+        return pd.DataFrame(columns=["date", "fuel_type", "avg_price", "min_price", "max_price"])
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            SELECT date,
+                fuel_type,
+                AVG(avg_price) AS avg_price,
+                MIN(min_price) AS min_price,
+                MAX(max_price) AS max_price
+            FROM {ZIP_CODE_TREND_TABLE}
+            WHERE fuel_type = ANY($1)
+                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+            GROUP BY date, fuel_type
+            ORDER BY fuel_type, date ASC
+            """,
+            [fuel_types, days_back],
+        ).fetchdf()
 
 
 def query_cached_group_price_trend(zip_code: str, fuel_types: List[str], days_back: int) -> pd.DataFrame:
@@ -866,6 +924,7 @@ def query_volatility_by_zone(
                 "avg_price",
                 "std_dev_price",
                 "coefficient_of_variation",
+                "volatility_pct",
                 "min_price",
                 "max_price",
                 "price_range",
@@ -892,6 +951,7 @@ def query_volatility_by_zone(
                         AVG(avg_price) AS avg_price,
                         STDDEV_SAMP(avg_price) AS std_dev_price,
                         STDDEV_SAMP(avg_price) / NULLIF(AVG(avg_price), 0) AS coefficient_of_variation,
+                        100 * STDDEV_SAMP(avg_price) / NULLIF(AVG(avg_price), 0) AS volatility_pct,
                         MIN(avg_price) AS min_price,
                         MAX(avg_price) AS max_price,
                         MAX(avg_price) - MIN(avg_price) AS price_range,
@@ -917,6 +977,7 @@ def query_volatility_by_zone(
                         AVG(avg_price) AS avg_price,
                         STDDEV_SAMP(avg_price) AS std_dev_price,
                         STDDEV_SAMP(avg_price) / NULLIF(AVG(avg_price), 0) AS coefficient_of_variation,
+                        100 * STDDEV_SAMP(avg_price) / NULLIF(AVG(avg_price), 0) AS volatility_pct,
                         MIN(avg_price) AS min_price,
                         MAX(avg_price) AS max_price,
                         MAX(avg_price) - MIN(avg_price) AS price_range,

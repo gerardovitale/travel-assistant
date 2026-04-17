@@ -246,6 +246,24 @@ def test_get_price_trends_falls_back_to_raw_history(mock_ready, mock_list, mock_
     mock_query.assert_called_once_with(["file1.parquet", "file2.parquet"], "28001", FuelType.diesel_a_price.value)
 
 
+@patch("services.station_service.query_national_price_trend")
+def test_get_price_trends_national(mock_query):
+    from services.station_service import get_price_trends
+
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01", "2025-01-02"],
+            "avg_price": [1.50, 1.52],
+            "min_price": [1.40, 1.42],
+            "max_price": [1.60, 1.62],
+        }
+    )
+    results = get_price_trends(None, FuelType.diesel_a_price, TrendPeriod.week)
+    assert len(results) == 2
+    assert results[0].date == "2025-01-01"
+    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7)
+
+
 @patch("services.station_service.load_postal_code_boundary")
 def test_get_zip_code_boundary_valid(mock_load):
     from services.station_service import get_zip_code_boundary
@@ -362,6 +380,27 @@ def test_get_group_price_trends_falls_back_to_raw_history(mock_ready, mock_list,
         call(["file1.parquet", "file2.parquet"], "28001", "diesel_b_price"),
         call(["file1.parquet", "file2.parquet"], "28001", "diesel_premium_price"),
     ]
+
+
+@patch("services.station_service.query_national_group_price_trend")
+def test_get_group_price_trends_national(mock_query):
+    from services.station_service import get_group_price_trends
+
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01", "2025-01-02", "2025-01-01", "2025-01-02"],
+            "fuel_type": ["diesel_a_price", "diesel_a_price", "diesel_premium_price", "diesel_premium_price"],
+            "avg_price": [1.45, 1.47, 1.55, 1.57],
+            "min_price": [1.40, 1.42, 1.50, 1.52],
+            "max_price": [1.50, 1.52, 1.60, 1.62],
+        }
+    )
+    result = get_group_price_trends(None, FuelGroup.diesel, TrendPeriod.week)
+    assert "diesel_a_price" in result
+    assert "diesel_premium_price" in result
+    assert len(result["diesel_a_price"]) == 2
+    assert result["diesel_a_price"][0].avg_price == 1.45
+    mock_query.assert_called_once_with(["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 7)
 
 
 # --- Group search service tests ---

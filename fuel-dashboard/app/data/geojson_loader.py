@@ -44,6 +44,11 @@ _LOWERCASE_GEOJSON_TO_DATA: Dict[str, str] = {
 }
 
 
+def is_mainland_province(province: str) -> bool:
+    """Return True if the province name (data or GeoJSON) refers to mainland Spain."""
+    return normalize_data_province_name(province) not in _NON_MAINLAND_DATA_NAMES
+
+
 def load_provinces_geojson() -> dict:
     global _provinces_geojson, _provinces_name_lookup
     if _provinces_geojson is None:

@@ -7,6 +7,7 @@ import pytest
 import data.duckdb_engine as duckdb_engine_module
 from data.duckdb_engine import _validate_fuel_column
 from data.duckdb_engine import get_distinct_labels
+from data.duckdb_engine import get_latest_data_timestamp
 from data.duckdb_engine import query_cached_zip_code_price_trend
 from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_by_zip_group
@@ -485,3 +486,32 @@ def test_query_stations_along_corridor_with_none_labels(mock_conn):
     waypoints = [(40.4168, -3.7038, 0.0), (40.4200, -3.7000, 0.5)]
     result = query_stations_along_corridor(waypoints, "diesel_a_price", 50.0, labels=None)
     assert len(result) == 2  # station_a and station_b (both in Madrid area)
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_get_latest_data_timestamp_returns_max_timestamp(mock_conn):
+    conn = duckdb.connect(":memory:")
+    df = pd.DataFrame(  # noqa: F841
+        {
+            "timestamp": [
+                "2026-04-16T10:00:00+00:00",
+                "2026-04-16T21:56:13+00:00",
+                "2026-04-16T08:00:00+00:00",
+            ]
+        }
+    )
+    conn.execute("DROP TABLE IF EXISTS latest_stations")
+    conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
+    mock_conn.return_value = conn
+
+    result = get_latest_data_timestamp()
+    assert result == "2026-04-16T21:56:13+00:00"
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_get_latest_data_timestamp_returns_none_when_table_missing(mock_conn):
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+
+    result = get_latest_data_timestamp()
+    assert result is None

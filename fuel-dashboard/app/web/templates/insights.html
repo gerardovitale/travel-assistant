@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% set current_page = 'insights' %}
+{% block title %}Insights y tendencias · Navigator{% endblock %}
+
+{% block content %}
+<section class="hero-gradient text-white px-5 md:px-8 pt-12 pb-20 md:py-20 relative overflow-hidden">
+  <div class="relative z-10 max-w-6xl mx-auto">
+    <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Dashboard de análisis</p>
+    <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight">Insights y tendencias</h1>
+    {% set visible_tabs = 2 + (1 if insights_zones_enabled else 0) + (1 if insights_historical_enabled else 0) %}
+    <nav class="mt-8 grid grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" aria-label="Secciones">
+      <button type="button" data-tab="trends" class="bg-white text-primary-container rounded-xl shadow-lg px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+        <span class="material-symbols-outlined filled-icon">trending_up</span>
+        <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Tendencias</span>
+      </button>
+      {% if insights_zones_enabled %}
+      <button type="button" data-tab="zones" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+        <span class="material-symbols-outlined">map</span>
+        <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Zonas</span>
+      </button>
+      {% endif %}
+      {% if insights_historical_enabled %}
+      <button type="button" data-tab="historical" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+        <span class="material-symbols-outlined">analytics</span>
+        <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Histórico</span>
+      </button>
+      {% endif %}
+      <button type="button" data-tab="quality" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+        <span class="material-symbols-outlined">verified</span>
+        <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Calidad</span>
+      </button>
+    </nav>
+  </div>
+</section>
+
+<main class="max-w-6xl mx-auto px-5 md:px-8 -mt-10 relative z-20 pb-16 space-y-8">
+
+  <!-- TRENDS -->
+  <section data-panel="trends" class="space-y-6">
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <form id="trends-filter" class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Código postal</span>
+          <input type="text" name="zip_code" pattern="\d{5}" placeholder="p.ej. 28001" class="w-full rounded-lg border-outline-variant">
+        </label>
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Grupo</span>
+          <select name="fuel_group" class="w-full rounded-lg border-outline-variant"></select>
+        </label>
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Periodo</span>
+          <select name="period" class="w-full rounded-lg border-outline-variant">
+            <option value="week">Semana</option>
+            <option value="month" selected>Mes</option>
+            <option value="quarter">Trimestre</option>
+            <option value="half_year">Semestre</option>
+            <option value="year">Año</option>
+          </select>
+        </label>
+      </form>
+    </div>
+
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-xl mb-4">Tendencia de precios</h2>
+      <div id="trend-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+      <div id="trend-chart" class="h-80"></div>
+    </div>
+
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-xl mb-4">Comparativa de variantes</h2>
+      <div id="group-trend-chart" class="h-80"></div>
+    </div>
+  </section>
+
+  {% if insights_zones_enabled %}
+  <!-- ZONES -->
+  <section data-panel="zones" class="space-y-6 hidden">
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex flex-wrap items-end gap-3 md:gap-4">
+        <label class="block flex-1 min-w-[160px]">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
+          <select id="zones-fuel" class="w-full rounded-lg border-outline-variant"></select>
+        </label>
+        <label class="block flex items-center gap-2 text-sm mb-2">
+          <input id="zones-mainland" type="checkbox" checked class="rounded">
+          Solo península
+        </label>
+      </div>
+      <div id="zones-status" class="hidden mt-4 rounded-xl px-4 py-3 text-sm"></div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div class="lg:col-span-2 bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <h2 class="font-headline font-bold text-lg mb-3">Provincias</h2>
+        <div id="zones-provinces" class="space-y-1 max-h-[480px] overflow-y-auto no-scrollbar"></div>
+      </div>
+      <div class="lg:col-span-3 bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 420px;">
+        <div id="zones-map" class="h-[420px] md:h-[500px]"></div>
+      </div>
+    </div>
+    <div id="zones-districts-wrap" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40 hidden">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+        <div>
+          <h2 id="zones-detail-title" class="font-headline font-bold text-lg">Detalle de zona</h2>
+          <p id="zones-detail-caption" class="text-sm text-on-surface-variant mt-1"></p>
+        </div>
+        <button id="zones-detail-reset" type="button" class="px-3 py-2 rounded-lg bg-surface-container text-primary-container text-sm font-semibold hover:bg-surface-container-high transition">
+          Vista provincial
+        </button>
+      </div>
+      <div id="zones-districts" class="grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if insights_historical_enabled %}
+  <!-- HISTORICAL -->
+  <section data-panel="historical" class="space-y-6 hidden">
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <form id="historical-form" class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
+          <select name="fuel_type" class="w-full rounded-lg border-outline-variant"></select>
+        </label>
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Periodo</span>
+          <select name="period" class="w-full rounded-lg border-outline-variant">
+            <option value="quarter" selected>Trimestre</option>
+            <option value="half_year">Semestre</option>
+            <option value="year">Año</option>
+          </select>
+        </label>
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Provincia (opcional)</span>
+          <select name="province" class="w-full rounded-lg border-outline-variant"><option value="">Todas</option></select>
+        </label>
+      </form>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <h2 class="font-headline font-bold text-lg mb-3">Ranking por provincia</h2>
+        <div id="hist-provinces" class="h-80"></div>
+      </div>
+      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <h2 class="font-headline font-bold text-lg mb-3">Patrón por día de la semana</h2>
+        <div id="hist-dow" class="h-80"></div>
+      </div>
+      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <h2 class="font-headline font-bold text-lg mb-3">Ranking de marcas</h2>
+        <div id="hist-brands" class="h-80"></div>
+      </div>
+      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <h2 class="font-headline font-bold text-lg mb-3">Evolución por marcas</h2>
+        <div id="hist-brand-trend" class="h-80"></div>
+      </div>
+      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40 md:col-span-2">
+        <h2 class="font-headline font-bold text-lg mb-3">Volatilidad por zona (CP)</h2>
+        <div id="hist-volatility" class="h-96"></div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- QUALITY -->
+  <section data-panel="quality" class="space-y-6 hidden">
+    <div id="quality-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-lg mb-3">Últimas ingestas</h2>
+      <p id="quality-summary" class="text-sm text-on-surface-variant"></p>
+    </div>
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-lg mb-3">Días sin datos</h2>
+      <div id="quality-missing" class="flex flex-wrap gap-2 text-[12px]"></div>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block page_scripts %}
+<script type="module" src="/static/js/insights.js"></script>
+{% endblock %}

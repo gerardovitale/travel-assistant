@@ -2,18 +2,23 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
 from datetime import timezone
+from pathlib import Path
 
 from api.router import limiter
 from api.router import router
 from config import settings
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from ui.pages import init_ui
 
 from data.cache import get_realtime_status
+from data.cache import is_data_ready
 from data.cache import start_cache_refresh
+from data.duckdb_engine import get_latest_data_timestamp
 from data.duckdb_engine import refresh_zip_code_trend_snapshot
 from data.gcs_client import get_latest_parquet_file
 from data.gcs_client import PARQUET_PATTERN
@@ -51,6 +56,8 @@ async def add_security_headers(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
     return response
 
 
@@ -71,11 +78,14 @@ def health_data():
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     source = "realtime" if realtime["realtime_active"] else "gcs"
+    data_datetime = get_latest_data_timestamp() or file_date_str
+
     result = {
         "status": "ok",
         "source": source,
         "latest_file": latest,
         "file_date": file_date_str,
+        "data_datetime": data_datetime,
         "realtime": realtime,
     }
 
@@ -90,12 +100,58 @@ def health_data():
             "source": source,
             "latest_file": latest,
             "file_date": file_date_str,
+            "data_datetime": data_datetime,
             "expected_date": today_str,
         },
     )
 
 
-init_ui(app)
+_WEB_DIR = Path(__file__).parent / "web"
+app.mount("/static", StaticFiles(directory=str(_WEB_DIR / "static")), name="static")
+templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
+
+
+def _render_page(request: Request, template_name: str, current_page: str):
+    if not is_data_ready():
+        return templates.TemplateResponse(
+            request,
+            "loading.html",
+            {"current_page": current_page},
+            status_code=503,
+            headers={"Retry-After": "5"},
+        )
+    return templates.TemplateResponse(request, template_name)
+
+
+@app.get("/")
+def page_search(request: Request):
+    return _render_page(request, "search.html", "search")
+
+
+@app.get("/trip")
+def page_trip(request: Request):
+    return _render_page(request, "trip.html", "trip")
+
+
+@app.get("/insights")
+def page_insights(request: Request):
+    if not is_data_ready():
+        return templates.TemplateResponse(
+            request,
+            "loading.html",
+            {"current_page": "insights"},
+            status_code=503,
+            headers={"Retry-After": "5"},
+        )
+    return templates.TemplateResponse(
+        request,
+        "insights.html",
+        {
+            "insights_zones_enabled": settings.insights_zones_enabled,
+            "insights_historical_enabled": settings.insights_historical_enabled,
+        },
+    )
+
 
 if __name__ == "__main__":
     import uvicorn

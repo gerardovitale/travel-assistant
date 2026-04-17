@@ -39,5 +39,8 @@ class Settings(BaseSettings):
     realtime_refresh_seconds: int = 600
     realtime_curl_timeout: int = 120
 
+    insights_zones_enabled: bool = False
+    insights_historical_enabled: bool = False
+
 
 settings = Settings()

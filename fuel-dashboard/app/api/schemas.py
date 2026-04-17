@@ -1,9 +1,11 @@
 from enum import Enum
+from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
 
 from pydantic import BaseModel
+from pydantic import Field
 
 
 class FuelType(str, Enum):
@@ -185,10 +187,16 @@ class TripPlan(BaseModel):
     alternative_plans: List[AlternativePlan] = []
 
 
+class SearchLocation(BaseModel):
+    latitude: float
+    longitude: float
+
+
 class StationListResponse(BaseModel):
     stations: List[StationResult]
     fuel_type: str
     query_type: str
+    search_location: Optional[SearchLocation] = None
 
 
 class ZoneListResponse(BaseModel):
@@ -199,6 +207,117 @@ class ZoneListResponse(BaseModel):
 
 class TrendResponse(BaseModel):
     trend: List[TrendPoint]
-    zip_code: str
+    zip_code: Optional[str] = None
     fuel_type: str
     period: str
+
+
+class GroupTrendResponse(BaseModel):
+    series: Dict[str, List[TrendPoint]]
+    zip_code: Optional[str] = None
+    fuel_group: str
+    period: str
+
+
+class TripPlanRequest(BaseModel):
+    origin: str = Field(..., min_length=2, max_length=200)
+    destination: str = Field(..., min_length=2, max_length=200)
+    fuel_type: FuelType
+    consumption_lper100km: float = Field(6.5, ge=1.0, le=30.0)
+    tank_liters: float = Field(50.0, ge=5.0, le=120.0)
+    fuel_level_pct: float = Field(30.0, ge=0.0, le=100.0)
+    max_detour_minutes: float = Field(15.0, ge=0.0, le=180.0)
+    labels: Optional[List[str]] = None
+
+
+class NationalAvgResponse(BaseModel):
+    fuel_type: str
+    avg_price: Optional[float]
+    station_count: int
+
+
+class LabelsResponse(BaseModel):
+    labels: Dict[str, str]
+
+
+class ProvincesResponse(BaseModel):
+    provinces: Dict[str, str]
+
+
+class MunicipalitiesResponse(BaseModel):
+    province: str
+    municipalities: List[str]
+
+
+class FuelCatalogResponse(BaseModel):
+    groups: Dict[str, List[str]]
+    primary: Dict[str, str]
+    singletons: List[str]
+
+
+class DataFrameResponse(BaseModel):
+    rows: List[Dict[str, Any]]
+
+
+class ProvinceMapResponse(BaseModel):
+    items: List[ProvincePriceResult]
+    fuel_type: str
+
+
+class DistrictMapResponse(BaseModel):
+    items: List[DistrictPriceResult]
+    province: str
+    fuel_type: str
+
+
+class GeocodeResponse(BaseModel):
+    lat: float
+    lon: float
+
+
+class GeoJSONResponse(BaseModel):
+    geojson: Dict[str, Any]
+
+
+class TripPlanResponse(BaseModel):
+    plan: TripPlan
+
+
+class BrandHistoricalResponse(BaseModel):
+    ranking: List[Dict[str, Any]]
+    trend: List[Dict[str, Any]]
+
+
+class DataInventory(BaseModel):
+    num_days: int
+    num_months: int
+    num_years: int
+    total_size_bytes: int
+    min_date: Optional[str]
+    max_date: Optional[str]
+
+
+class LatestDayStats(BaseModel):
+    max_date: Optional[str]
+    unique_stations: int = 0
+    unique_provinces: int = 0
+    unique_communities: int = 0
+    unique_localities: int = 0
+    unique_fuel_types: int = 0
+
+
+class RealtimeStatus(BaseModel):
+    realtime_enabled: bool
+    realtime_active: bool
+    last_realtime_refresh: Optional[float]
+
+
+class QualityResponse(BaseModel):
+    inventory: DataInventory
+    latest_day: LatestDayStats
+    missing_days: List[str]
+    realtime: RealtimeStatus
+
+
+class RouteResponse(BaseModel):
+    coordinates: List[List[float]]

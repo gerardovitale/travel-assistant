@@ -103,6 +103,133 @@ def test_best_by_address_uses_default_refill_liters(mock_service, mock_geocode):
     mock_service.assert_called_once_with(40.4168, -3.7038, mock_service.call_args[0][2], 5.0, 5, 7.0, 30.0, labels=None)
 
 
+@patch("api.router.geocode_address")
+@patch("api.router.get_nearest_by_address")
+def test_nearest_by_address_returns_search_location(mock_service, mock_geocode):
+    mock_geocode.return_value = (40.4168, -3.7038)
+    mock_service.return_value = [
+        StationResult(
+            label="station_1",
+            address="calle 1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.4168,
+            longitude=-3.7038,
+            price=1.45,
+            distance_km=0.5,
+        )
+    ]
+    client = _get_client()
+    response = client.get("/api/v1/stations/nearest-by-address?address=Madrid&fuel_type=diesel_a_price")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["search_location"] == {"latitude": 40.4168, "longitude": -3.7038}
+
+
+@patch("api.router.geocode_address")
+@patch("api.router.get_cheapest_by_address")
+def test_cheapest_by_address_returns_search_location(mock_service, mock_geocode):
+    mock_geocode.return_value = (40.4168, -3.7038)
+    mock_service.return_value = [
+        StationResult(
+            label="station_1",
+            address="calle 1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.4168,
+            longitude=-3.7038,
+            price=1.45,
+            distance_km=0.5,
+        )
+    ]
+    client = _get_client()
+    response = client.get("/api/v1/stations/cheapest-by-address?address=Madrid&fuel_type=diesel_a_price")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["search_location"] == {"latitude": 40.4168, "longitude": -3.7038}
+
+
+@patch("api.router.geocode_address")
+@patch("api.router.get_best_by_address")
+def test_best_by_address_returns_search_location(mock_service, mock_geocode):
+    mock_geocode.return_value = (40.4168, -3.7038)
+    mock_service.return_value = [
+        StationResult(
+            label="station_1",
+            address="calle 1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.4168,
+            longitude=-3.7038,
+            price=1.45,
+            distance_km=0.5,
+        )
+    ]
+    client = _get_client()
+    response = client.get("/api/v1/stations/best-by-address?address=Madrid&fuel_type=diesel_a_price")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["search_location"] == {"latitude": 40.4168, "longitude": -3.7038}
+
+
+@patch("api.router.get_cheapest_by_zip")
+def test_cheapest_by_zip_has_no_search_location(mock_service):
+    mock_service.return_value = [
+        StationResult(
+            label="station_1",
+            address="calle 1",
+            municipality="madrid",
+            province="madrid",
+            zip_code="28001",
+            latitude=40.4168,
+            longitude=-3.7038,
+            price=1.45,
+        )
+    ]
+    client = _get_client()
+    response = client.get("/api/v1/stations/cheapest-by-zip?zip_code=28001&fuel_type=diesel_a_price")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["search_location"] is None
+
+
+@patch("api.router.get_full_route")
+def test_route_endpoint_returns_coordinates(mock_route):
+    import pytest
+
+    mock_route.return_value = {
+        "coordinates": [[-3.7038, 40.4168], [-3.6900, 40.4200]],
+        "distance_km": 1.5,
+        "duration_minutes": 3.0,
+    }
+    client = _get_client()
+    response = client.get("/api/v1/route?origin_lat=40.4168&origin_lon=-3.7038&dest_lat=40.4200&dest_lon=-3.6900")
+    assert response.status_code == 200
+    data = response.json()
+    assert "coordinates" in data
+    assert len(data["coordinates"]) == 2
+    args = mock_route.call_args[0]
+    assert args[0] == pytest.approx((40.4168, -3.7038))
+    assert args[1] == pytest.approx((40.42, -3.69))
+
+
+@patch("api.router.get_full_route")
+def test_route_endpoint_returns_502_when_osrm_unavailable(mock_route):
+    mock_route.return_value = None
+    client = _get_client()
+    response = client.get("/api/v1/route?origin_lat=40.4168&origin_lon=-3.7038&dest_lat=40.4200&dest_lon=-3.6900")
+    assert response.status_code == 502
+
+
+def test_route_endpoint_missing_params():
+    client = _get_client()
+    response = client.get("/api/v1/route?origin_lat=40.4168&origin_lon=-3.7038")
+    assert response.status_code == 422
+
+
 @patch("api.router.get_price_trends")
 def test_price_trends_endpoint(mock_service):
     from api.schemas import TrendPoint

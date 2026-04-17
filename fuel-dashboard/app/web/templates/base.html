@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html class="light" lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Fuel Precision — Precios de combustible{% endblock %}</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+<link rel="manifest" href="/static/site.webmanifest">
+<meta name="theme-color" content="#003d9b" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#001642" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "primary": "#001642",
+          "on-primary": "#ffffff",
+          "primary-container": "#00296d",
+          "on-primary-container": "#7893dc",
+          "primary-fixed": "#dae2ff",
+          "primary-fixed-dim": "#b2c5ff",
+          "on-primary-fixed": "#001848",
+          "on-primary-fixed-variant": "#254487",
+          "secondary": "#0453cd",
+          "on-secondary": "#ffffff",
+          "secondary-container": "#356ee7",
+          "on-secondary-container": "#fefcff",
+          "secondary-fixed": "#dae2ff",
+          "secondary-fixed-dim": "#b2c5ff",
+          "on-secondary-fixed": "#001848",
+          "on-secondary-fixed-variant": "#0040a2",
+          "tertiary": "#001e11",
+          "on-tertiary": "#ffffff",
+          "tertiary-container": "#003521",
+          "on-tertiary-container": "#6f9f84",
+          "tertiary-fixed": "#bbeed0",
+          "tertiary-fixed-dim": "#a0d2b5",
+          "on-tertiary-fixed": "#002113",
+          "on-tertiary-fixed-variant": "#204f39",
+          "error": "#ba1a1a",
+          "on-error": "#ffffff",
+          "error-container": "#ffdad6",
+          "on-error-container": "#93000a",
+          "background": "#f8f9ff",
+          "on-background": "#191c20",
+          "surface": "#f8f9ff",
+          "surface-bright": "#f8f9ff",
+          "surface-dim": "#d8dae0",
+          "surface-tint": "#405ca1",
+          "surface-variant": "#e1e2e8",
+          "on-surface": "#191c20",
+          "on-surface-variant": "#444650",
+          "surface-container-lowest": "#ffffff",
+          "surface-container-low": "#f2f3f9",
+          "surface-container": "#eceef3",
+          "surface-container-high": "#e7e8ee",
+          "surface-container-highest": "#e1e2e8",
+          "outline": "#747782",
+          "outline-variant": "#c4c6d2",
+          "inverse-surface": "#2e3135",
+          "inverse-on-surface": "#eff0f6",
+          "inverse-primary": "#b2c5ff"
+        },
+        borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" },
+        fontFamily: {
+          headline: ["Manrope", "sans-serif"],
+          body: ["Inter", "sans-serif"],
+          label: ["Inter", "sans-serif"]
+        }
+      }
+    }
+  };
+</script>
+<link rel="stylesheet" href="/static/css/tokens.css">
+</head>
+<body class="bg-surface text-on-surface selection:bg-primary-container selection:text-white min-h-screen pb-24 md:pb-8">
+
+<!-- Top app bar -->
+<header class="bg-surface-container-low/90 backdrop-blur-md flex justify-between items-center px-5 md:px-8 h-16 w-full fixed top-0 z-50 border-b border-outline-variant/40">
+  <a href="/" class="flex items-center gap-2 group">
+    <span class="material-symbols-outlined text-primary-container group-hover:scale-110 transition-transform">explore</span>
+    <span class="text-lg font-black tracking-tighter text-primary-container font-headline">FUEL PRECISION</span>
+  </a>
+  <nav class="hidden md:flex gap-8">
+    {% set nav_current = current_page or 'search' %}
+    <a href="/" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'search' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">BUSCAR</a>
+    <a href="/trip" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'trip' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">VIAJE</a>
+    <a href="/insights" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'insights' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">INSIGHTS</a>
+  </nav>
+  <div class="flex items-center gap-3">
+    <span id="data-status" class="hidden md:inline-flex items-center gap-1 text-[11px] font-label text-outline" title="Estado de los datos"></span>
+    <button type="button" id="theme-toggle" class="p-2 rounded-full hover:bg-surface-container transition-colors" aria-label="Cambiar tema">
+      <span class="material-symbols-outlined text-on-surface-variant text-[20px]">dark_mode</span>
+    </button>
+  </div>
+</header>
+
+<main class="pt-16">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- Bottom tab bar (mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full bg-surface-container-lowest/95 backdrop-blur-md flex justify-around items-stretch px-2 py-2 shadow-[0_-8px_24px_rgba(0,41,109,0.08)] z-50 rounded-t-2xl border-t border-outline-variant/40">
+  <a href="/" class="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl {% if nav_current == 'search' %}text-primary-container{% else %}text-outline{% endif %}">
+    <span class="material-symbols-outlined {% if nav_current == 'search' %}filled-icon{% endif %}">search</span>
+    <span class="text-[10px] font-bold tracking-wider font-label">BUSCAR</span>
+  </a>
+  <a href="/trip" class="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl {% if nav_current == 'trip' %}text-primary-container{% else %}text-outline{% endif %}">
+    <span class="material-symbols-outlined {% if nav_current == 'trip' %}filled-icon{% endif %}">route</span>
+    <span class="text-[10px] font-bold tracking-wider font-label">VIAJE</span>
+  </a>
+  <a href="/insights" class="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl {% if nav_current == 'insights' %}text-primary-container{% else %}text-outline{% endif %}">
+    <span class="material-symbols-outlined {% if nav_current == 'insights' %}filled-icon{% endif %}">insights</span>
+    <span class="text-[10px] font-bold tracking-wider font-label">INSIGHTS</span>
+  </a>
+</nav>
+
+<!-- Toast -->
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-28 md:bottom-8 bg-inverse-surface text-inverse-on-surface px-5 py-3 rounded-xl shadow-2xl opacity-0 pointer-events-none transition-opacity duration-200 z-[60] text-sm font-medium" role="status"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script type="module" src="/static/js/app.js"></script>
+{% block page_scripts %}{% endblock %}
+</body>
+</html>

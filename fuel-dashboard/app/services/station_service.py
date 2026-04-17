@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from copy import deepcopy
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -36,6 +37,8 @@ from data.duckdb_engine import query_cheapest_zones_by_municipality
 from data.duckdb_engine import query_municipalities_by_province
 from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_national_avg_stats
+from data.duckdb_engine import query_national_group_price_trend
+from data.duckdb_engine import query_national_price_trend
 from data.duckdb_engine import query_nearest_stations
 from data.duckdb_engine import query_nearest_stations_group
 from data.duckdb_engine import query_price_trends
@@ -46,9 +49,12 @@ from data.duckdb_engine import query_volatility_by_zone
 from data.duckdb_engine import query_zip_codes_by_district
 from data.gcs_client import download_aggregate
 from data.gcs_client import list_parquet_files
+from data.geojson_loader import get_geojson_province_name
+from data.geojson_loader import is_mainland_province
 from data.geojson_loader import load_madrid_districts
 from data.geojson_loader import load_postal_code_boundary
 from data.geojson_loader import load_postal_codes_for_zip_list
+from data.geojson_loader import load_provinces_geojson
 from data.geojson_loader import normalize_data_province_name
 
 logger = logging.getLogger(__name__)
@@ -398,7 +404,39 @@ def get_province_price_map(fuel_type: FuelType) -> List[ProvincePriceResult]:
     ]
 
 
+def get_province_price_map_filtered(fuel_type: FuelType, mainland_only: bool = False) -> List[ProvincePriceResult]:
+    results = get_province_price_map(fuel_type)
+    if not mainland_only:
+        return results
+    return [result for result in results if is_mainland_province(result.province)]
+
+
+def get_province_price_geojson(fuel_type: FuelType, mainland_only: bool = False) -> dict:
+    geojson = deepcopy(load_provinces_geojson())
+    price_map = {
+        get_geojson_province_name(result.province): result
+        for result in get_province_price_map_filtered(fuel_type, mainland_only)
+    }
+    features = []
+    for feature in geojson["features"]:
+        name = feature["properties"].get("name")
+        if mainland_only and not is_mainland_province(name):
+            continue
+        result = price_map.get(name)
+        feature["properties"] = {
+            **feature["properties"],
+            "province": name,
+            "avg_price": result.avg_price if result else None,
+            "station_count": result.station_count if result else 0,
+        }
+        features.append(feature)
+    geojson["features"] = features
+    return geojson
+
+
 def get_district_price_map(province: str, fuel_type: FuelType) -> List[DistrictPriceResult]:
+    if normalize_data_province_name(province) != "madrid":
+        return []
     geojson = load_madrid_districts()
     df = query_stations_by_province(province, fuel_type.value)
     if df.empty:
@@ -421,6 +459,23 @@ def get_district_price_map(province: str, fuel_type: FuelType) -> List[DistrictP
     return sorted(results, key=lambda r: r.avg_price)
 
 
+def get_district_price_geojson(province: str, fuel_type: FuelType) -> dict:
+    if normalize_data_province_name(province) != "madrid":
+        return {"type": "FeatureCollection", "features": []}
+    geojson = deepcopy(load_madrid_districts())
+    district_map = {result.district: result for result in get_district_price_map(province, fuel_type)}
+    for feature in geojson["features"]:
+        name = feature["properties"].get("nombre")
+        result = district_map.get(name)
+        feature["properties"] = {
+            **feature["properties"],
+            "district": name,
+            "avg_price": result.avg_price if result else None,
+            "station_count": result.station_count if result else 0,
+        }
+    return geojson
+
+
 def get_municipalities(province: str) -> List[str]:
     return query_municipalities_by_province(province)
 
@@ -440,6 +495,8 @@ def get_zip_code_price_map_by_municipality(province: str, fuel_type: FuelType, m
 
 def get_zip_codes_for_district(province: str, fuel_type: FuelType, district_name: str) -> List[str]:
     """Get zip codes that fall within a Madrid district by assigning stations to districts."""
+    if normalize_data_province_name(province) != "madrid":
+        return []
     geojson = load_madrid_districts()
     df = query_zip_codes_by_district(province, fuel_type.value)
     if df.empty:
@@ -474,15 +531,20 @@ def get_postal_code_geojson(zip_codes: List[str]) -> dict:
     return load_postal_codes_for_zip_list(zip_codes)
 
 
-def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:
-    _validate_zip_code(zip_code)
+def get_price_trends(zip_code: Optional[str], fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:
     days_back = TREND_PERIOD_DAYS[period]
     started = time.perf_counter()
-    source = "duckdb_trend_cache"
-    if is_zip_code_trend_ready():
+
+    if not zip_code:
+        source = "national_aggregate"
+        df = query_national_price_trend(fuel_type.value, days_back)
+    elif is_zip_code_trend_ready():
+        source = "duckdb_trend_cache"
+        _validate_zip_code(zip_code)
         df = query_cached_zip_code_price_trend(zip_code, fuel_type.value, days_back)
     else:
         source = "raw_history_fallback"
+        _validate_zip_code(zip_code)
         logger.warning("Zip-code trend cache not ready; falling back to raw history for %s", zip_code)
         files = list_parquet_files(days_back=days_back)
         df = query_price_trends(files, zip_code, fuel_type.value)
@@ -490,7 +552,7 @@ def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) ->
     duration_ms = (time.perf_counter() - started) * 1000
     logger.info(
         "Loaded price trends for %s from %s (%s rows, %.1f ms)",
-        zip_code,
+        zip_code or "national",
         source,
         len(trend),
         duration_ms,
@@ -498,20 +560,28 @@ def get_price_trends(zip_code: str, fuel_type: FuelType, period: TrendPeriod) ->
     return trend
 
 
-def get_group_price_trends(zip_code: str, fuel_group: FuelGroup, period: TrendPeriod) -> Dict[str, List[TrendPoint]]:
-    _validate_zip_code(zip_code)
+def get_group_price_trends(
+    zip_code: Optional[str], fuel_group: FuelGroup, period: TrendPeriod
+) -> Dict[str, List[TrendPoint]]:
     days_back = TREND_PERIOD_DAYS[period]
     fuel_types = [ft.value for ft in FUEL_GROUP_MEMBERS[fuel_group]]
     started = time.perf_counter()
     result: Dict[str, List[TrendPoint]] = {}
-    source = "duckdb_trend_cache"
 
-    if is_zip_code_trend_ready():
+    if not zip_code:
+        source = "national_aggregate"
+        df = query_national_group_price_trend(fuel_types, days_back)
+        for fuel_type, group_df in df.groupby("fuel_type"):
+            result[str(fuel_type)] = _trend_points_from_df(group_df)
+    elif is_zip_code_trend_ready():
+        source = "duckdb_trend_cache"
+        _validate_zip_code(zip_code)
         df = query_cached_group_price_trend(zip_code, fuel_types, days_back)
         for fuel_type, group_df in df.groupby("fuel_type"):
             result[str(fuel_type)] = _trend_points_from_df(group_df)
     else:
         source = "raw_history_fallback"
+        _validate_zip_code(zip_code)
         logger.warning("Zip-code trend cache not ready; falling back to raw history for grouped trends in %s", zip_code)
         files = list_parquet_files(days_back=days_back)
         for fuel_type in fuel_types:
@@ -522,7 +592,7 @@ def get_group_price_trends(zip_code: str, fuel_group: FuelGroup, period: TrendPe
     duration_ms = (time.perf_counter() - started) * 1000
     logger.info(
         "Loaded group price trends for %s/%s from %s (%s variants, %.1f ms)",
-        zip_code,
+        zip_code or "national",
         fuel_group.value,
         source,
         len(result),

@@ -14,7 +14,7 @@ setup:
 	cd fuel-dashboard && uv sync --dev
 
 test: fuel-ingestor.test fuel-dashboard.test
-test-local: fuel-ingestor.test-local fuel-dashboard.test-local
+test-local: setup fuel-ingestor.test-local fuel-dashboard.test-local
 scan: fuel-ingestor.scan fuel-dashboard.scan
 done: setup test scan
 
@@ -47,8 +47,6 @@ fuel-ingestor.test-local:
 
 fuel-dashboard.test-local:
 	cd fuel-dashboard && uv run pytest --durations=5 -vv tests/
-
-test-local: setup fuel-ingestor.test-local fuel-dashboard.test-local
 
 
 # IMAGE SCANNING
