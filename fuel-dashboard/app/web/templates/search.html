@@ -70,17 +70,17 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
         <label class="block" data-field="radius">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Radio (km)</span>
-          <input type="number" name="radius_km" min="0.5" max="50" step="0.5" value="5" class="w-full rounded-lg border-outline-variant">
+          <input type="number" name="radius_km" min="0.5" max="50" step="0.5" value="{{ app_config.default_radius_km }}" class="w-full rounded-lg border-outline-variant">
         </label>
 
         <label class="block" data-field="consumption">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Consumo (l/100 km)</span>
-          <input type="number" name="consumption_lper100km" min="1" max="30" step="0.1" value="6.5" class="w-full rounded-lg border-outline-variant">
+          <input type="number" name="consumption_lper100km" min="1" max="30" step="0.1" value="{{ app_config.default_consumption_lper100km }}" class="w-full rounded-lg border-outline-variant">
         </label>
 
         <label class="block" data-field="tank">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Litros a repostar</span>
-          <input type="number" name="tank_liters" min="5" max="120" step="1" value="45" class="w-full rounded-lg border-outline-variant">
+          <input type="number" name="tank_liters" min="5" max="120" step="1" value="{{ app_config.default_refill_liters }}" class="w-full rounded-lg border-outline-variant">
         </label>
       </div>
     </details>

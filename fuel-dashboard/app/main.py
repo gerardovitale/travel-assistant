@@ -140,6 +140,19 @@ app.mount("/static", StaticFiles(directory=str(_WEB_DIR / "static")), name="stat
 templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
 
 
+def _build_app_config() -> dict:
+    return {
+        "ui_test_mode": settings.ui_test_mode,
+        "disable_geolocation_lookup": settings.ui_test_mode,
+        "default_radius_km": settings.default_radius_km,
+        "default_consumption_lper100km": settings.default_consumption_lper100km,
+        "default_tank_liters": settings.default_tank_liters,
+        "default_fuel_level_pct": settings.default_fuel_level_pct,
+        "default_max_detour_minutes": settings.default_max_detour_minutes,
+        "default_refill_liters": settings.default_refill_liters,
+    }
+
+
 def _render_page(request: Request, template_name: str, current_page: str):
     data_ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
     if not data_ready:
@@ -149,10 +162,7 @@ def _render_page(request: Request, template_name: str, current_page: str):
             {
                 "current_page": current_page,
                 "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-                "app_config": {
-                    "ui_test_mode": settings.ui_test_mode,
-                    "disable_geolocation_lookup": settings.ui_test_mode,
-                },
+                "app_config": _build_app_config(),
             },
             status_code=503,
             headers={"Retry-After": "5"},
@@ -163,10 +173,7 @@ def _render_page(request: Request, template_name: str, current_page: str):
         {
             "current_page": current_page,
             "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-            "app_config": {
-                "ui_test_mode": settings.ui_test_mode,
-                "disable_geolocation_lookup": settings.ui_test_mode,
-            },
+            "app_config": _build_app_config(),
         },
     )
 
@@ -191,10 +198,7 @@ def page_insights(request: Request):
             {
                 "current_page": "insights",
                 "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-                "app_config": {
-                    "ui_test_mode": settings.ui_test_mode,
-                    "disable_geolocation_lookup": settings.ui_test_mode,
-                },
+                "app_config": _build_app_config(),
             },
             status_code=503,
             headers={"Retry-After": "5"},
@@ -210,10 +214,7 @@ def page_insights(request: Request):
         {
             "current_page": "insights",
             "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-            "app_config": {
-                "ui_test_mode": settings.ui_test_mode,
-                "disable_geolocation_lookup": settings.ui_test_mode,
-            },
+            "app_config": _build_app_config(),
             "insights_zones_enabled": insights_zones_enabled,
             "insights_historical_enabled": insights_historical_enabled,
         },

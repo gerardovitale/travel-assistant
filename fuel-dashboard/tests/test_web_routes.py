@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+from config import settings
 from fastapi.testclient import TestClient
 
 _cache_patcher = patch("data.cache.start_cache_refresh")
@@ -49,6 +50,22 @@ def test_pages_wait_for_data_before_rendering():
             assert resp.headers["retry-after"] == "5"
             assert "Cargando la instantánea de estaciones" in resp.text
             assert "window.setTimeout(() => window.location.reload(), 3000);" in resp.text
+
+
+def test_page_search_renders_config_defaults():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/")
+    assert f'value="{settings.default_consumption_lper100km}"' in resp.text
+    assert f'value="{settings.default_radius_km}"' in resp.text
+    assert f'value="{settings.default_refill_liters}"' in resp.text
+
+
+def test_page_trip_renders_config_defaults():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/trip")
+    assert f'value="{settings.default_tank_liters}"' in resp.text
+    assert f'value="{settings.default_max_detour_minutes}"' in resp.text
+    assert f'value="{settings.default_consumption_lper100km}"' in resp.text
 
 
 def test_static_token_css_served():
@@ -241,6 +258,32 @@ def test_trip_plan_endpoint(mock_service):
     resp = _get_client().post("/api/v1/trip/plan", json=body)
     assert resp.status_code == 200
     assert resp.json()["plan"]["total_distance_km"] == 500.0
+
+
+@patch("api.router.plan_trip")
+def test_trip_plan_uses_settings_defaults_when_fields_omitted(mock_service):
+    mock_service.return_value = {
+        "stops": [],
+        "total_fuel_cost": 0.0,
+        "total_distance_km": 100.0,
+        "duration_minutes": 60.0,
+        "total_fuel_liters": 7.0,
+        "savings_eur": 0.0,
+        "route_coordinates": [],
+        "candidate_stations": [],
+        "origin_coords": [40.4, -3.7],
+        "destination_coords": [41.4, -2.7],
+        "fuel_at_destination_pct": 50.0,
+        "alternative_plans": [],
+    }
+    body = {"origin": "Madrid", "destination": "Zaragoza", "fuel_type": "diesel_a_price"}
+    resp = _get_client().post("/api/v1/trip/plan", json=body)
+    assert resp.status_code == 200
+    _, kwargs = mock_service.call_args
+    assert kwargs["tank_liters"] == settings.default_tank_liters
+    assert kwargs["consumption_lper100km"] == settings.default_consumption_lper100km
+    assert kwargs["fuel_level_pct"] == settings.default_fuel_level_pct
+    assert kwargs["max_detour_minutes"] == settings.default_max_detour_minutes
 
 
 @patch("api.router.plan_trip")

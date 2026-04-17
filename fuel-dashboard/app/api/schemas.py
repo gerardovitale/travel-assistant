@@ -4,6 +4,7 @@ from typing import Dict
 from typing import List
 from typing import Optional
 
+from config import settings
 from pydantic import BaseModel
 from pydantic import Field
 
@@ -243,10 +244,12 @@ class TripPlanRequest(BaseModel):
     origin: str = Field(..., min_length=2, max_length=200)
     destination: str = Field(..., min_length=2, max_length=200)
     fuel_type: FuelType
-    consumption_lper100km: float = Field(6.5, ge=1.0, le=30.0)
-    tank_liters: float = Field(50.0, ge=5.0, le=120.0)
-    fuel_level_pct: float = Field(30.0, ge=0.0, le=100.0)
-    max_detour_minutes: float = Field(15.0, ge=0.0, le=180.0)
+    consumption_lper100km: float = Field(
+        default_factory=lambda: settings.default_consumption_lper100km, ge=1.0, le=30.0
+    )
+    tank_liters: float = Field(default_factory=lambda: settings.default_tank_liters, ge=5.0, le=120.0)
+    fuel_level_pct: float = Field(default_factory=lambda: settings.default_fuel_level_pct, ge=0.0, le=100.0)
+    max_detour_minutes: float = Field(default_factory=lambda: settings.default_max_detour_minutes, ge=0.0, le=180.0)
     labels: Optional[List[str]] = None
 
 

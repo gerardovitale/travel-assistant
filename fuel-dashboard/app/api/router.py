@@ -147,7 +147,7 @@ def cheapest_by_address(
     request: Request,
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
-    radius_km: float = Query(5.0, ge=0.1, le=50.0, description="Search radius in km"),
+    radius_km: float = Query(settings.default_radius_km, ge=0.1, le=50.0, description="Search radius in km"),
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
     labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
 ):
