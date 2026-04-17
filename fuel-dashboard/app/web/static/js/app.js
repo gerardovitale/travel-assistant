@@ -1,4 +1,4 @@
-// Shared: fetch wrapper, toast, data status, theme toggle.
+// Shared: fetch wrapper, toast, data status.
 const API = "/api/v1";
 
 export async function api(path, opts = {}) {
@@ -84,20 +84,6 @@ async function refreshDataStatus() {
   }
 }
 
-// Dark mode toggle
-function initThemeToggle() {
-  const btn = document.getElementById("theme-toggle");
-  if (!btn) return;
-  const stored = localStorage.getItem("theme");
-  if (stored === "dark") document.documentElement.classList.add("dark");
-  btn.addEventListener("click", () => {
-    const root = document.documentElement;
-    root.classList.toggle("dark");
-    localStorage.setItem("theme", root.classList.contains("dark") ? "dark" : "light");
-  });
-}
-
 document.addEventListener("DOMContentLoaded", () => {
-  initThemeToggle();
   refreshDataStatus();
 });

@@ -24,6 +24,7 @@ def test_page_search_renders():
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "/static/js/search.js" in resp.text
+    assert 'id="theme-toggle"' not in resp.text
 
 
 def test_page_trip_renders():

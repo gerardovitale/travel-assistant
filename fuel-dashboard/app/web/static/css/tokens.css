@@ -54,7 +54,3 @@ input:focus, select:focus, textarea:focus {
 /* Segmented control pill */
 .seg-active { background: white; color: #00296d; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
 .seg-inactive { color: #747782; }
-
-/* Dark mode overrides (opt-in via class on <html>) */
-html.dark body { background-color: #0f1115; color: #e1e2e8; }
-html.dark input, html.dark select, html.dark textarea { background-color: #1f2228; color: #e1e2e8; border-color: #3a3d45; }
