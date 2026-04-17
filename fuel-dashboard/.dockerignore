@@ -10,6 +10,7 @@
 # Application source and bundled data needed by the runtime image.
 !app/
 !app/**
+app/data/geojson/spain-postal-codes.geojson.gz
 
 # Test suite required by Dockerfile.test.
 !tests/

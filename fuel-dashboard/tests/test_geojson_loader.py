@@ -1,3 +1,4 @@
+import gzip
 import json
 from unittest.mock import patch
 
@@ -78,6 +79,47 @@ def test_load_postal_code_boundary_multipolygon(tmp_path):
 
     assert result is not None
     assert result["geometry"]["type"] == "MultiPolygon"
+    _reset_cache()
+
+
+def test_load_postal_code_boundary_reads_gzipped_geojson(tmp_path):
+    _reset_cache()
+    geojson_path = tmp_path / "spain-postal-codes.geojson.gz"
+    with gzip.open(geojson_path, mode="wt", encoding="utf-8") as f:
+        json.dump(SAMPLE_GEOJSON, f)
+
+    with patch.object(loader_module, "_GEOJSON_DIR", tmp_path):
+        result = loader_module.load_postal_code_boundary("28001")
+
+    assert result is not None
+    assert result["properties"]["COD_POSTAL"] == "28001"
+    _reset_cache()
+
+
+def test_load_postal_code_boundary_prefers_raw_geojson_when_both_exist(tmp_path):
+    _reset_cache()
+    raw_geojson_path = tmp_path / "spain-postal-codes.geojson"
+    gzip_geojson_path = tmp_path / "spain-postal-codes.geojson.gz"
+    raw_geojson_path.write_text(json.dumps(SAMPLE_GEOJSON), encoding="utf-8")
+
+    gzip_payload = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"COD_POSTAL": "99999"},
+                "geometry": SAMPLE_GEOJSON["features"][0]["geometry"],
+            }
+        ],
+    }
+    with gzip.open(gzip_geojson_path, mode="wt", encoding="utf-8") as f:
+        json.dump(gzip_payload, f)
+
+    with patch.object(loader_module, "_GEOJSON_DIR", tmp_path):
+        result = loader_module.load_postal_code_boundary("28001")
+
+    assert result is not None
+    assert result["properties"]["COD_POSTAL"] == "28001"
     _reset_cache()
 
 

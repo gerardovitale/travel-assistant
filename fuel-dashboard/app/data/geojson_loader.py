@@ -1,3 +1,4 @@
+import gzip
 import json
 from pathlib import Path
 from typing import Dict
@@ -5,6 +6,8 @@ from typing import List
 from typing import Optional
 
 _GEOJSON_DIR = Path(__file__).resolve().parent / "geojson"
+_POSTAL_CODES_GEOJSON = "spain-postal-codes.geojson"
+_POSTAL_CODES_GEOJSON_GZ = "spain-postal-codes.geojson.gz"
 
 _provinces_geojson: Optional[dict] = None
 _provinces_name_lookup: Optional[Dict[str, str]] = None
@@ -80,12 +83,11 @@ def normalize_data_province_name(province_name: Optional[str]) -> Optional[str]:
 def _ensure_postal_index() -> Dict[str, dict]:
     global _postal_code_index
     if _postal_code_index is None:
-        path = _GEOJSON_DIR / "spain-postal-codes.geojson"
+        path = _get_postal_code_geojson_path()
         if not path.exists():
             _postal_code_index = {}
             return _postal_code_index
-        with open(path, encoding="utf-8") as f:
-            geojson = json.load(f)
+        geojson = _load_json(path)
         _postal_code_index = {}
         for feature in geojson["features"]:
             code = str(feature["properties"].get(ZIP_CODE_PROPERTY, "")).strip()
@@ -96,6 +98,24 @@ def _ensure_postal_index() -> Dict[str, dict]:
                     "geometry": feature["geometry"],
                 }
     return _postal_code_index
+
+
+def _get_postal_code_geojson_path() -> Path:
+    raw_path = _GEOJSON_DIR / _POSTAL_CODES_GEOJSON
+    if raw_path.exists():
+        return raw_path
+    gz_path = _GEOJSON_DIR / _POSTAL_CODES_GEOJSON_GZ
+    if gz_path.exists():
+        return gz_path
+    return raw_path
+
+
+def _load_json(path: Path) -> dict:
+    if path.suffix == ".gz":
+        with gzip.open(path, mode="rt", encoding="utf-8") as f:
+            return json.load(f)
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def load_postal_code_boundary(zip_code: str) -> Optional[dict]:
