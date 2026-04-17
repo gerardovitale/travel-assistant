@@ -45,3 +45,78 @@ test("quality tab renders KPI and summary content", async ({ page }) => {
   await expect(page.getByTestId("quality-kpis")).toContainText("Días con datos");
   await expect(page.getByTestId("quality-summary")).toContainText("Rango: 2026-01-01");
 });
+
+test("historical tab renders markov forecast once a zip code is provided", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+  await insightsPage.goto();
+
+  await insightsPage.historicalTab.click();
+  const responsePromise = page.waitForResponse((r) => r.url().includes("/api/v1/historical/forecast"));
+  await insightsPage.historicalZipInput.fill("28001");
+  await responsePromise;
+
+  await expect(insightsPage.forecastBanner).toContainText("Reposta hoy");
+  await expect(page.getByTestId("forecast-kpis")).toContainText("Regimen");
+  await expect(page.getByTestId("forecast-probabilities")).toContainText("cheap");
+});
+
+test("historical tab shows an insufficient-data state when the forecast is unavailable", async ({ page }) => {
+  await setFixture(page, "historical_sparse");
+  const insightsPage = new InsightsPage(page);
+  await insightsPage.goto();
+
+  await insightsPage.historicalTab.click();
+  const responsePromise = page.waitForResponse((r) => r.url().includes("/api/v1/historical/forecast"));
+  await insightsPage.historicalZipInput.fill("28001");
+  await responsePromise;
+
+  await expect(insightsPage.forecastBanner).toContainText("No hay suficiente historico");
+  await expect(page.getByTestId("forecast-probabilities")).toContainText("Sin datos");
+});
+
+test("historical forecast ignores partial zip codes and falls back to province", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+  const forecastRequests: string[] = [];
+
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/historical/forecast")) {
+      forecastRequests.push(request.url());
+    }
+  });
+
+  await insightsPage.goto();
+  await insightsPage.historicalTab.click();
+  await insightsPage.historicalProvinceSelect.selectOption("madrid");
+  const responsePromise = page.waitForResponse((r) => r.url().includes("/api/v1/historical/forecast"));
+  await insightsPage.historicalZipInput.fill("28");
+  await responsePromise;
+
+  const lastRequest = forecastRequests.at(-1) || "";
+  expect(lastRequest).toContain("province=madrid");
+  expect(lastRequest).not.toContain("zip_code=28");
+  await expect(insightsPage.forecastBanner).toContainText("Reposta hoy");
+});
+
+test("historical forecast sends the selected period as the forecast window", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+  const forecastRequests: string[] = [];
+
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/historical/forecast")) {
+      forecastRequests.push(request.url());
+    }
+  });
+
+  await insightsPage.goto();
+  await insightsPage.historicalTab.click();
+  await insightsPage.historicalProvinceSelect.selectOption("madrid");
+  const responsePromise = page.waitForResponse((r) => r.url().includes("/api/v1/historical/forecast"));
+  await insightsPage.historicalPeriodSelect.selectOption("year");
+  await responsePromise;
+
+  const lastRequest = forecastRequests.at(-1) || "";
+  expect(lastRequest).toContain("window_days=365");
+});

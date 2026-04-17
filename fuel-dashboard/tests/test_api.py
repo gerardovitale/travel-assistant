@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from api.schemas import HistoricalForecastResponse
 from api.schemas import StationResult
 from fastapi.testclient import TestClient
 
@@ -240,3 +241,57 @@ def test_price_trends_endpoint(mock_service):
     assert response.status_code == 200
     data = response.json()
     assert len(data["trend"]) == 1
+
+
+@patch("api.router.get_historical_forecast")
+def test_historical_forecast_endpoint(mock_service):
+    mock_service.return_value = HistoricalForecastResponse(
+        geography_type="zip_code",
+        geography_value="28001",
+        source="zip_code",
+        coverage_days=90,
+        transition_observations=89,
+        current_date="2026-04-17",
+        current_avg_price=1.452,
+        current_regime="cheap",
+        next_day_probabilities={"cheap": 0.6, "normal": 0.3, "expensive": 0.1},
+        cheaper_within_3d=0.0,
+        cheaper_within_7d=0.0,
+        expected_days_in_current_regime=2.5,
+        confidence=0.72,
+        recommendation="Reposta hoy",
+        explanation="Forecast explanation",
+        insufficient_data=False,
+        transition_matrix={
+            "cheap": {"cheap": 0.6, "normal": 0.3, "expensive": 0.1},
+            "normal": {"cheap": 0.2, "normal": 0.5, "expensive": 0.3},
+            "expensive": {"cheap": 0.1, "normal": 0.4, "expensive": 0.5},
+        },
+    )
+
+    client = _get_client()
+    response = client.get("/api/v1/historical/forecast?zip_code=28001&fuel_type=diesel_a_price")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["geography_type"] == "zip_code"
+    assert data["recommendation"] == "Reposta hoy"
+    mock_service.assert_called_once()
+
+
+def test_historical_forecast_requires_geography():
+    client = _get_client()
+    response = client.get("/api/v1/historical/forecast?fuel_type=diesel_a_price")
+
+    assert response.status_code == 422
+
+
+@patch("api.router.get_historical_forecast")
+def test_historical_forecast_returns_400_on_value_error(mock_service):
+    mock_service.side_effect = ValueError("zip_code or province is required")
+
+    client = _get_client()
+    response = client.get("/api/v1/historical/forecast?zip_code=28001&fuel_type=diesel_a_price")
+
+    assert response.status_code == 400
+    assert "zip_code or province is required" in response.json()["detail"]

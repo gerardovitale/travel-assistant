@@ -117,7 +117,7 @@
   <!-- HISTORICAL -->
   <section data-panel="historical" class="space-y-6 hidden">
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <form id="historical-form" class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+      <form id="historical-form" class="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
         <label class="block">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
           <select name="fuel_type" class="w-full rounded-lg border-outline-variant"></select>
@@ -131,10 +131,36 @@
           </select>
         </label>
         <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Código postal (preferente)</span>
+          <input type="text" name="zip_code" data-testid="historical-zip-input" pattern="\d{5}" placeholder="p.ej. 28001" class="w-full rounded-lg border-outline-variant">
+        </label>
+        <label class="block">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Provincia (opcional)</span>
           <select name="province" class="w-full rounded-lg border-outline-variant"><option value="">Todas</option></select>
         </label>
       </form>
+    </div>
+
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 class="font-headline font-bold text-xl">Pronóstico de repostaje</h2>
+          <p class="text-sm text-on-surface-variant mt-1">Cadena de Markov sobre regímenes de precio local.</p>
+        </div>
+        <div id="forecast-scope" data-testid="forecast-scope" class="text-sm text-outline"></div>
+      </div>
+      <div id="forecast-banner" data-testid="forecast-banner" class="rounded-xl px-4 py-3 text-sm mb-4 hidden"></div>
+      <div id="forecast-kpis" data-testid="forecast-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/30">
+          <h3 class="font-headline font-bold text-lg mb-3">Probabilidades del día siguiente</h3>
+          <div id="forecast-probabilities" data-testid="forecast-probabilities" class="space-y-3"></div>
+        </div>
+        <div class="bg-surface-container-low rounded-2xl p-4 border border-outline-variant/30">
+          <h3 class="font-headline font-bold text-lg mb-3">Matriz de transición</h3>
+          <div id="forecast-matrix" data-testid="forecast-matrix" class="overflow-x-auto"></div>
+        </div>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

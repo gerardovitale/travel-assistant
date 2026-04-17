@@ -20,6 +20,7 @@ from api.schemas import GeocodeResponse
 from api.schemas import GeoJSONResponse
 from api.schemas import GroupTrendResponse
 from api.schemas import HISTORICAL_PERIOD_DAYS
+from api.schemas import HistoricalForecastResponse
 from api.schemas import HistoricalPeriod
 from api.schemas import LabelsResponse
 from api.schemas import LatestDayStats
@@ -47,6 +48,7 @@ from services.data_quality_service import get_data_inventory
 from services.data_quality_service import get_ingestion_stats
 from services.data_quality_service import get_latest_day_stats
 from services.data_quality_service import get_missing_days
+from services.forecast_service import get_historical_forecast
 from services.geocoding import geocode_address
 from services.routing import get_full_route
 from services.station_service import get_best_by_address
@@ -465,6 +467,30 @@ def historical_day_of_week(
         return ui_test.historical_day_of_week_response()
     df = get_day_of_week_pattern(fuel_type, province=province)
     return DataFrameResponse(rows=_rows(df))
+
+
+@router.get("/historical/forecast", response_model=HistoricalForecastResponse)
+@limiter.limit(settings.rate_limit)
+def historical_forecast(
+    request: Request,
+    fuel_type: FuelType = Query(...),
+    zip_code: Optional[str] = Query(None, pattern=r"^\d{5}$"),
+    province: Optional[str] = Query(None),
+    window_days: int = Query(180, ge=60, le=365),
+):
+    if settings.ui_test_mode:
+        return ui_test.historical_forecast_response(zip_code=zip_code, province=province)
+    if not zip_code and not province:
+        raise HTTPException(status_code=422, detail="zip_code or province is required")
+    try:
+        return get_historical_forecast(
+            fuel_type,
+            zip_code=zip_code,
+            province=province,
+            window_days=window_days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/historical/brands", response_model=BrandHistoricalResponse)

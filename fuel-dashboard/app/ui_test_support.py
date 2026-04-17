@@ -15,6 +15,7 @@ from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import GeoJSONResponse
 from api.schemas import GroupTrendResponse
+from api.schemas import HistoricalForecastResponse
 from api.schemas import LabelsResponse
 from api.schemas import LatestDayStats
 from api.schemas import MunicipalitiesResponse
@@ -69,7 +70,11 @@ def is_data_ready() -> bool:
 def insights_flags() -> tuple[bool, bool]:
     fixture = current_fixture_set()
     zones = settings.insights_zones_enabled or fixture in {"zones_enabled", "insights_all"}
-    historical = settings.insights_historical_enabled or fixture in {"historical_enabled", "insights_all"}
+    historical = settings.insights_historical_enabled or fixture in {
+        "historical_enabled",
+        "historical_sparse",
+        "insights_all",
+    }
     return zones, historical
 
 
@@ -322,6 +327,52 @@ def historical_day_of_week_response() -> DataFrameResponse:
             {"day_of_week": index, "avg_price": price}
             for index, price in enumerate([1.449, 1.447, 1.446, 1.444, 1.451, 1.463, 1.458])
         ]
+    )
+
+
+def historical_forecast_response(
+    zip_code: Optional[str] = None,
+    province: Optional[str] = None,
+) -> HistoricalForecastResponse:
+    geography_type = "zip_code" if zip_code else "province"
+    geography_value = zip_code or province or "Madrid"
+    source = geography_type
+
+    if current_fixture_set() == "historical_sparse":
+        return HistoricalForecastResponse(
+            geography_type=geography_type,
+            geography_value=geography_value,
+            source=source,
+            recommendation="Sin suficiente historico",
+            explanation="No hay suficiente historico diario consistente para construir una cadena de Markov util.",
+            insufficient_data=True,
+        )
+
+    return HistoricalForecastResponse(
+        geography_type=geography_type,
+        geography_value=geography_value,
+        source=source,
+        coverage_days=112,
+        transition_observations=97,
+        current_date="2026-04-17",
+        current_avg_price=1.452,
+        current_regime="cheap",
+        next_day_probabilities={"cheap": 0.63, "normal": 0.29, "expensive": 0.08},
+        cheaper_within_3d=0.0,
+        cheaper_within_7d=0.0,
+        expected_days_in_current_regime=2.7,
+        confidence=0.74,
+        recommendation="Reposta hoy",
+        explanation=(
+            f"El area {geography_type} {geography_value} esta en un regimen cheap. "
+            "La probabilidad de ver un regimen mas barato en 3 dias es del 0% y en 7 dias del 0%."
+        ),
+        insufficient_data=False,
+        transition_matrix={
+            "cheap": {"cheap": 0.63, "normal": 0.29, "expensive": 0.08},
+            "normal": {"cheap": 0.35, "normal": 0.44, "expensive": 0.21},
+            "expensive": {"cheap": 0.17, "normal": 0.41, "expensive": 0.42},
+        },
     )
 
 

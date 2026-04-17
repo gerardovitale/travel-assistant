@@ -16,6 +16,16 @@ function kpi(label, value, icon) {
     <p class="mt-2 font-headline font-extrabold text-2xl text-on-surface">${value}</p></div>`;
 }
 
+function percent(value) {
+  return `${((value || 0) * 100).toFixed(0)} %`;
+}
+
+const HISTORICAL_PERIOD_DAYS = {
+  quarter: 90,
+  half_year: 180,
+  year: 365,
+};
+
 // ------------------------------- TRENDS --------------------------------------
 
 async function loadTrends() {
@@ -324,10 +334,133 @@ async function loadMunicipalityZipOverlay(province, municipality) {
 
 // ---------------------------- HISTORICAL -------------------------------------
 
+function renderForecastMatrix(matrix) {
+  const el = document.getElementById("forecast-matrix");
+  const rows = Object.entries(matrix || {});
+  if (!rows.length) {
+    el.innerHTML = emptyMsg("Sin datos");
+    return;
+  }
+  el.innerHTML = `
+    <table class="min-w-full text-sm">
+      <thead>
+        <tr class="text-left text-outline">
+          <th class="py-2 pr-4">Estado</th>
+          <th class="py-2 pr-4">Cheap</th>
+          <th class="py-2 pr-4">Normal</th>
+          <th class="py-2">Expensive</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(([regime, probs]) => `
+          <tr class="border-t border-outline-variant/20">
+            <td class="py-2 pr-4 font-medium">${escapeHtml(regime)}</td>
+            <td class="py-2 pr-4">${percent(probs.cheap)}</td>
+            <td class="py-2 pr-4">${percent(probs.normal)}</td>
+            <td class="py-2">${percent(probs.expensive)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
+
+function renderForecastProbabilities(probabilities) {
+  const el = document.getElementById("forecast-probabilities");
+  const rows = Object.entries(probabilities || {});
+  if (!rows.length) {
+    el.innerHTML = emptyMsg("Sin datos");
+    return;
+  }
+  el.innerHTML = rows.map(([regime, value]) => `
+    <div>
+      <div class="flex items-center justify-between text-sm mb-1">
+        <span class="font-medium">${escapeHtml(regime)}</span>
+        <span class="text-outline">${percent(value)}</span>
+      </div>
+      <div class="h-2 rounded-full bg-surface-container-high overflow-hidden">
+        <div class="h-full rounded-full bg-primary-container" style="width:${Math.max(0, Math.min(100, (value || 0) * 100))}%"></div>
+      </div>
+    </div>`).join("");
+}
+
+function renderForecast(resp) {
+  const bannerEl = document.getElementById("forecast-banner");
+  const kpisEl = document.getElementById("forecast-kpis");
+  const scopeEl = document.getElementById("forecast-scope");
+  scopeEl.textContent = `${resp.geography_type}: ${resp.geography_value}`;
+
+  if (resp.insufficient_data) {
+    bannerEl.className = "rounded-xl px-4 py-3 text-sm mb-4 bg-surface-container text-on-surface";
+    bannerEl.textContent = resp.explanation || resp.recommendation || "Sin suficiente historico";
+    bannerEl.classList.remove("hidden");
+    kpisEl.innerHTML = "";
+    renderForecastProbabilities({});
+    renderForecastMatrix({});
+    return;
+  }
+
+  bannerEl.className = `rounded-xl px-4 py-3 text-sm mb-4 ${resp.recommendation === "Puedes esperar" ? "bg-tertiary-container/20 text-tertiary-container" : "bg-primary-container/10 text-primary-container"}`;
+  bannerEl.innerHTML = `<span class="font-bold">${escapeHtml(resp.recommendation)}</span> · ${escapeHtml(resp.explanation || "")}`;
+  bannerEl.classList.remove("hidden");
+  kpisEl.innerHTML = [
+    kpi("Regimen", escapeHtml(resp.current_regime || "—"), "local_offer"),
+    kpi("Precio actual", resp.current_avg_price != null ? formatPrice(resp.current_avg_price) : "—", "euro"),
+    kpi("Mas barato en 3d", resp.cheaper_within_3d != null ? percent(resp.cheaper_within_3d) : "—", "schedule"),
+    kpi("Confianza", percent(resp.confidence), "analytics"),
+  ].join("");
+  renderForecastProbabilities(resp.next_day_probabilities);
+  renderForecastMatrix(resp.transition_matrix);
+}
+
+function normalizeForecastZip(zip) {
+  return /^\d{5}$/.test(zip || "") ? zip : null;
+}
+
+async function loadForecast(fuel, zip, province, period) {
+  const scopeEl = document.getElementById("forecast-scope");
+  const bannerEl = document.getElementById("forecast-banner");
+  const kpisEl = document.getElementById("forecast-kpis");
+  const probsEl = document.getElementById("forecast-probabilities");
+  const matrixEl = document.getElementById("forecast-matrix");
+  const normalizedZip = normalizeForecastZip(zip);
+  const windowDays = HISTORICAL_PERIOD_DAYS[period] || HISTORICAL_PERIOD_DAYS.half_year;
+
+  scopeEl.textContent = "";
+  bannerEl.className = "rounded-xl px-4 py-3 text-sm mb-4 bg-surface-container text-on-surface";
+  kpisEl.innerHTML = "";
+  probsEl.innerHTML = emptyMsg("Cargando…");
+  matrixEl.innerHTML = emptyMsg("Cargando…");
+
+  if (!normalizedZip && !province) {
+    bannerEl.textContent = "Introduce un codigo postal o selecciona una provincia para activar el pronostico.";
+    bannerEl.classList.remove("hidden");
+    probsEl.innerHTML = emptyMsg("Falta contexto geografico");
+    matrixEl.innerHTML = emptyMsg("Falta contexto geografico");
+    return;
+  }
+
+  try {
+    const resp = await api(`/historical/forecast?${qs({
+      fuel_type: fuel,
+      zip_code: normalizedZip,
+      province: province || null,
+      window_days: windowDays,
+    })}`);
+    renderForecast(resp);
+  } catch (err) {
+    bannerEl.textContent = err.message;
+    bannerEl.classList.remove("hidden");
+    probsEl.innerHTML = emptyMsg(err.message);
+    matrixEl.innerHTML = emptyMsg(err.message);
+  }
+}
+
 async function loadHistorical() {
   const form = document.getElementById("historical-form");
   const data = new FormData(form);
   const fuel = data.get("fuel_type"), period = data.get("period"), province = data.get("province");
+  const zip = (data.get("zip_code") || "").trim();
+
+  await loadForecast(fuel, zip, province, period);
 
   const provEl = document.getElementById("hist-provinces");
   provEl.innerHTML = emptyMsg("Cargando…");
@@ -449,15 +582,18 @@ async function initZones() {
 async function initHistorical() {
   await populateFuelSelect(document.querySelector('#historical-form select[name="fuel_type"]'));
   const provSel = document.querySelector('#historical-form select[name="province"]');
+  const zipInput = document.querySelector('#historical-form input[name="zip_code"]');
   try {
     const provs = await getProvinces();
     for (const [raw, pretty] of Object.entries(provs)) {
       const opt = document.createElement("option"); opt.value = raw; opt.textContent = pretty; provSel.appendChild(opt);
     }
   } catch {}
+  const debouncedHistorical = debounce(loadHistorical, 600);
   document.querySelector('#historical-form select[name="fuel_type"]').addEventListener("change", loadHistorical);
   document.querySelector('#historical-form select[name="period"]').addEventListener("change", loadHistorical);
   provSel.addEventListener("change", loadHistorical);
+  zipInput.addEventListener("input", debouncedHistorical);
   loadHistorical();
 }
 async function initQuality() { loadQuality(); }

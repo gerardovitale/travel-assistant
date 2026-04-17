@@ -12,6 +12,8 @@ ext/transformer_output/
 insights/data/
 data/*
 tmp/*
+fuel-dashboard/test-results/*
+fuel-dashboard/.tmp/*
 
 
 # Byte-compiled / optimized / DLL files
@@ -231,4 +233,3 @@ coverage/
 node_modules/
 .swc
 .env.*
-fuel-dashboard/test-results/

@@ -219,6 +219,26 @@ class GroupTrendResponse(BaseModel):
     period: str
 
 
+class HistoricalForecastResponse(BaseModel):
+    geography_type: str
+    geography_value: str
+    source: str
+    coverage_days: int = 0
+    transition_observations: int = 0
+    current_date: Optional[str] = None
+    current_avg_price: Optional[float] = None
+    current_regime: Optional[str] = None
+    next_day_probabilities: Dict[str, float] = Field(default_factory=dict)
+    cheaper_within_3d: Optional[float] = None
+    cheaper_within_7d: Optional[float] = None
+    expected_days_in_current_regime: Optional[float] = None
+    confidence: float = 0.0
+    recommendation: str
+    explanation: str
+    insufficient_data: bool = False
+    transition_matrix: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+
+
 class TripPlanRequest(BaseModel):
     origin: str = Field(..., min_length=2, max_length=200)
     destination: str = Field(..., min_length=2, max_length=200)
