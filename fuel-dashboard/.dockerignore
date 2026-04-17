@@ -4,8 +4,13 @@
 # Build definitions and lockfiles used during dependency resolution.
 !Dockerfile
 !Dockerfile.test
+!Dockerfile.e2e
 !pyproject.toml
 !uv.lock
+!package.json
+!package-lock.json
+!playwright.config.ts
+!tsconfig.json
 
 # Application source and bundled data needed by the runtime image.
 !app/

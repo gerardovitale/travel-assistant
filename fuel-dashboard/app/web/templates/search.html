@@ -4,7 +4,7 @@
 
 {% block content %}
 <!-- Hero -->
-<section class="hero-gradient text-white px-5 md:px-8 pt-12 pb-16 md:py-20 relative overflow-hidden">
+<section data-testid="search-page" class="hero-gradient text-white px-5 md:px-8 pt-12 pb-16 md:py-20 relative overflow-hidden">
   <div class="relative z-10 max-w-6xl mx-auto">
     <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Fuel precision</p>
     <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight max-w-3xl">
@@ -17,14 +17,14 @@
 
 <!-- Filters card -->
 <section class="max-w-6xl mx-auto px-5 md:px-8 -mt-10 relative z-20">
-  <form id="search-form" class="bg-surface-container-lowest rounded-2xl shadow-xl p-5 md:p-8 space-y-5 border border-outline-variant/40 overflow-visible">
+  <form id="search-form" data-testid="search-form" class="bg-surface-container-lowest rounded-2xl shadow-xl p-5 md:p-8 space-y-5 border border-outline-variant/40 overflow-visible">
     <h2 class="font-label text-[11px] tracking-[0.12em] text-outline uppercase">Filtros de búsqueda</h2>
 
     <!-- Mode segmented control -->
-    <div class="bg-surface-container rounded-xl p-1 flex gap-1" role="tablist" id="mode-tabs">
-      <button type="button" data-mode="best_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-active">MEJOR OPCIÓN</button>
-      <button type="button" data-mode="cheapest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS BARATA</button>
-      <button type="button" data-mode="nearest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS CERCANA</button>
+    <div class="bg-surface-container rounded-xl p-1 flex gap-1" role="tablist" id="mode-tabs" data-testid="search-mode-tabs">
+      <button type="button" data-mode="best_by_address" data-testid="search-mode-best_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-active">MEJOR OPCIÓN</button>
+      <button type="button" data-mode="cheapest_by_address" data-testid="search-mode-cheapest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS BARATA</button>
+      <button type="button" data-mode="nearest_by_address" data-testid="search-mode-nearest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS CERCANA</button>
     </div>
 
     <!-- Main inputs — always visible -->
@@ -33,8 +33,8 @@
       <label class="block md:col-span-2">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Ubicación</span>
         <div class="flex gap-2">
-          <input type="text" name="location" placeholder="28001 o Calle Alcalá, Madrid" class="flex-1 rounded-lg border-outline-variant">
-          <button type="button" id="geo-btn" class="p-3 rounded-lg bg-surface-container text-primary-container hover:bg-surface-container-high transition" title="Usar mi ubicación">
+          <input type="text" name="location" data-testid="search-location-input" placeholder="28001 o Calle Alcalá, Madrid" class="flex-1 rounded-lg border-outline-variant">
+          <button type="button" id="geo-btn" data-testid="search-geo-button" class="p-3 rounded-lg bg-surface-container text-primary-container hover:bg-surface-container-high transition" title="Usar mi ubicación">
             <span class="material-symbols-outlined">my_location</span>
           </button>
         </div>
@@ -43,18 +43,18 @@
       <!-- Fuel type -->
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
-        <select name="fuel_type" class="w-full rounded-lg border-outline-variant"></select>
+        <select name="fuel_type" data-testid="search-fuel-select" class="w-full rounded-lg border-outline-variant"></select>
       </label>
 
       <!-- Custom brands dropdown -->
       <div class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Marcas <span class="font-normal text-outline">(opcional)</span></span>
         <div class="relative z-[200]" id="brands-dropdown">
-          <button type="button" id="brands-toggle" class="w-full h-[42px] flex items-center justify-between rounded-lg border border-outline-variant px-3 py-2 text-sm text-left bg-white hover:bg-surface-container-low transition">
+          <button type="button" id="brands-toggle" data-testid="search-brands-toggle" class="w-full h-[42px] flex items-center justify-between rounded-lg border border-outline-variant px-3 py-2 text-sm text-left bg-white hover:bg-surface-container-low transition">
             <span id="brands-label" class="text-outline">Todas las marcas</span>
             <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
           </button>
-          <div id="brands-list" style="display:none" class="absolute z-[100] left-0 right-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl max-h-56 overflow-y-auto">
+          <div id="brands-list" data-testid="search-brands-list" style="display:none" class="absolute z-[100] left-0 right-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl max-h-56 overflow-y-auto">
             <!-- populated by JS -->
           </div>
         </div>
@@ -85,7 +85,7 @@
       </div>
     </details>
 
-    <button type="submit" class="w-full cta-gradient text-white font-headline font-extrabold py-4 rounded-xl shadow-lg hover:opacity-95 active:scale-[0.99] transition">
+    <button type="submit" data-testid="search-submit" class="w-full cta-gradient text-white font-headline font-extrabold py-4 rounded-xl shadow-lg hover:opacity-95 active:scale-[0.99] transition">
       <span class="material-symbols-outlined align-middle">search</span>
       <span class="ml-2">Buscar estaciones</span>
     </button>
@@ -94,24 +94,24 @@
 
 <!-- Results -->
 <section class="max-w-6xl mx-auto px-5 md:px-8 mt-10 space-y-6">
-  <div id="status-banner" class="hidden rounded-xl px-4 py-3 text-sm"></div>
+  <div id="status-banner" data-testid="search-status-banner" class="hidden rounded-xl px-4 py-3 text-sm"></div>
 
   <!-- Recommendation -->
-  <div id="recommendation" class="hidden bg-primary-container text-on-secondary-container rounded-2xl p-5 md:p-6 shadow-md fade-in">
+  <div id="recommendation" data-testid="search-recommendation" class="hidden bg-primary-container text-on-secondary-container rounded-2xl p-5 md:p-6 shadow-md fade-in">
     <p class="font-label text-[11px] tracking-[0.12em] opacity-70 uppercase mb-2">Recomendación</p>
     <p class="text-base md:text-lg font-headline font-bold leading-snug" id="recommendation-text"></p>
   </div>
 
   <!-- KPIs -->
-  <div id="kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+  <div id="kpis" data-testid="search-kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3"></div>
 
   <!-- Map + list layout -->
   <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
     <div class="md:col-span-3 bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40 h-[380px] md:h-[520px] self-start">
-      <div id="map" class="h-full"></div>
+      <div id="map" data-testid="search-map" class="h-full"></div>
     </div>
-    <div class="md:col-span-2 space-y-3" id="results-list">
-      <div id="results-empty" class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">
+    <div class="md:col-span-2 space-y-3" id="results-list" data-testid="search-results-list">
+      <div id="results-empty" data-testid="search-results-empty" class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">
         Ajusta los filtros y pulsa <b>Buscar</b>.
       </div>
     </div>

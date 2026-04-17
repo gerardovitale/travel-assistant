@@ -39,7 +39,7 @@ function renderKpis(plan) {
 function stopCard(s, i) {
   const st = s.station;
   return `
-    <article class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start">
+    <article data-testid="trip-stop-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start">
       <div class="h-10 w-10 rounded-full bg-primary-container text-white flex items-center justify-center font-headline font-bold">${i + 1}</div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
@@ -71,7 +71,7 @@ function altCard(alt, bestCost) {
   const deltaLabel = delta === 0 ? "igual que la mejor" : `${delta > 0 ? "+" : ""}${formatEur(delta)} vs mejor`;
   const color = delta > 0 ? "text-error" : "text-tertiary-container";
   return `
-    <article class="snap-start shrink-0 w-72 bg-surface-container-lowest rounded-2xl border border-outline-variant/40 p-4 shadow-sm">
+    <article data-testid="trip-alt-plan-card" class="snap-start shrink-0 w-72 bg-surface-container-lowest rounded-2xl border border-outline-variant/40 p-4 shadow-sm">
       <h3 class="font-headline font-bold">${escapeHtml(alt.strategy_name)}</h3>
       <p class="text-[12px] text-on-surface-variant mt-1">${escapeHtml(alt.strategy_description)}</p>
       <div class="mt-3 grid grid-cols-2 gap-2 text-sm">

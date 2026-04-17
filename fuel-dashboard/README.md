@@ -93,6 +93,17 @@ Local (faster iteration):
 make fuel-dashboard.test-local
 ```
 
+Browser integration suite:
+
+```bash
+npm --prefix fuel-dashboard ci
+make fuel-dashboard.ui-test-local
+```
+
+The Playwright lane starts the FastAPI app in deterministic UI-test mode with fixture-backed responses and local
+stubbed frontend vendor assets. This keeps the suite offline, reproducible, and suitable for regression coverage of
+the core search, trip, and insights flows.
+
 ## Dependencies
 
 | Package              | Version    |

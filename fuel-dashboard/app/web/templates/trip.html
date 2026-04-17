@@ -3,7 +3,7 @@
 {% block title %}Planificar viaje · Fuel Precision{% endblock %}
 
 {% block content %}
-<section class="hero-gradient text-white px-5 md:px-8 pt-12 pb-16 md:py-20 relative overflow-hidden">
+<section data-testid="trip-page" class="hero-gradient text-white px-5 md:px-8 pt-12 pb-16 md:py-20 relative overflow-hidden">
   <div class="relative z-10 max-w-6xl mx-auto">
     <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Fuel precision</p>
     <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight max-w-3xl">Planifica tu viaje</h1>
@@ -13,21 +13,21 @@
 </section>
 
 <section class="max-w-6xl mx-auto px-5 md:px-8 -mt-10 relative z-20">
-  <form id="trip-form" class="bg-surface-container-lowest rounded-2xl shadow-xl p-5 md:p-8 space-y-5 border border-outline-variant/40 overflow-visible">
+  <form id="trip-form" data-testid="trip-form" class="bg-surface-container-lowest rounded-2xl shadow-xl p-5 md:p-8 space-y-5 border border-outline-variant/40 overflow-visible">
     <h2 class="font-label text-[11px] tracking-[0.12em] text-outline uppercase">Datos del viaje</h2>
 
     <!-- Origin / Destination -->
     <div class="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 md:gap-4 items-end">
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Origen</span>
-        <input type="text" name="origin" required placeholder="Madrid" class="w-full rounded-lg border-outline-variant">
+        <input type="text" name="origin" data-testid="trip-origin-input" required placeholder="Madrid" class="w-full rounded-lg border-outline-variant">
       </label>
-      <button type="button" id="swap-btn" class="hidden md:inline-flex p-3 rounded-full bg-surface-container text-primary-container hover:bg-surface-container-high transition mb-1" aria-label="Intercambiar origen y destino">
+      <button type="button" id="swap-btn" data-testid="trip-swap" class="hidden md:inline-flex p-3 rounded-full bg-surface-container text-primary-container hover:bg-surface-container-high transition mb-1" aria-label="Intercambiar origen y destino">
         <span class="material-symbols-outlined">swap_horiz</span>
       </button>
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Destino</span>
-        <input type="text" name="destination" required placeholder="Barcelona" class="w-full rounded-lg border-outline-variant">
+        <input type="text" name="destination" data-testid="trip-destination-input" required placeholder="Barcelona" class="w-full rounded-lg border-outline-variant">
       </label>
     </div>
 
@@ -35,16 +35,16 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
-        <select name="fuel_type" class="w-full rounded-lg border-outline-variant"></select>
+        <select name="fuel_type" data-testid="trip-fuel-select" class="w-full rounded-lg border-outline-variant"></select>
       </label>
       <div class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Marcas <span class="font-normal text-outline">(opcional)</span></span>
         <div class="relative z-[200]" id="brands-dropdown">
-          <button type="button" id="brands-toggle" class="w-full h-[42px] flex items-center justify-between rounded-lg border border-outline-variant px-3 py-2 text-sm text-left bg-white hover:bg-surface-container-low transition">
+          <button type="button" id="brands-toggle" data-testid="trip-brands-toggle" class="w-full h-[42px] flex items-center justify-between rounded-lg border border-outline-variant px-3 py-2 text-sm text-left bg-white hover:bg-surface-container-low transition">
             <span id="brands-label" class="text-outline">Todas las marcas</span>
             <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
           </button>
-          <div id="brands-list" style="display:none" class="absolute z-[100] left-0 right-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl max-h-56 overflow-y-auto">
+          <div id="brands-list" data-testid="trip-brands-list" style="display:none" class="absolute z-[100] left-0 right-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl max-h-56 overflow-y-auto">
           </div>
         </div>
       </div>
@@ -72,11 +72,11 @@
       </div>
       <label class="block mt-4">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Nivel inicial de combustible: <span id="fuel-level-val">30%</span></span>
-        <input type="range" name="fuel_level_pct" min="0" max="100" step="5" value="30" class="w-full">
+        <input type="range" name="fuel_level_pct" data-testid="trip-fuel-level" min="0" max="100" step="5" value="30" class="w-full">
       </label>
     </details>
 
-    <button type="submit" class="w-full cta-gradient text-white font-headline font-extrabold py-4 rounded-xl shadow-lg hover:opacity-95 active:scale-[0.99] transition">
+    <button type="submit" data-testid="trip-submit" class="w-full cta-gradient text-white font-headline font-extrabold py-4 rounded-xl shadow-lg hover:opacity-95 active:scale-[0.99] transition">
       <span class="material-symbols-outlined align-middle">directions</span>
       <span class="ml-2">Planificar viaje</span>
     </button>
@@ -84,24 +84,24 @@
 </section>
 
 <section class="max-w-6xl mx-auto px-5 md:px-8 mt-10 space-y-6">
-  <div id="trip-banner" class="hidden rounded-xl px-4 py-3 text-sm"></div>
+  <div id="trip-banner" data-testid="trip-banner" class="hidden rounded-xl px-4 py-3 text-sm"></div>
 
-  <div id="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+  <div id="trip-kpis" data-testid="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3"></div>
 
   <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">
-    <div id="trip-map" class="h-[360px] md:h-[500px]"></div>
+    <div id="trip-map" data-testid="trip-map" class="h-[360px] md:h-[500px]"></div>
   </div>
 
   <div>
     <h2 class="font-headline font-bold text-xl mb-3">Paradas recomendadas</h2>
-    <div id="trip-stops" class="space-y-3">
+    <div id="trip-stops" data-testid="trip-stops" class="space-y-3">
       <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">Introduce origen y destino para planificar.</div>
     </div>
   </div>
 
-  <div id="alt-plans-wrap" class="hidden">
+  <div id="alt-plans-wrap" data-testid="trip-alt-plans-wrap" class="hidden">
     <h2 class="font-headline font-bold text-xl mb-3">Alternativas</h2>
-    <div id="alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
+    <div id="alt-plans" data-testid="trip-alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
   </div>
 </section>
 {% endblock %}

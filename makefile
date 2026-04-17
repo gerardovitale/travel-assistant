@@ -13,8 +13,8 @@ setup:
 	cd fuel-ingestor && uv sync --dev
 	cd fuel-dashboard && uv sync --dev
 
-test: fuel-ingestor.test fuel-dashboard.test
-test-local: setup fuel-ingestor.test-local fuel-dashboard.test-local
+test: fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
+test-local: setup fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
 scan: fuel-ingestor.scan fuel-dashboard.scan
 done: setup test scan
 
@@ -47,6 +47,9 @@ fuel-ingestor.test-local:
 
 fuel-dashboard.test-local:
 	cd fuel-dashboard && uv run pytest --durations=5 -vv tests/
+
+fuel-dashboard.ui-test-local:
+	cd fuel-dashboard && npx playwright install chromium && npm run ui:test
 
 
 # IMAGE SCANNING
@@ -96,6 +99,10 @@ fuel-dashboard.run:
 		-v $(DASHBOARD_CREDENTIALS_PATH):/app/credentials.json:ro \
 		-e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json \
 		fuel-dashboard
+
+fuel-dashboard.ui-test:
+	cd fuel-dashboard && docker buildx build -f Dockerfile.e2e -t fuel-dashboard-e2e . && \
+	docker run --rm fuel-dashboard-e2e
 
 
 # TF BACKEND

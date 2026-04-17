@@ -2,7 +2,7 @@
 {% block title %}Cargando datos · Fuel Precision{% endblock %}
 
 {% block content %}
-<section class="min-h-[calc(100vh-4rem)] px-5 md:px-8 py-16 md:py-24">
+<section data-testid="loading-page" class="min-h-[calc(100vh-4rem)] px-5 md:px-8 py-16 md:py-24">
   <div class="max-w-3xl mx-auto bg-surface-container-lowest border border-outline-variant/40 rounded-3xl shadow-xl p-8 md:p-12 text-center">
     <div class="inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary-container/10 text-primary-container">
       <span class="material-symbols-outlined text-[32px] animate-pulse">sync</span>
@@ -14,6 +14,7 @@
     </p>
     <button
       type="button"
+      data-testid="loading-retry"
       class="mt-8 inline-flex items-center gap-2 rounded-xl bg-primary-container px-5 py-3 font-label font-bold text-white hover:opacity-95 transition"
       onclick="window.location.reload()"
     >

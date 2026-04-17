@@ -14,6 +14,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from ui_test_support import health_data_response as ui_test_health_data_response
+from ui_test_support import insights_flags as ui_test_insights_flags
+from ui_test_support import is_data_ready as ui_test_is_data_ready
+from ui_test_support import pop_fixture_set
+from ui_test_support import push_fixture_set
+from ui_test_support import resolve_fixture_set
 
 from data.cache import get_realtime_status
 from data.cache import is_data_ready
@@ -30,6 +36,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    if settings.ui_test_mode:
+        logger.info("UI test mode enabled; skipping cache warmup and external preloads")
+        yield
+        return
+
     logger.info("Preloading zip-code trend cache")
     trend_preloaded = False
     try:
@@ -61,6 +72,18 @@ async def add_security_headers(request, call_next):
     return response
 
 
+@app.middleware("http")
+async def bind_ui_test_fixture_set(request: Request, call_next):
+    if not settings.ui_test_mode:
+        return await call_next(request)
+
+    token = push_fixture_set(resolve_fixture_set(request))
+    try:
+        return await call_next(request)
+    finally:
+        pop_fixture_set(token)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -68,6 +91,12 @@ def health():
 
 @app.get("/health/data")
 def health_data():
+    if settings.ui_test_mode:
+        status_code, body = ui_test_health_data_response()
+        if status_code == 200:
+            return body
+        return JSONResponse(status_code=status_code, content=body)
+
     realtime = get_realtime_status()
     latest = get_latest_parquet_file()
     if latest is None and not realtime["realtime_active"]:
@@ -112,15 +141,34 @@ templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
 
 
 def _render_page(request: Request, template_name: str, current_page: str):
-    if not is_data_ready():
+    data_ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
+    if not data_ready:
         return templates.TemplateResponse(
             request,
             "loading.html",
-            {"current_page": current_page},
+            {
+                "current_page": current_page,
+                "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
+                "app_config": {
+                    "ui_test_mode": settings.ui_test_mode,
+                    "disable_geolocation_lookup": settings.ui_test_mode,
+                },
+            },
             status_code=503,
             headers={"Retry-After": "5"},
         )
-    return templates.TemplateResponse(request, template_name)
+    return templates.TemplateResponse(
+        request,
+        template_name,
+        {
+            "current_page": current_page,
+            "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
+            "app_config": {
+                "ui_test_mode": settings.ui_test_mode,
+                "disable_geolocation_lookup": settings.ui_test_mode,
+            },
+        },
+    )
 
 
 @app.get("/")
@@ -135,20 +183,39 @@ def page_trip(request: Request):
 
 @app.get("/insights")
 def page_insights(request: Request):
-    if not is_data_ready():
+    data_ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
+    if not data_ready:
         return templates.TemplateResponse(
             request,
             "loading.html",
-            {"current_page": "insights"},
+            {
+                "current_page": "insights",
+                "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
+                "app_config": {
+                    "ui_test_mode": settings.ui_test_mode,
+                    "disable_geolocation_lookup": settings.ui_test_mode,
+                },
+            },
             status_code=503,
             headers={"Retry-After": "5"},
         )
+    insights_zones_enabled, insights_historical_enabled = (
+        ui_test_insights_flags()
+        if settings.ui_test_mode
+        else (settings.insights_zones_enabled, settings.insights_historical_enabled)
+    )
     return templates.TemplateResponse(
         request,
         "insights.html",
         {
-            "insights_zones_enabled": settings.insights_zones_enabled,
-            "insights_historical_enabled": settings.insights_historical_enabled,
+            "current_page": "insights",
+            "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
+            "app_config": {
+                "ui_test_mode": settings.ui_test_mode,
+                "disable_geolocation_lookup": settings.ui_test_mode,
+            },
+            "insights_zones_enabled": insights_zones_enabled,
+            "insights_historical_enabled": insights_historical_enabled,
         },
     )
 

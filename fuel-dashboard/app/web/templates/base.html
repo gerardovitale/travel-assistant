@@ -9,14 +9,20 @@
 <link rel="manifest" href="/static/site.webmanifest">
 <meta name="theme-color" content="#003d9b" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#001642" media="(prefers-color-scheme: dark)">
+{% if disable_external_assets|default(false) %}
+<link rel="stylesheet" href="/static/vendor/test-shell.css">
+<link rel="stylesheet" href="/static/vendor/leaflet-stub.css">
+{% else %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@700;800&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+{% endif %}
 <script id="tailwind-config">
-  tailwind.config = {
+  window.tailwind = window.tailwind || {};
+  window.tailwind.config = {
     darkMode: "class",
     theme: {
       extend: {
@@ -82,9 +88,12 @@
 <link rel="stylesheet" href="/static/css/tokens.css">
 </head>
 <body class="bg-surface text-on-surface selection:bg-primary-container selection:text-white min-h-screen pb-24 md:pb-8">
+<script>
+  window.__APP_CONFIG__ = {{ (app_config|default({})) | tojson }};
+</script>
 
 <!-- Top app bar -->
-<header class="bg-surface-container-low/90 backdrop-blur-md flex justify-between items-center px-5 md:px-8 h-16 w-full fixed top-0 z-50 border-b border-outline-variant/40">
+<header data-testid="app-shell" class="bg-surface-container-low/90 backdrop-blur-md flex justify-between items-center px-5 md:px-8 h-16 w-full fixed top-0 z-50 border-b border-outline-variant/40">
   <a href="/" class="flex items-center gap-2 group">
     <span class="material-symbols-outlined text-primary-container group-hover:scale-110 transition-transform">explore</span>
     <span class="text-lg font-black tracking-tighter text-primary-container font-headline">FUEL PRECISION</span>
@@ -96,7 +105,7 @@
     <a href="/insights" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'insights' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">INSIGHTS</a>
   </nav>
   <div class="flex items-center gap-3">
-    <span id="data-status" class="hidden md:inline-flex items-center gap-1 text-[11px] font-label text-outline" title="Estado de los datos"></span>
+    <span id="data-status" data-testid="data-status" class="hidden md:inline-flex items-center gap-1 text-[11px] font-label text-outline" title="Estado de los datos"></span>
   </div>
 </header>
 
@@ -121,10 +130,16 @@
 </nav>
 
 <!-- Toast -->
-<div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-28 md:bottom-8 bg-inverse-surface text-inverse-on-surface px-5 py-3 rounded-xl shadow-2xl opacity-0 pointer-events-none transition-opacity duration-200 z-[60] text-sm font-medium" role="status"></div>
+<div id="toast" data-testid="toast" class="fixed left-1/2 -translate-x-1/2 bottom-28 md:bottom-8 bg-inverse-surface text-inverse-on-surface px-5 py-3 rounded-xl shadow-2xl opacity-0 pointer-events-none transition-opacity duration-200 z-[60] text-sm font-medium" role="status"></div>
 
+{% if disable_external_assets|default(false) %}
+<script src="/static/vendor/tailwind-stub.js"></script>
+<script src="/static/vendor/leaflet-stub.js"></script>
+<script src="/static/vendor/plotly-stub.js"></script>
+{% else %}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+{% endif %}
 <script type="module" src="/static/js/app.js"></script>
 {% block page_scripts %}{% endblock %}
 </body>

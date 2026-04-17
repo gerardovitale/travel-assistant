@@ -231,3 +231,4 @@ coverage/
 node_modules/
 .swc
 .env.*
+fuel-dashboard/test-results/

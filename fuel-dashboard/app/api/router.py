@@ -5,6 +5,7 @@ from typing import Dict
 from typing import List
 from typing import Optional
 
+import ui_test_support as ui_test
 from api.schemas import BrandHistoricalResponse
 from api.schemas import DataFrameResponse
 from api.schemas import DataInventory
@@ -106,6 +107,8 @@ def cheapest_by_zip(
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
     labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
 ):
+    if settings.ui_test_mode:
+        return ui_test.station_list_response("cheapest_by_zip", location=zip_code, labels=labels)
     stations = get_cheapest_by_zip(zip_code, fuel_type, limit, labels=labels)
     return StationListResponse(stations=stations, fuel_type=fuel_type.value, query_type="cheapest_by_zip")
 
@@ -119,6 +122,8 @@ def nearest_by_address(
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
     labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
 ):
+    if settings.ui_test_mode:
+        return ui_test.station_list_response("nearest_by_address", location=address, labels=labels)
     coords = geocode_address(address)
     if coords is None:
         raise HTTPException(status_code=404, detail="Address could not be geocoded")
@@ -144,6 +149,8 @@ def cheapest_by_address(
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
     labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
 ):
+    if settings.ui_test_mode:
+        return ui_test.station_list_response("cheapest_by_address", location=address, labels=labels)
     coords = geocode_address(address)
     if coords is None:
         raise HTTPException(status_code=404, detail="Address could not be geocoded")
@@ -173,6 +180,8 @@ def best_by_address(
     tank_liters: float = Query(settings.default_refill_liters, ge=5.0, le=120.0, description="Liters to refill"),
     labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
 ):
+    if settings.ui_test_mode:
+        return ui_test.station_list_response("best_by_address", location=address, labels=labels)
     coords = geocode_address(address)
     if coords is None:
         raise HTTPException(status_code=404, detail="Address could not be geocoded")
@@ -209,6 +218,8 @@ def price_trends(
     fuel_type: FuelType = Query(..., description="Fuel type"),
     period: TrendPeriod = Query(TrendPeriod.month, description="Trend period"),
 ):
+    if settings.ui_test_mode:
+        return ui_test.trend_response(zip_code, fuel_type, period)
     trend = get_price_trends(zip_code, fuel_type, period)
     return TrendResponse(trend=trend, zip_code=zip_code, fuel_type=fuel_type.value, period=period.value)
 
@@ -221,6 +232,8 @@ def group_price_trends(
     fuel_group: FuelGroup = Query(...),
     period: TrendPeriod = Query(TrendPeriod.month),
 ):
+    if settings.ui_test_mode:
+        return ui_test.group_trend_response(zip_code, fuel_group, period)
     series = get_group_price_trends(zip_code, fuel_group, period)
     return GroupTrendResponse(series=series, zip_code=zip_code, fuel_group=fuel_group.value, period=period.value)
 
@@ -228,6 +241,11 @@ def group_price_trends(
 @router.post("/trip/plan", response_model=TripPlanResponse)
 @limiter.limit(settings.rate_limit)
 def trip_plan(request: Request, body: TripPlanRequest = Body(...)):
+    if settings.ui_test_mode:
+        try:
+            return ui_test.trip_plan_response(body)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     try:
         plan = plan_trip(
             origin_address=body.origin,
@@ -247,6 +265,9 @@ def trip_plan(request: Request, body: TripPlanRequest = Body(...)):
 @router.get("/geocode", response_model=GeocodeResponse)
 @limiter.limit(settings.rate_limit)
 def geocode(request: Request, address: str = Query(..., min_length=2, max_length=200)):
+    if settings.ui_test_mode:
+        coords = ui_test.geocode_response()
+        return GeocodeResponse(lat=coords.latitude, lon=coords.longitude)
     coords = geocode_address(address)
     if coords is None:
         raise HTTPException(status_code=404, detail="Address could not be geocoded")
@@ -263,6 +284,8 @@ def route(
     dest_lat: float = Query(..., ge=-90, le=90),
     dest_lon: float = Query(..., ge=-180, le=180),
 ):
+    if settings.ui_test_mode:
+        return ui_test.route_response()
     result = get_full_route((origin_lat, origin_lon), (dest_lat, dest_lon))
     if result is None:
         raise HTTPException(status_code=502, detail="Route unavailable")
@@ -272,12 +295,16 @@ def route(
 @router.get("/provinces", response_model=ProvincesResponse)
 @limiter.limit(settings.rate_limit)
 def provinces(request: Request):
+    if settings.ui_test_mode:
+        return ui_test.provinces_response()
     return ProvincesResponse(provinces=get_provinces())
 
 
 @router.get("/labels", response_model=LabelsResponse)
 @limiter.limit(settings.rate_limit)
 def labels(request: Request, top_n: int = Query(25, ge=0, le=200)):
+    if settings.ui_test_mode:
+        return ui_test.labels_response(top_n=top_n)
     return LabelsResponse(labels=get_station_labels(top_n=top_n))
 
 
@@ -308,6 +335,8 @@ def zones_provinces(
     fuel_type: FuelType = Query(...),
     period: HistoricalPeriod = Query(HistoricalPeriod.quarter),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_provinces_response()
     df = get_province_ranking(fuel_type, _period_days(period))
     return DataFrameResponse(rows=_rows(df))
 
@@ -319,6 +348,8 @@ def zones_districts(
     province: str = Query(..., min_length=1),
     fuel_type: FuelType = Query(...),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_districts_response(province, fuel_type)
     items = get_district_price_map(province, fuel_type)
     return DistrictMapResponse(items=items, province=province, fuel_type=fuel_type.value)
 
@@ -330,6 +361,8 @@ def zones_province_map(
     fuel_type: FuelType = Query(...),
     mainland_only: bool = Query(False),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_province_map_response(fuel_type)
     items = get_province_price_map_filtered(fuel_type, mainland_only)
     return ProvinceMapResponse(items=items, fuel_type=fuel_type.value)
 
@@ -341,6 +374,8 @@ def zones_province_geojson(
     fuel_type: FuelType = Query(...),
     mainland_only: bool = Query(False),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_province_geojson_response()
     geojson = get_province_price_geojson(fuel_type, mainland_only)
     return GeoJSONResponse(geojson=geojson)
 
@@ -352,6 +387,8 @@ def zones_district_geojson(
     province: str = Query(..., min_length=1),
     fuel_type: FuelType = Query(...),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_district_geojson_response()
     geojson = get_district_price_geojson(province, fuel_type)
     return GeoJSONResponse(geojson=geojson)
 
@@ -362,6 +399,8 @@ def zones_municipalities(
     request: Request,
     province: str = Query(..., min_length=1),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_municipalities_response(province)
     municipalities = get_municipalities(province)
     return MunicipalitiesResponse(province=province, municipalities=municipalities)
 
@@ -374,6 +413,8 @@ def zones_municipality_zips(
     municipality: str = Query(..., min_length=1),
     fuel_type: FuelType = Query(...),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_municipality_zips_response(province, fuel_type, municipality)
     zones = get_zip_code_price_map_by_municipality(province, fuel_type, municipality)
     return ZoneListResponse(zones=zones, province=province, fuel_type=fuel_type.value)
 
@@ -386,6 +427,8 @@ def zones_district_zips(
     district: str = Query(..., min_length=1),
     fuel_type: FuelType = Query(...),
 ):
+    if settings.ui_test_mode:
+        return ui_test.zones_district_zips_response(province, fuel_type, district)
     zip_codes = get_zip_codes_for_district(province, fuel_type, district)
     zones = get_zip_code_price_map_for_zips(province, fuel_type, zip_codes)
     return ZoneListResponse(zones=zones, province=province, fuel_type=fuel_type.value)
@@ -394,6 +437,8 @@ def zones_district_zips(
 @router.get("/zones/postal-geojson", response_model=GeoJSONResponse)
 @limiter.limit(settings.rate_limit)
 def zones_postal_geojson(request: Request, zip_codes: List[str] = Query(...)):
+    if settings.ui_test_mode:
+        return ui_test.postal_geojson_response(zip_codes)
     geo = load_postal_codes_for_zip_list(zip_codes)
     return GeoJSONResponse(geojson=geo or {"type": "FeatureCollection", "features": []})
 
@@ -401,6 +446,8 @@ def zones_postal_geojson(request: Request, zip_codes: List[str] = Query(...)):
 @router.get("/zones/zip-boundary", response_model=GeoJSONResponse)
 @limiter.limit(settings.rate_limit)
 def zones_zip_boundary(request: Request, zip_code: str = Query(..., pattern=r"^\d{5}$")):
+    if settings.ui_test_mode:
+        return ui_test.zip_boundary_response(zip_code)
     geo = load_postal_code_boundary(zip_code)
     if geo is None:
         raise HTTPException(status_code=404, detail="Unknown zip code boundary")
@@ -414,6 +461,8 @@ def historical_day_of_week(
     fuel_type: FuelType = Query(...),
     province: Optional[str] = Query(None),
 ):
+    if settings.ui_test_mode:
+        return ui_test.historical_day_of_week_response()
     df = get_day_of_week_pattern(fuel_type, province=province)
     return DataFrameResponse(rows=_rows(df))
 
@@ -426,6 +475,8 @@ def historical_brands(
     period: HistoricalPeriod = Query(HistoricalPeriod.quarter),
     top_n: int = Query(15, ge=3, le=50),
 ):
+    if settings.ui_test_mode:
+        return ui_test.historical_brands_response()
     days = _period_days(period)
     ranking_df = get_brand_ranking(fuel_type, days, top_n)
     if ranking_df.empty:
@@ -443,6 +494,8 @@ def historical_volatility(
     period: HistoricalPeriod = Query(HistoricalPeriod.quarter),
     mainland_only: bool = Query(True),
 ):
+    if settings.ui_test_mode:
+        return ui_test.historical_volatility_response()
     df = get_zone_volatility_ranking(fuel_type, _period_days(period), mainland_only)
     return DataFrameResponse(rows=_rows(df))
 
@@ -450,6 +503,8 @@ def historical_volatility(
 @router.get("/quality/inventory", response_model=QualityResponse)
 @limiter.limit(settings.rate_limit)
 def quality_inventory(request: Request):
+    if settings.ui_test_mode:
+        return ui_test.quality_response()
     stats = get_ingestion_stats()
     inventory = get_data_inventory(stats)
     max_date: Optional[date] = inventory.get("max_date")

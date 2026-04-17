@@ -31,10 +31,12 @@ export function populateBrandsList(listId, labelId, selectedSet, labelsMap) {
 
   for (const [raw, pretty] of Object.entries(labelsMap)) {
     const item = document.createElement("label");
+    item.dataset.testid = `brand-option-${raw}`;
     item.className = "flex items-center gap-2 px-3 py-2 hover:bg-surface-container-low cursor-pointer text-sm";
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.value = raw;
+    cb.dataset.testid = `brand-checkbox-${raw}`;
     cb.className = "rounded border-outline-variant text-primary-container focus:ring-primary-container/40";
     cb.addEventListener("change", () => {
       if (cb.checked) selectedSet.add(raw);

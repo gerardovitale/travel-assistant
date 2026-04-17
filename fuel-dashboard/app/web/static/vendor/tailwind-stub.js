@@ -1,0 +1,1 @@
+window.tailwind = window.tailwind || {};

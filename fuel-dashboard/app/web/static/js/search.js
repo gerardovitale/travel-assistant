@@ -4,6 +4,8 @@ import { createMap, drawStationsTracked, drawSearchPin, drawZipBoundary, drawRou
 import { formatPrice, formatKm, formatEur, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels } from "./brands.js";
 
+const APP_CONFIG = window.__APP_CONFIG__ || {};
+
 const ADVANCED_FIELDS_BY_MODE = {
   nearest_by_address: [],
   cheapest_by_address: ["radius"],
@@ -97,7 +99,7 @@ function renderList(results) {
     const pct = s.pct_vs_avg != null ? `<span class="${s.pct_vs_avg < 0 ? 'text-tertiary-container' : 'text-error'} text-[11px] font-bold">${s.pct_vs_avg > 0 ? '+' : ''}${s.pct_vs_avg.toFixed(1)}% vs media</span>` : "";
     const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${s.latitude},${s.longitude}`;
     return `
-      <article data-index="${i}" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in">
+      <article data-index="${i}" data-testid="search-result-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in">
         <div class="h-10 w-10 rounded-lg bg-surface-container-high flex items-center justify-center text-primary-container shrink-0 font-headline font-bold">${i + 1}</div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between gap-2">
@@ -277,7 +279,7 @@ function attachHoverHandlers() {
 
 function initGeolocation() {
   const btn = document.getElementById("geo-btn");
-  if (!btn || !navigator.geolocation) return;
+  if (!btn || APP_CONFIG.disable_geolocation_lookup || !navigator.geolocation) return;
   btn.addEventListener("click", () => {
     btn.disabled = true;
     navigator.geolocation.getCurrentPosition(

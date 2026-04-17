@@ -3,29 +3,29 @@
 {% block title %}Insights y tendencias · Navigator{% endblock %}
 
 {% block content %}
-<section class="hero-gradient text-white px-5 md:px-8 pt-12 pb-20 md:py-20 relative overflow-hidden">
+<section data-testid="insights-page" class="hero-gradient text-white px-5 md:px-8 pt-12 pb-20 md:py-20 relative overflow-hidden">
   <div class="relative z-10 max-w-6xl mx-auto">
     <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Dashboard de análisis</p>
     <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight">Insights y tendencias</h1>
     {% set visible_tabs = 2 + (1 if insights_zones_enabled else 0) + (1 if insights_historical_enabled else 0) %}
-    <nav class="mt-8 grid grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" aria-label="Secciones">
-      <button type="button" data-tab="trends" class="bg-white text-primary-container rounded-xl shadow-lg px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+    <nav class="mt-8 grid grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" data-testid="insight-tabs" aria-label="Secciones">
+      <button type="button" data-tab="trends" data-testid="insight-tab-trends" class="bg-white text-primary-container rounded-xl shadow-lg px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined filled-icon">trending_up</span>
         <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Tendencias</span>
       </button>
       {% if insights_zones_enabled %}
-      <button type="button" data-tab="zones" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+      <button type="button" data-tab="zones" data-testid="insight-tab-zones" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined">map</span>
         <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Zonas</span>
       </button>
       {% endif %}
       {% if insights_historical_enabled %}
-      <button type="button" data-tab="historical" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+      <button type="button" data-tab="historical" data-testid="insight-tab-historical" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined">analytics</span>
         <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Histórico</span>
       </button>
       {% endif %}
-      <button type="button" data-tab="quality" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+      <button type="button" data-tab="quality" data-testid="insight-tab-quality" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined">verified</span>
         <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Calidad</span>
       </button>
@@ -38,18 +38,18 @@
   <!-- TRENDS -->
   <section data-panel="trends" class="space-y-6">
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <form id="trends-filter" class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
+      <form id="trends-filter" data-testid="trends-filter" class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <label class="block">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Código postal</span>
-          <input type="text" name="zip_code" pattern="\d{5}" placeholder="p.ej. 28001" class="w-full rounded-lg border-outline-variant">
+          <input type="text" name="zip_code" data-testid="trends-zip-input" pattern="\d{5}" placeholder="p.ej. 28001" class="w-full rounded-lg border-outline-variant">
         </label>
         <label class="block">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Grupo</span>
-          <select name="fuel_group" class="w-full rounded-lg border-outline-variant"></select>
+          <select name="fuel_group" data-testid="trends-group-select" class="w-full rounded-lg border-outline-variant"></select>
         </label>
         <label class="block">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Periodo</span>
-          <select name="period" class="w-full rounded-lg border-outline-variant">
+          <select name="period" data-testid="trends-period-select" class="w-full rounded-lg border-outline-variant">
             <option value="week">Semana</option>
             <option value="month" selected>Mes</option>
             <option value="quarter">Trimestre</option>
@@ -62,13 +62,13 @@
 
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <h2 class="font-headline font-bold text-xl mb-4">Tendencia de precios</h2>
-      <div id="trend-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
-      <div id="trend-chart" class="h-80"></div>
+      <div id="trend-kpis" data-testid="trend-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+      <div id="trend-chart" data-testid="trend-chart" class="h-80"></div>
     </div>
 
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <h2 class="font-headline font-bold text-xl mb-4">Comparativa de variantes</h2>
-      <div id="group-trend-chart" class="h-80"></div>
+      <div id="group-trend-chart" data-testid="group-trend-chart" class="h-80"></div>
     </div>
   </section>
 
@@ -164,14 +164,14 @@
 
   <!-- QUALITY -->
   <section data-panel="quality" class="space-y-6 hidden">
-    <div id="quality-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+    <div id="quality-kpis" data-testid="quality-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <h2 class="font-headline font-bold text-lg mb-3">Últimas ingestas</h2>
-      <p id="quality-summary" class="text-sm text-on-surface-variant"></p>
+      <p id="quality-summary" data-testid="quality-summary" class="text-sm text-on-surface-variant"></p>
     </div>
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <h2 class="font-headline font-bold text-lg mb-3">Días sin datos</h2>
-      <div id="quality-missing" class="flex flex-wrap gap-2 text-[12px]"></div>
+      <div id="quality-missing" data-testid="quality-missing" class="flex flex-wrap gap-2 text-[12px]"></div>
     </div>
   </section>
 </main>
