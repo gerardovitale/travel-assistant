@@ -15,9 +15,9 @@ function banner(kind, text) {
 }
 function hideBanner() { document.getElementById("trip-banner").classList.add("hidden"); }
 
-function kpi(label, value, icon) {
+function kpi(label, value, icon, delay = 0) {
   return `
-    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm">
+    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm fade-in" style="animation-delay:${delay}ms">
       <div class="flex items-center gap-2 text-outline">
         <span class="material-symbols-outlined text-[18px]">${icon}</span>
         <span class="text-[11px] font-label font-bold tracking-wider uppercase">${label}</span>
@@ -29,10 +29,10 @@ function kpi(label, value, icon) {
 function renderKpis(plan) {
   const el = document.getElementById("trip-kpis");
   el.innerHTML = [
-    kpi("Distancia total", formatKm(plan.total_distance_km), "straighten"),
-    kpi("Duración", formatMin(plan.duration_minutes), "schedule"),
-    kpi("Coste combustible", formatEur(plan.total_fuel_cost), "payments"),
-    kpi("Ahorro estimado", formatEur(plan.savings_eur), "savings"),
+    kpi("Distancia total", formatKm(plan.total_distance_km), "straighten", 0),
+    kpi("Duración", formatMin(plan.duration_minutes), "schedule", 60),
+    kpi("Coste combustible", formatEur(plan.total_fuel_cost), "payments", 120),
+    kpi("Ahorro estimado", formatEur(plan.savings_eur), "savings", 180),
   ].join("");
   el.classList.remove("hidden");
 }
@@ -40,7 +40,7 @@ function renderKpis(plan) {
 function stopCard(s, i) {
   const st = s.station;
   return `
-    <article data-testid="trip-stop-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start">
+    <article data-testid="trip-stop-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 60, 360)}ms">
       <div class="h-10 w-10 rounded-full bg-primary-container text-white flex items-center justify-center font-headline font-bold">${i + 1}</div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">

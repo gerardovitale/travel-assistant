@@ -58,9 +58,9 @@ function switchMode(mode) {
 
 // ── KPIs + rendering ────────────────────────────────────────────────
 
-function kpiCard(label, value, icon = "insights") {
+function kpiCard(label, value, icon = "insights", delay = 0) {
   return `
-    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm">
+    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm fade-in" style="animation-delay:${delay}ms">
       <div class="flex items-center gap-2 text-outline">
         <span class="material-symbols-outlined text-[18px]">${icon}</span>
         <span class="text-[11px] font-label font-bold tracking-wider uppercase">${label}</span>
@@ -78,10 +78,10 @@ function renderKpis(results) {
   const nearest = results.reduce((min, r) => (r.distance_km != null && (min == null || r.distance_km < min.distance_km) ? r : min), null);
 
   const cards = [
-    kpiCard("Mejor precio", formatPrice(cheapest), "savings"),
-    kpiCard("Media del listado", formatPrice(avg), "bar_chart"),
-    kpiCard(nearest ? "Más cercana" : "Resultados", nearest ? formatKm(nearest.distance_km) : String(results.length), "near_me"),
-    kpiCard("Estación", escapeHtml(best.label || "—"), "local_gas_station"),
+    kpiCard("Mejor precio", formatPrice(cheapest), "savings", 0),
+    kpiCard("Media del listado", formatPrice(avg), "bar_chart", 60),
+    kpiCard(nearest ? "Más cercana" : "Resultados", nearest ? formatKm(nearest.distance_km) : String(results.length), "near_me", 120),
+    kpiCard("Estación", escapeHtml(best.label || "—"), "local_gas_station", 180),
   ];
   const el = document.getElementById("kpis");
   el.innerHTML = cards.join("");
@@ -100,7 +100,7 @@ function renderList(results) {
     const pct = s.pct_vs_avg != null ? `<span class="${s.pct_vs_avg < 0 ? 'text-tertiary-container' : 'text-error'} text-[11px] font-bold">${s.pct_vs_avg > 0 ? '+' : ''}${s.pct_vs_avg.toFixed(1)}% vs media</span>` : "";
     const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${s.latitude},${s.longitude}`;
     return `
-      <article data-index="${i}" data-testid="search-result-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in">
+      <article data-index="${i}" data-testid="search-result-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 50, 350)}ms">
         <div class="h-10 w-10 rounded-lg bg-surface-container-high flex items-center justify-center text-primary-container shrink-0 font-headline font-bold">${i + 1}</div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between gap-2">
@@ -131,6 +131,9 @@ function renderRecommendation(results) {
   const msg = `La mejor opción es <b>${escapeHtml(best.label)}</b>${dist} al precio de <b>${formatPrice(best.price)}</b>${cost}.`;
   document.getElementById("recommendation-text").innerHTML = msg;
   rec.classList.remove("hidden");
+  rec.style.animation = "none";
+  rec.offsetHeight; // force reflow so the animation restarts
+  rec.style.animation = "";
 }
 
 function showBanner(kind, text) {
@@ -157,6 +160,12 @@ function resetResults({ emptyState = null } = {}) {
   const { group } = drawStationsTracked(map, markersGroup, []);
   markersGroup = group;
   if (locationLayer) { locationLayer.clearLayers(); }
+}
+
+function skeletonCards(n = 4) {
+  return Array.from({ length: n }, (_, i) =>
+    `<div class="skeleton fade-in h-20 rounded-2xl" style="animation-delay:${i * 80}ms"></div>`
+  ).join("");
 }
 
 // ── Search execution ────────────────────────────────────────────────
@@ -193,6 +202,9 @@ async function runSearch(form) {
     }
 
     showBanner("info", "Buscando estaciones…");
+    document.getElementById("results-list").innerHTML = skeletonCards();
+    document.getElementById("kpis").classList.add("hidden");
+    document.getElementById("recommendation").classList.add("hidden");
     const resp = await api(`${path}?${qs(params)}`);
     state.results = resp.stations || [];
     hideBanner();

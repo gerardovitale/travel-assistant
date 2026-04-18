@@ -33,8 +33,15 @@ body {
   100% { background-position: -200% 0; }
 }
 
-/* Fade-in for async content */
-.fade-in { animation: fade 200ms ease-out; }
+/* Page entrance — applied to <main> in base.html */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.page-enter { animation: page-enter 350ms ease-out both; }
+
+/* Fade-in for async content — `both` fill-mode makes animation-delay work correctly */
+.fade-in { animation: fade 250ms ease-out both; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* Leaflet containers — keep below dropdowns that overflow from the form card */
