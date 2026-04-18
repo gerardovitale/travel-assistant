@@ -293,6 +293,16 @@ class DistrictMapResponse(BaseModel):
     fuel_type: str
 
 
+class AddressSuggestion(BaseModel):
+    display_name: str
+    lat: float
+    lon: float
+
+
+class AddressSuggestionsResponse(BaseModel):
+    suggestions: List[AddressSuggestion]
+
+
 class GeocodeResponse(BaseModel):
     lat: float
     lon: float

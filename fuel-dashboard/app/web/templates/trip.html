@@ -20,14 +20,14 @@
     <div class="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 md:gap-4 items-end">
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Origen</span>
-        <input type="text" name="origin" data-testid="trip-origin-input" required placeholder="Madrid" class="w-full rounded-lg border-outline-variant">
+        <input type="text" name="origin" data-testid="trip-origin-input" required placeholder="Madrid" autocomplete="off" class="w-full rounded-lg border-outline-variant">
       </label>
       <button type="button" id="swap-btn" data-testid="trip-swap" class="hidden md:inline-flex p-3 rounded-full bg-surface-container text-primary-container hover:bg-surface-container-high transition mb-1" aria-label="Intercambiar origen y destino">
         <span class="material-symbols-outlined">swap_horiz</span>
       </button>
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Destino</span>
-        <input type="text" name="destination" data-testid="trip-destination-input" required placeholder="Barcelona" class="w-full rounded-lg border-outline-variant">
+        <input type="text" name="destination" data-testid="trip-destination-input" required placeholder="Barcelona" autocomplete="off" class="w-full rounded-lg border-outline-variant">
       </label>
     </div>
 

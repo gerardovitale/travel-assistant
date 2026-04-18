@@ -6,6 +6,8 @@ from typing import List
 from typing import Optional
 
 import ui_test_support as ui_test
+from api.schemas import AddressSuggestion
+from api.schemas import AddressSuggestionsResponse
 from api.schemas import BrandHistoricalResponse
 from api.schemas import DataFrameResponse
 from api.schemas import DataInventory
@@ -50,6 +52,7 @@ from services.data_quality_service import get_latest_day_stats
 from services.data_quality_service import get_missing_days
 from services.forecast_service import get_historical_forecast
 from services.geocoding import geocode_address
+from services.geocoding import get_address_suggestions
 from services.routing import get_full_route
 from services.station_service import get_best_by_address
 from services.station_service import get_brand_price_trend
@@ -277,6 +280,15 @@ def geocode(request: Request, address: str = Query(..., min_length=2, max_length
         raise HTTPException(status_code=404, detail="Address could not be geocoded")
     lat, lon = coords
     return GeocodeResponse(lat=lat, lon=lon)
+
+
+@router.get("/address-suggestions", response_model=AddressSuggestionsResponse)
+@limiter.limit(settings.rate_limit)
+def address_suggestions(request: Request, q: str = Query(..., min_length=3, max_length=100)):
+    if settings.ui_test_mode:
+        return AddressSuggestionsResponse(suggestions=[])
+    results = get_address_suggestions(q)
+    return AddressSuggestionsResponse(suggestions=[AddressSuggestion(**r) for r in results])
 
 
 @router.get("/route", response_model=RouteResponse)

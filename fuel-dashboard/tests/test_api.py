@@ -308,3 +308,29 @@ def test_historical_forecast_returns_400_on_value_error(mock_service):
 
     assert response.status_code == 400
     assert "zip_code or province is required" in response.json()["detail"]
+
+
+@patch("api.router.get_address_suggestions")
+def test_address_suggestions_success(mock_service):
+    mock_service.return_value = [{"display_name": "Madrid, Comunidad de Madrid", "lat": 40.4168, "lon": -3.7038}]
+    client = _get_client()
+    response = client.get("/api/v1/address-suggestions?q=Madr")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["suggestions"]) == 1
+    assert data["suggestions"][0]["display_name"] == "Madrid, Comunidad de Madrid"
+
+
+def test_address_suggestions_query_too_short():
+    client = _get_client()
+    response = client.get("/api/v1/address-suggestions?q=Ma")
+    assert response.status_code == 422
+
+
+@patch("api.router.get_address_suggestions")
+def test_address_suggestions_graceful_empty(mock_service):
+    mock_service.return_value = []
+    client = _get_client()
+    response = client.get("/api/v1/address-suggestions?q=xyz")
+    assert response.status_code == 200
+    assert response.json()["suggestions"] == []

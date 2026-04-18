@@ -3,6 +3,7 @@ import { populateFuelSelect, getLabels } from "./fuel.js";
 import { createMap, drawStations, drawRoute, clearLayer } from "./maps.js";
 import { formatPrice, formatKm, formatEur, formatMin, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels } from "./brands.js";
+import { attachAutocomplete } from "./addressAutocomplete.js";
 
 let map, stationsLayer, routeLayer, markersLayer;
 const selectedLabels = new Set();
@@ -194,6 +195,9 @@ async function init() {
   } catch (err) {
     console.warn("Failed to load brand labels:", err);
   }
+
+  attachAutocomplete(document.querySelector('[name="origin"]'));
+  attachAutocomplete(document.querySelector('[name="destination"]'));
 
   const levelInput = document.querySelector('input[name="fuel_level_pct"]');
   const levelLabel = document.getElementById("fuel-level-val");

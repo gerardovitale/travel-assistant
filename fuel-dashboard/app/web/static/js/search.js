@@ -3,6 +3,7 @@ import { populateFuelSelect, getLabels } from "./fuel.js";
 import { createMap, drawStationsTracked, drawSearchPin, drawZipBoundary, drawRoute, priceColor } from "./maps.js";
 import { formatPrice, formatKm, formatEur, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels } from "./brands.js";
+import { attachAutocomplete } from "./addressAutocomplete.js";
 
 const APP_CONFIG = window.__APP_CONFIG__ || {};
 
@@ -314,6 +315,7 @@ async function init() {
     console.warn("Failed to load brand labels:", err);
   }
 
+  attachAutocomplete(document.querySelector('[name="location"]'));
   initGeolocation();
   attachHoverHandlers();
 
