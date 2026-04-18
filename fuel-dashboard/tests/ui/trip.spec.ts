@@ -62,7 +62,9 @@ test("trip planner errors reset the previous plan", async ({ page }) => {
   const tripPage = new TripPage(page);
   await tripPage.goto();
 
+  const firstPlanDone = page.waitForResponse((r) => r.url().includes("/api/v1/trip/plan"));
   await tripPage.plan("Madrid", "Sevilla");
+  await firstPlanDone;
   await expect(page.getByTestId("trip-stops").getByTestId("trip-stop-card")).toHaveCount(2);
 
   await setFixture(page, "trip_error");

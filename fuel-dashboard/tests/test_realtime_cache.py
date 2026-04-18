@@ -29,6 +29,35 @@ def _reset_cache_state():
     cache_module._last_realtime_refresh = None
 
 
+@patch("data.cache.replace_latest_stations")
+@patch("data.cache.fetch_realtime_stations")
+def test_realtime_refresh_loop_filters_non_public_stations(mock_fetch, mock_replace):
+    import data.cache as cache_module
+
+    df = pd.DataFrame(
+        {
+            "label": ["public", "restricted"],
+            "sale_type": ["p", "r"],
+            "diesel_a_price": [1.45, 1.50],
+        }
+    )
+    mock_fetch.return_value = df
+    mock_replace.return_value = 1
+
+    def fake_sleep(seconds):
+        raise StopIteration("break loop")
+
+    with patch.object(cache_module.time, "sleep", side_effect=fake_sleep):
+        try:
+            cache_module._realtime_refresh_loop()
+        except StopIteration:
+            pass
+
+    called_df = mock_replace.call_args[0][0]
+    assert len(called_df) == 1
+    assert called_df.iloc[0]["label"] == "public"
+
+
 @patch("data.cache.replace_latest_stations", return_value=5000)
 @patch("data.cache.fetch_realtime_stations")
 def test_realtime_refresh_loop_loads_data(mock_fetch, mock_replace):

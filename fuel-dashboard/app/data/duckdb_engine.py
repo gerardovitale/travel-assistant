@@ -33,6 +33,13 @@ def _label_filter_clause(labels: Optional[List[str]], next_param_idx: int) -> tu
     return f"AND label = ANY(${next_param_idx}::VARCHAR[])", [labels]
 
 
+def filter_public_stations(df: pd.DataFrame) -> pd.DataFrame:
+    if "sale_type" not in df.columns:
+        logger.warning("sale_type column missing from parquet; skipping public-only filter")
+        return df
+    return df[df["sale_type"] == "p"]
+
+
 _connection: Optional[duckdb.DuckDBPyConnection] = None
 _lock = threading.Lock()
 _zip_code_trend_ready = threading.Event()
@@ -103,6 +110,7 @@ def refresh_latest_snapshot() -> None:
         return
     logger.info(f"Refreshing latest snapshot from {latest_file}")
     df = download_parquet_as_df(latest_file)
+    df = filter_public_stations(df)
     count = replace_latest_stations(df)
     logger.info(f"Loaded {count} stations into latest_stations table")
 

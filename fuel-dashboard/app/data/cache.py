@@ -5,6 +5,7 @@ from typing import Optional
 
 from config import settings
 
+from data.duckdb_engine import filter_public_stations
 from data.duckdb_engine import refresh_latest_snapshot
 from data.duckdb_engine import refresh_zip_code_trend_snapshot
 from data.duckdb_engine import replace_latest_stations
@@ -93,6 +94,7 @@ def _realtime_refresh_loop():
         try:
             df = fetch_realtime_stations(curl_timeout=settings.realtime_curl_timeout)
             if df is not None and len(df) > 0:
+                df = filter_public_stations(df)
                 count = replace_latest_stations(df)
                 _last_realtime_refresh = time.time()
                 _data_ready.set()

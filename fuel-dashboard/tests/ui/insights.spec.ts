@@ -99,22 +99,17 @@ test("forecast ignores partial zip codes and falls back to province", async ({ p
 test("forecast sends the selected period as the forecast window", async ({ page }) => {
   await setFixture(page, "insights_all");
   const insightsPage = new InsightsPage(page);
-  const forecastRequests: string[] = [];
-
-  page.on("request", (request) => {
-    if (request.url().includes("/api/v1/historical/forecast")) {
-      forecastRequests.push(request.url());
-    }
-  });
 
   await insightsPage.goto();
   await insightsPage.trendsProvinceSelect.selectOption("madrid");
-  const responsePromise = page.waitForResponse((r) => r.url().includes("/api/v1/historical/forecast"));
+  // Wait for the province-triggered forecast to settle before measuring the period-triggered one
+  await page.waitForResponse((r) => r.url().includes("/api/v1/historical/forecast"));
+
+  const responsePromise = page.waitForResponse(
+    (r) => r.url().includes("/api/v1/historical/forecast") && r.url().includes("window_days=365"),
+  );
   await insightsPage.trendsPeriodSelect.selectOption("year");
   await responsePromise;
-
-  const lastRequest = forecastRequests.at(-1) || "";
-  expect(lastRequest).toContain("window_days=365");
 });
 
 test("forecast clamps short trend periods to the minimum forecast window of 90 days", async ({ page }) => {

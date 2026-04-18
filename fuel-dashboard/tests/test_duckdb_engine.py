@@ -6,6 +6,7 @@ import pytest
 
 import data.duckdb_engine as duckdb_engine_module
 from data.duckdb_engine import _validate_fuel_column
+from data.duckdb_engine import filter_public_stations
 from data.duckdb_engine import get_distinct_labels
 from data.duckdb_engine import get_latest_data_timestamp
 from data.duckdb_engine import query_cached_zip_code_price_trend
@@ -18,6 +19,7 @@ from data.duckdb_engine import query_nearest_stations_group
 from data.duckdb_engine import query_stations_along_corridor
 from data.duckdb_engine import query_stations_within_radius
 from data.duckdb_engine import query_stations_within_radius_group
+from data.duckdb_engine import refresh_latest_snapshot
 from data.duckdb_engine import refresh_zip_code_trend_snapshot
 
 
@@ -579,3 +581,39 @@ def test_query_national_group_price_trend_with_province_filters_rows(mock_conn):
 
     assert len(result) == 2
     assert set(result.columns) == {"date", "fuel_type", "avg_price", "min_price", "max_price"}
+
+
+@patch("data.duckdb_engine.download_parquet_as_df")
+@patch("data.duckdb_engine.get_latest_parquet_file")
+@patch("data.duckdb_engine.get_connection")
+def test_refresh_latest_snapshot_excludes_non_public_sale_type(mock_conn, mock_latest_file, mock_download):
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    mock_latest_file.return_value = "some_file.parquet"
+    mock_download.return_value = pd.DataFrame(
+        {
+            "label": ["public_station", "restricted_station"],
+            "sale_type": ["p", "r"],
+            "diesel_a_price": [1.45, 1.50],
+        }
+    )
+
+    refresh_latest_snapshot()
+
+    result = conn.execute("SELECT * FROM latest_stations").df()
+    assert len(result) == 1
+    assert result.iloc[0]["label"] == "public_station"
+    assert result.iloc[0]["sale_type"] == "p"
+
+
+def testfilter_public_stations_excludes_restricted():
+    df = pd.DataFrame({"label": ["a", "b", "c"], "sale_type": ["p", "r", "p"]})
+    result = filter_public_stations(df)
+    assert list(result["label"]) == ["a", "c"]
+
+
+def testfilter_public_stations_missing_column_returns_df_unchanged(caplog):
+    df = pd.DataFrame({"label": ["a", "b"], "diesel_a_price": [1.45, 1.50]})
+    result = filter_public_stations(df)
+    assert len(result) == 2
+    assert "sale_type column missing" in caplog.text
