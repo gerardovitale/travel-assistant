@@ -2,6 +2,8 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from services.geocoding import _fetch_address_suggestions
+from services.geocoding import _short_display_name
 from services.geocoding import geocode_address
 from services.geocoding import get_address_suggestions
 from services.geocoding import parse_coordinates
@@ -72,30 +74,92 @@ def test_geocode_address_with_coordinates():
     assert result == (40.416775, -3.70379)
 
 
-_PHOTON_RESPONSE = {
-    "features": [
-        {
-            "geometry": {"type": "Point", "coordinates": [-3.7038, 40.4168]},
-            "properties": {"name": "Madrid", "city": "Madrid", "state": "Comunidad de Madrid", "countrycode": "ES"},
-        },
-        {
-            "geometry": {"type": "Point", "coordinates": [-0.3763, 39.4699]},
-            "properties": {
-                "name": "Valencia",
-                "city": "Valencia",
-                "state": "Comunitat Valenciana",
-                "countrycode": "ES",
+@pytest.mark.parametrize(
+    "result, expected",
+    [
+        # road + house_number + city
+        (
+            {
+                "address": {
+                    "road": "Calle Alcalá",
+                    "house_number": "1",
+                    "city": "Madrid",
+                    "state": "Comunidad de Madrid",
+                }
             },
+            "Calle Alcalá 1, Madrid",
+        ),
+        # road only (no city)
+        (
+            {"address": {"road": "Calle Mayor", "state": "Comunidad de Madrid"}},
+            "Calle Mayor",
+        ),
+        # city + state
+        (
+            {"address": {"city": "Madrid", "state": "Comunidad de Madrid"}},
+            "Madrid, Comunidad de Madrid",
+        ),
+        # city == state guard
+        (
+            {"address": {"city": "Murcia", "state": "Murcia"}},
+            "Murcia",
+        ),
+        # no address fields — fallback to display_name
+        (
+            {"address": {}, "display_name": "Some Place, España"},
+            "Some Place, España",
+        ),
+        # pedestrian road variant
+        (
+            {"address": {"pedestrian": "Paseo del Prado", "city": "Madrid", "state": "Comunidad de Madrid"}},
+            "Paseo del Prado, Madrid",
+        ),
+    ],
+)
+def test_short_display_name(result, expected):
+    assert _short_display_name(result) == expected
+
+
+def test_short_display_name_empty_filtered_out():
+    result = {"address": {}}
+    assert _short_display_name(result) == ""
+
+
+_NOMINATIM_RESPONSE = [
+    {
+        "display_name": "Madrid, Comunidad de Madrid, España",
+        "lat": "40.4168",
+        "lon": "-3.7038",
+        "address": {"city": "Madrid", "state": "Comunidad de Madrid", "country": "España"},
+    },
+    {
+        "display_name": "Valencia, Comunitat Valenciana, España",
+        "lat": "39.4699",
+        "lon": "-0.3763",
+        "address": {"city": "Valencia", "state": "Comunitat Valenciana", "country": "España"},
+    },
+]
+
+_NOMINATIM_STREET_RESPONSE = [
+    {
+        "display_name": "Calle Puente la Reina, Las Tablas, ..., Madrid, Comunidad de Madrid, 28050, España",
+        "lat": "40.5000",
+        "lon": "-3.6000",
+        "address": {
+            "road": "Calle Puente la Reina",
+            "house_number": "27",
+            "city": "Madrid",
+            "state": "Comunidad de Madrid",
         },
-    ]
-}
+    }
+]
 
 
 @patch("services.geocoding.httpx.get")
 def test_get_address_suggestions_success(mock_get):
-    get_address_suggestions.cache_clear()
+    _fetch_address_suggestions.cache_clear()
     mock_resp = MagicMock()
-    mock_resp.json.return_value = _PHOTON_RESPONSE
+    mock_resp.json.return_value = _NOMINATIM_RESPONSE
     mock_resp.raise_for_status.return_value = None
     mock_get.return_value = mock_resp
 
@@ -107,27 +171,33 @@ def test_get_address_suggestions_success(mock_get):
 
 
 @patch("services.geocoding.httpx.get")
-def test_get_address_suggestions_filters_non_spain(mock_get):
-    get_address_suggestions.cache_clear()
+def test_get_address_suggestions_street_with_house_number(mock_get):
+    _fetch_address_suggestions.cache_clear()
     mock_resp = MagicMock()
-    mock_resp.json.return_value = {
-        "features": [
-            {
-                "geometry": {"type": "Point", "coordinates": [2.3522, 48.8566]},
-                "properties": {"name": "Paris", "city": "Paris", "state": "Île-de-France", "countrycode": "FR"},
-            }
-        ]
-    }
+    mock_resp.json.return_value = _NOMINATIM_STREET_RESPONSE
     mock_resp.raise_for_status.return_value = None
     mock_get.return_value = mock_resp
 
-    results = get_address_suggestions("Par")
+    results = get_address_suggestions("calle puente la reina 27")
+    assert len(results) == 1
+    assert results[0]["display_name"] == "Calle Puente la Reina 27, Madrid"
+
+
+@patch("services.geocoding.httpx.get")
+def test_get_address_suggestions_empty_response(mock_get):
+    _fetch_address_suggestions.cache_clear()
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = []
+    mock_resp.raise_for_status.return_value = None
+    mock_get.return_value = mock_resp
+
+    results = get_address_suggestions("xyz")
     assert results == []
 
 
 @patch("services.geocoding.httpx.get")
 def test_get_address_suggestions_network_error(mock_get):
-    get_address_suggestions.cache_clear()
+    _fetch_address_suggestions.cache_clear()
     mock_get.side_effect = Exception("network error")
 
     results = get_address_suggestions("Madrid")
@@ -135,12 +205,24 @@ def test_get_address_suggestions_network_error(mock_get):
 
 
 @patch("services.geocoding.httpx.get")
-def test_get_address_suggestions_empty_response(mock_get):
-    get_address_suggestions.cache_clear()
+def test_get_address_suggestions_error_not_cached(mock_get):
+    _fetch_address_suggestions.cache_clear()
+    mock_get.side_effect = Exception("transient error")
+    get_address_suggestions("Valencia")
+
     mock_resp = MagicMock()
-    mock_resp.json.return_value = {"features": []}
+    mock_resp.json.return_value = [
+        {
+            "display_name": "Valencia, España",
+            "lat": "39.4699",
+            "lon": "-0.3763",
+            "address": {"city": "Valencia", "state": "Comunitat Valenciana"},
+        }
+    ]
     mock_resp.raise_for_status.return_value = None
+    mock_get.side_effect = None
     mock_get.return_value = mock_resp
 
-    results = get_address_suggestions("xyz")
-    assert results == []
+    results = get_address_suggestions("Valencia")
+    assert len(results) == 1
+    assert results[0]["display_name"] == "Valencia, Comunitat Valenciana"

@@ -73,35 +73,12 @@ export function attachAutocomplete(input) {
     });
   }
 
-  function buildDisplayName(props) {
-    const parts = [props.name, props.street, props.city, props.state];
-    const seen = new Set();
-    const unique = [];
-    for (const p of parts) {
-      if (p && !seen.has(p)) { seen.add(p); unique.push(p); }
-    }
-    return unique.join(", ");
-  }
-
   async function fetchSuggestions(query) {
     try {
-      const url = new URL("https://photon.komoot.io/api/");
-      url.searchParams.set("q", query);
-      url.searchParams.set("limit", "5");
-      url.searchParams.set("bbox", "-9.3,35.9,4.3,43.8");
-      const resp = await fetch(url);
+      const resp = await fetch(`/api/v1/address-suggestions?q=${encodeURIComponent(query)}`);
       if (!resp.ok) return [];
       const data = await resp.json();
-      const suggestions = [];
-      for (const f of (data.features || [])) {
-        const props = f.properties || {};
-        if (props.countrycode !== "ES") continue;
-        const [lon, lat] = f.geometry?.coordinates || [];
-        if (lat == null) continue;
-        const display_name = buildDisplayName(props);
-        if (display_name) suggestions.push({ display_name, lat, lon });
-      }
-      return suggestions;
+      return data.suggestions || [];
     } catch {
       return [];
     }

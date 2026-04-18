@@ -36,48 +36,54 @@ def parse_coordinates(text: str) -> Optional[Tuple[float, float]]:
     return None
 
 
-_PHOTON_URL = "https://photon.komoot.io/api/"
-_PHOTON_BBOX = "-9.3,35.9,4.3,43.8"
+_NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 
 
-def _build_display_name(props: Dict[str, Any]) -> str:
-    parts = [props.get("name"), props.get("street"), props.get("city"), props.get("state")]
-    seen: set = set()
-    unique: List[str] = []
-    for p in parts:
-        if p and p not in seen:
-            seen.add(p)
-            unique.append(p)
-    return ", ".join(unique)
+def _short_display_name(result: Dict[str, Any]) -> str:
+    addr = result.get("address", {})
+    road = addr.get("road") or addr.get("pedestrian") or addr.get("footway")
+    city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality")
+    state = addr.get("state")
+    if road:
+        house = addr.get("house_number")
+        primary = f"{road} {house}" if house else road
+        return f"{primary}, {city}" if city else primary
+    if city:
+        return f"{city}, {state}" if state and state != city else city
+    return result.get("display_name", "")
 
 
 @functools.lru_cache(maxsize=512)
+def _fetch_address_suggestions(query: str) -> List[Dict[str, Any]]:
+    resp = httpx.get(
+        _NOMINATIM_SEARCH_URL,
+        params={
+            "q": query,
+            "countrycodes": "es",
+            "format": "jsonv2",
+            "addressdetails": 1,
+            "limit": 5,
+            "accept-language": "es",
+        },
+        headers={"User-Agent": settings.geocoding_user_agent},
+        timeout=5.0,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return [
+        {"display_name": name, "lat": float(r["lat"]), "lon": float(r["lon"])}
+        for r in data
+        if (name := _short_display_name(r))
+    ]
+
+
 def get_address_suggestions(query: str) -> List[Dict[str, Any]]:
-    """Return up to 5 address suggestions for *query* via the Photon API."""
+    """Return up to 5 address suggestions for *query* via Nominatim search."""
     try:
-        resp = httpx.get(
-            _PHOTON_URL,
-            params={"q": query, "limit": 5, "bbox": _PHOTON_BBOX},
-            timeout=5.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        return _fetch_address_suggestions(query)
     except Exception:
-        logger.warning("Photon autocomplete failed for query: %s", query)
+        logger.warning("Nominatim autocomplete failed for query: %s", query, exc_info=True)
         return []
-    suggestions: List[Dict[str, Any]] = []
-    for feature in data.get("features", []):
-        props = feature.get("properties", {})
-        if props.get("countrycode") != "ES":
-            continue
-        coords = feature.get("geometry", {}).get("coordinates", [])
-        if len(coords) < 2:
-            continue
-        display_name = _build_display_name(props)
-        if not display_name:
-            continue
-        suggestions.append({"display_name": display_name, "lat": coords[1], "lon": coords[0]})
-    return suggestions
 
 
 @functools.lru_cache(maxsize=256)
