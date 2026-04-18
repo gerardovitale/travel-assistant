@@ -18,7 +18,7 @@ test("trip planner renders KPIs, stops, and alternatives from the happy path fix
   const request = await requestPromise;
   expect(request.postDataJSON()).toMatchObject({
     destination: "Sevilla",
-    fuel_type: "diesel_a_price",
+    fuel_type: "gasoline_95_e5_price",
     origin: "Madrid",
   });
 

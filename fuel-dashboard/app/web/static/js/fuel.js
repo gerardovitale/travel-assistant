@@ -33,7 +33,7 @@ export async function getCatalog() {
   return _catalog;
 }
 
-export async function populateFuelSelect(selectEl, { defaultValue = "diesel_a_price" } = {}) {
+export async function populateFuelSelect(selectEl, { defaultValue = "gasoline_95_e5_price" } = {}) {
   const cat = await getCatalog();
   selectEl.innerHTML = "";
 
@@ -64,7 +64,7 @@ export async function populateFuelSelect(selectEl, { defaultValue = "diesel_a_pr
   if (defaultValue) selectEl.value = defaultValue;
 }
 
-export async function populateGroupSelect(selectEl, { defaultValue = "diesel" } = {}) {
+export async function populateGroupSelect(selectEl, { defaultValue = "gasoline_95" } = {}) {
   const cat = await getCatalog();
   selectEl.innerHTML = "";
   for (const group of Object.keys(cat.groups)) {

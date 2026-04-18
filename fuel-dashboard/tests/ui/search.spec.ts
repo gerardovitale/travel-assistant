@@ -18,7 +18,7 @@ test("best-option search renders KPIs, recommendation, and results", async ({ pa
   const request = await requestPromise;
   const url = new URL(request.url());
   expect(url.searchParams.get("address")).toBe("Madrid");
-  expect(url.searchParams.get("fuel_type")).toBe("diesel_a_price");
+  expect(url.searchParams.get("fuel_type")).toBe("gasoline_95_e5_price");
 
   await expect(page.getByTestId("search-kpis")).toBeVisible();
   await expect(page.getByTestId("search-recommendation")).toContainText("Plenoil Atocha");
