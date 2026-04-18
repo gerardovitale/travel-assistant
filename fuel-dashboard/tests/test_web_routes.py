@@ -400,6 +400,20 @@ def test_group_trends_endpoint(mock_service):
     assert data["series"]["diesel_a_price"][0]["avg_price"] == 1.45
 
 
+@patch("api.router.get_group_price_trends")
+def test_group_trends_endpoint_with_province(mock_service):
+    from api.schemas import TrendPoint
+
+    mock_service.return_value = {
+        "diesel_a_price": [TrendPoint(date="2026-04-01", avg_price=1.45, min_price=1.40, max_price=1.50)],
+    }
+    resp = _get_client().get("/api/v1/trends/group?fuel_group=diesel&period=month&province=madrid")
+    assert resp.status_code == 200
+    mock_service.assert_called_once()
+    _, kwargs = mock_service.call_args
+    assert kwargs.get("province") == "madrid"
+
+
 @patch("api.router.get_brand_price_trend")
 @patch("api.router.get_brand_ranking")
 def test_historical_brands_empty_ranking(mock_rank, mock_trend):

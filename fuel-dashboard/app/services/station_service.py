@@ -531,13 +531,15 @@ def get_postal_code_geojson(zip_codes: List[str]) -> dict:
     return load_postal_codes_for_zip_list(zip_codes)
 
 
-def get_price_trends(zip_code: Optional[str], fuel_type: FuelType, period: TrendPeriod) -> List[TrendPoint]:
+def get_price_trends(
+    zip_code: Optional[str], fuel_type: FuelType, period: TrendPeriod, province: Optional[str] = None
+) -> List[TrendPoint]:
     days_back = TREND_PERIOD_DAYS[period]
     started = time.perf_counter()
 
     if not zip_code:
         source = "national_aggregate"
-        df = query_national_price_trend(fuel_type.value, days_back)
+        df = query_national_price_trend(fuel_type.value, days_back, province=province)
     elif is_zip_code_trend_ready():
         source = "duckdb_trend_cache"
         _validate_zip_code(zip_code)
@@ -561,7 +563,7 @@ def get_price_trends(zip_code: Optional[str], fuel_type: FuelType, period: Trend
 
 
 def get_group_price_trends(
-    zip_code: Optional[str], fuel_group: FuelGroup, period: TrendPeriod
+    zip_code: Optional[str], fuel_group: FuelGroup, period: TrendPeriod, province: Optional[str] = None
 ) -> Dict[str, List[TrendPoint]]:
     days_back = TREND_PERIOD_DAYS[period]
     fuel_types = [ft.value for ft in FUEL_GROUP_MEMBERS[fuel_group]]
@@ -570,7 +572,7 @@ def get_group_price_trends(
 
     if not zip_code:
         source = "national_aggregate"
-        df = query_national_group_price_trend(fuel_types, days_back)
+        df = query_national_group_price_trend(fuel_types, days_back, province=province)
         for fuel_type, group_df in df.groupby("fuel_type"):
             result[str(fuel_type)] = _trend_points_from_df(group_df)
     elif is_zip_code_trend_ready():

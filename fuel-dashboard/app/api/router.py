@@ -219,10 +219,11 @@ def price_trends(
     zip_code: Optional[str] = Query(None, pattern=r"^\d{5}$", description="Zip code (omit for national average)"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     period: TrendPeriod = Query(TrendPeriod.month, description="Trend period"),
+    province: Optional[str] = Query(None, description="Province name (omit for national average)"),
 ):
     if settings.ui_test_mode:
         return ui_test.trend_response(zip_code, fuel_type, period)
-    trend = get_price_trends(zip_code, fuel_type, period)
+    trend = get_price_trends(zip_code, fuel_type, period, province=province)
     return TrendResponse(trend=trend, zip_code=zip_code, fuel_type=fuel_type.value, period=period.value)
 
 
@@ -233,10 +234,11 @@ def group_price_trends(
     zip_code: Optional[str] = Query(None, pattern=r"^\d{5}$", description="Zip code (omit for national average)"),
     fuel_group: FuelGroup = Query(...),
     period: TrendPeriod = Query(TrendPeriod.month),
+    province: Optional[str] = Query(None, description="Province name (omit for national average)"),
 ):
     if settings.ui_test_mode:
         return ui_test.group_trend_response(zip_code, fuel_group, period)
-    series = get_group_price_trends(zip_code, fuel_group, period)
+    series = get_group_price_trends(zip_code, fuel_group, period, province=province)
     return GroupTrendResponse(series=series, zip_code=zip_code, fuel_group=fuel_group.value, period=period.value)
 
 

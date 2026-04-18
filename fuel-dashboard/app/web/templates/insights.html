@@ -40,6 +40,10 @@
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <form id="trends-filter" data-testid="trends-filter" class="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
         <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Provincia</span>
+          <select name="province" data-testid="trends-province-select" class="w-full rounded-lg border-outline-variant"><option value="">Todas</option></select>
+        </label>
+        <label class="block">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Código postal</span>
           <input type="text" name="zip_code" data-testid="trends-zip-input" pattern="\d{5}" placeholder="p.ej. 28001" class="w-full rounded-lg border-outline-variant">
         </label>
@@ -56,10 +60,6 @@
             <option value="half_year">Semestre</option>
             <option value="year">Año</option>
           </select>
-        </label>
-        <label class="block">
-          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Provincia (pronóstico)</span>
-          <select name="province" data-testid="trends-province-select" class="w-full rounded-lg border-outline-variant"><option value="">Todas</option></select>
         </label>
       </form>
     </div>

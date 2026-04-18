@@ -515,3 +515,67 @@ def test_get_latest_data_timestamp_returns_none_when_table_missing(mock_conn):
 
     result = get_latest_data_timestamp()
     assert result is None
+
+
+# --- query_national_price_trend province filter tests ---
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_price_trend_with_province_filters_rows(mock_conn):
+    from data.duckdb_engine import query_national_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = _make_zip_trend_df()  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_national_price_trend("diesel_a_price", 90, province="madrid")
+
+    assert len(result) == 2
+    assert set(result.columns) == {"date", "avg_price", "min_price", "max_price"}
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_price_trend_without_province_returns_all(mock_conn):
+    from data.duckdb_engine import query_national_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = _make_zip_trend_df()  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_national_price_trend("diesel_a_price", 90)
+
+    assert len(result) == 3
+
+
+# --- query_national_group_price_trend province filter tests ---
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_group_price_trend_with_province_filters_rows(mock_conn):
+    from data.duckdb_engine import query_national_group_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = pd.DataFrame(  # noqa: F841
+        {
+            "date": pd.to_datetime(["2026-03-29", "2026-03-30", "2026-03-29", "2026-03-30"]).date,
+            "zip_code": ["28001", "28001", "08001", "08001"],
+            "province": ["madrid", "madrid", "barcelona", "barcelona"],
+            "fuel_type": ["diesel_a_price"] * 4,
+            "avg_price": [1.45, 1.47, 1.52, 1.54],
+            "min_price": [1.40, 1.42, 1.49, 1.51],
+            "max_price": [1.50, 1.52, 1.55, 1.57],
+            "station_count": [5, 4, 3, 3],
+        }
+    )
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_national_group_price_trend(["diesel_a_price"], 90, province="madrid")
+
+    assert len(result) == 2
+    assert set(result.columns) == {"date", "fuel_type", "avg_price", "min_price", "max_price"}

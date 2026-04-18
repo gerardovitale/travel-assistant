@@ -36,12 +36,14 @@ async function loadTrends() {
   const form = document.getElementById("trends-filter");
   const data = new FormData(form);
   const zip = (data.get("zip_code") || "").trim();
+  const province = (data.get("province") || "").trim() || null;
   const fuelGroup = data.get("fuel_group");
   const cat = await getCatalog();
   const fuelType = cat.primary[fuelGroup];
   if (!fuelType) return;
   const params = { fuel_type: fuelType, period: data.get("period") };
   if (zip) params.zip_code = zip;
+  else if (province) params.province = province;
   const kpisEl = document.getElementById("trend-kpis");
   const chartEl = document.getElementById("trend-chart");
   chartEl.innerHTML = emptyMsg("Cargando…");
@@ -68,8 +70,10 @@ async function loadGroupTrends() {
   const form = document.getElementById("trends-filter");
   const data = new FormData(form);
   const zip = (data.get("zip_code") || "").trim();
+  const province = (data.get("province") || "").trim() || null;
   const params = { fuel_group: data.get("fuel_group"), period: data.get("period") };
   if (zip) params.zip_code = zip;
+  else if (province) params.province = province;
   const el = document.getElementById("group-trend-chart");
   el.innerHTML = emptyMsg("Cargando…");
   try {
@@ -561,7 +565,7 @@ async function initTrends() {
   document.querySelector('#trends-filter select[name="fuel_group"]').addEventListener("change", reloadAll);
   document.querySelector('#trends-filter select[name="period"]').addEventListener("change", reloadAll);
   document.querySelector('#trends-filter input[name="zip_code"]').addEventListener("input", dAll);
-  provSel.addEventListener("change", loadForecast);
+  provSel.addEventListener("change", reloadAll);
 
   loadTrends();
   loadGroupTrends();

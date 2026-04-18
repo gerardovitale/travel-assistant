@@ -243,6 +243,19 @@ def test_price_trends_endpoint(mock_service):
     assert len(data["trend"]) == 1
 
 
+@patch("api.router.get_price_trends")
+def test_price_trends_endpoint_with_province(mock_service):
+    from api.schemas import TrendPoint
+
+    mock_service.return_value = [TrendPoint(date="2025-01-01", avg_price=1.45, min_price=1.40, max_price=1.50)]
+    client = _get_client()
+    response = client.get("/api/v1/trends/price?fuel_type=diesel_a_price&period=week&province=madrid")
+    assert response.status_code == 200
+    mock_service.assert_called_once()
+    _, kwargs = mock_service.call_args
+    assert kwargs.get("province") == "madrid"
+
+
 @patch("api.router.get_historical_forecast")
 def test_historical_forecast_endpoint(mock_service):
     mock_service.return_value = HistoricalForecastResponse(

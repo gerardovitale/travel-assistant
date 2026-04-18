@@ -452,11 +452,13 @@ def query_cached_zip_code_price_trend(zip_code: str, fuel_type: str, days_back: 
     return result
 
 
-def query_national_price_trend(fuel_type: str, days_back: int) -> pd.DataFrame:
+def query_national_price_trend(fuel_type: str, days_back: int, province: Optional[str] = None) -> pd.DataFrame:
     """Query national daily price trend by aggregating all zip codes in the trend cache."""
     fuel_type = _validate_fuel_column(fuel_type)
     if not _zip_code_trend_ready.is_set():
         return pd.DataFrame(columns=["date", "avg_price", "min_price", "max_price"])
+    province_clause = "AND province = $3" if province else ""
+    params = [fuel_type, days_back] + ([province] if province else [])
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -468,18 +470,23 @@ def query_national_price_trend(fuel_type: str, days_back: int) -> pd.DataFrame:
             FROM {ZIP_CODE_TREND_TABLE}
             WHERE fuel_type = $1
                 AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                {province_clause}
             GROUP BY date
             ORDER BY date ASC
             """,
-            [fuel_type, days_back],
+            params,
         ).fetchdf()
 
 
-def query_national_group_price_trend(fuel_types: List[str], days_back: int) -> pd.DataFrame:
+def query_national_group_price_trend(
+    fuel_types: List[str], days_back: int, province: Optional[str] = None
+) -> pd.DataFrame:
     """Query national daily price trend for multiple fuel types from the trend cache."""
     _validate_fuel_columns(fuel_types)
     if not _zip_code_trend_ready.is_set():
         return pd.DataFrame(columns=["date", "fuel_type", "avg_price", "min_price", "max_price"])
+    province_clause = "AND province = $3" if province else ""
+    params = [fuel_types, days_back] + ([province] if province else [])
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -492,10 +499,11 @@ def query_national_group_price_trend(fuel_types: List[str], days_back: int) -> p
             FROM {ZIP_CODE_TREND_TABLE}
             WHERE fuel_type = ANY($1)
                 AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                {province_clause}
             GROUP BY date, fuel_type
             ORDER BY fuel_type, date ASC
             """,
-            [fuel_types, days_back],
+            params,
         ).fetchdf()
 
 

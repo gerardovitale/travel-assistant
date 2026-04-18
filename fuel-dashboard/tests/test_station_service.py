@@ -223,6 +223,24 @@ def test_get_price_trends(mock_ready, mock_query):
     mock_query.assert_called_once_with("28001", FuelType.diesel_a_price.value, 7)
 
 
+@patch("services.station_service.query_cached_zip_code_price_trend")
+@patch("services.station_service.is_zip_code_trend_ready")
+def test_get_price_trends_zip_takes_precedence_over_province(mock_ready, mock_query):
+    from services.station_service import get_price_trends
+
+    mock_ready.return_value = True
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01"],
+            "avg_price": [1.45],
+            "min_price": [1.40],
+            "max_price": [1.50],
+        }
+    )
+    get_price_trends("28001", FuelType.diesel_a_price, TrendPeriod.week, province="madrid")
+    mock_query.assert_called_once_with("28001", FuelType.diesel_a_price.value, 7)
+
+
 @patch("services.station_service.query_price_trends")
 @patch("services.station_service.list_parquet_files")
 @patch("services.station_service.is_zip_code_trend_ready")
@@ -261,7 +279,7 @@ def test_get_price_trends_national(mock_query):
     results = get_price_trends(None, FuelType.diesel_a_price, TrendPeriod.week)
     assert len(results) == 2
     assert results[0].date == "2025-01-01"
-    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7)
+    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7, province=None)
 
 
 @patch("services.station_service.load_postal_code_boundary")
@@ -325,6 +343,25 @@ def test_get_group_price_trends(mock_ready, mock_query):
     assert len(result["diesel_a_price"]) == 2
     assert result["diesel_a_price"][0].date == "2025-01-01"
     assert result["diesel_a_price"][0].avg_price == 1.45
+    mock_query.assert_called_once_with("28001", ["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 7)
+
+
+@patch("services.station_service.query_cached_group_price_trend")
+@patch("services.station_service.is_zip_code_trend_ready")
+def test_get_group_price_trends_zip_takes_precedence_over_province(mock_ready, mock_query):
+    from services.station_service import get_group_price_trends
+
+    mock_ready.return_value = True
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01"],
+            "fuel_type": ["diesel_a_price"],
+            "avg_price": [1.45],
+            "min_price": [1.40],
+            "max_price": [1.50],
+        }
+    )
+    get_group_price_trends("28001", FuelGroup.diesel, TrendPeriod.week, province="madrid")
     mock_query.assert_called_once_with("28001", ["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 7)
 
 
@@ -400,7 +437,44 @@ def test_get_group_price_trends_national(mock_query):
     assert "diesel_premium_price" in result
     assert len(result["diesel_a_price"]) == 2
     assert result["diesel_a_price"][0].avg_price == 1.45
-    mock_query.assert_called_once_with(["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 7)
+    mock_query.assert_called_once_with(["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 7, province=None)
+
+
+@patch("services.station_service.query_national_price_trend")
+def test_get_price_trends_with_province(mock_query):
+    from services.station_service import get_price_trends
+
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01", "2025-01-02"],
+            "avg_price": [1.50, 1.52],
+            "min_price": [1.40, 1.42],
+            "max_price": [1.60, 1.62],
+        }
+    )
+    results = get_price_trends(None, FuelType.diesel_a_price, TrendPeriod.week, province="madrid")
+    assert len(results) == 2
+    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7, province="madrid")
+
+
+@patch("services.station_service.query_national_group_price_trend")
+def test_get_group_price_trends_with_province(mock_query):
+    from services.station_service import get_group_price_trends
+
+    mock_query.return_value = pd.DataFrame(
+        {
+            "date": ["2025-01-01", "2025-01-02"],
+            "fuel_type": ["diesel_a_price", "diesel_a_price"],
+            "avg_price": [1.45, 1.47],
+            "min_price": [1.40, 1.42],
+            "max_price": [1.50, 1.52],
+        }
+    )
+    result = get_group_price_trends(None, FuelGroup.diesel, TrendPeriod.week, province="madrid")
+    assert "diesel_a_price" in result
+    mock_query.assert_called_once_with(
+        ["diesel_a_price", "diesel_b_price", "diesel_premium_price"], 7, province="madrid"
+    )
 
 
 # --- Group search service tests ---
