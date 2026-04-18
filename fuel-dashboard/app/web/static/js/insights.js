@@ -20,8 +20,12 @@ function percent(value) {
   return `${((value || 0) * 100).toFixed(0)} %`;
 }
 
+// Forecast API requires ge=60; Markov chain needs ~90 days for reliable transitions.
+const FORECAST_MIN_WINDOW_DAYS = 90;
 const HISTORICAL_PERIOD_DAYS = {
-  quarter: 90,
+  week: FORECAST_MIN_WINDOW_DAYS,
+  month: FORECAST_MIN_WINDOW_DAYS,
+  quarter: FORECAST_MIN_WINDOW_DAYS,
   half_year: 180,
   year: 365,
 };
@@ -334,34 +338,9 @@ async function loadMunicipalityZipOverlay(province, municipality) {
 
 // ---------------------------- HISTORICAL -------------------------------------
 
-function renderForecastMatrix(matrix) {
-  const el = document.getElementById("forecast-matrix");
-  const rows = Object.entries(matrix || {});
-  if (!rows.length) {
-    el.innerHTML = emptyMsg("Sin datos");
-    return;
-  }
-  el.innerHTML = `
-    <table class="min-w-full text-sm">
-      <thead>
-        <tr class="text-left text-outline">
-          <th class="py-2 pr-4">Estado</th>
-          <th class="py-2 pr-4">Cheap</th>
-          <th class="py-2 pr-4">Normal</th>
-          <th class="py-2">Expensive</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(([regime, probs]) => `
-          <tr class="border-t border-outline-variant/20">
-            <td class="py-2 pr-4 font-medium">${escapeHtml(regime)}</td>
-            <td class="py-2 pr-4">${percent(probs.cheap)}</td>
-            <td class="py-2 pr-4">${percent(probs.normal)}</td>
-            <td class="py-2">${percent(probs.expensive)}</td>
-          </tr>`).join("")}
-      </tbody>
-    </table>`;
-}
+const REGIME_LABELS = { cheap: "Barato", normal: "Normal", expensive: "Caro" };
+const REGIME_COLORS = { cheap: "bg-tertiary-container", normal: "bg-secondary-container", expensive: "bg-error-container" };
+const GEOGRAPHY_LABELS = { zip_code: "Código postal", province: "Provincia" };
 
 function renderForecastProbabilities(probabilities) {
   const el = document.getElementById("forecast-probabilities");
@@ -370,31 +349,36 @@ function renderForecastProbabilities(probabilities) {
     el.innerHTML = emptyMsg("Sin datos");
     return;
   }
-  el.innerHTML = rows.map(([regime, value]) => `
-    <div>
-      <div class="flex items-center justify-between text-sm mb-1">
-        <span class="font-medium">${escapeHtml(regime)}</span>
-        <span class="text-outline">${percent(value)}</span>
-      </div>
-      <div class="h-2 rounded-full bg-surface-container-high overflow-hidden">
-        <div class="h-full rounded-full bg-primary-container" style="width:${Math.max(0, Math.min(100, (value || 0) * 100))}%"></div>
-      </div>
-    </div>`).join("");
+  el.innerHTML = rows.map(([regime, value]) => {
+    const pct = Math.max(0, Math.min(100, (value || 0) * 100));
+    const label = REGIME_LABELS[regime] || escapeHtml(regime);
+    const barColor = REGIME_COLORS[regime] || "bg-primary-container";
+    return `
+      <div>
+        <div class="flex items-baseline justify-between mb-1.5">
+          <span class="text-sm font-semibold">${label}</span>
+          <span class="font-headline font-bold text-2xl">${pct.toFixed(0)} %</span>
+        </div>
+        <div class="h-3 rounded-full bg-surface-container-high overflow-hidden">
+          <div class="h-full rounded-full ${barColor}" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+  }).join("");
 }
 
 function renderForecast(resp) {
   const bannerEl = document.getElementById("forecast-banner");
   const kpisEl = document.getElementById("forecast-kpis");
   const scopeEl = document.getElementById("forecast-scope");
-  scopeEl.textContent = `${resp.geography_type}: ${resp.geography_value}`;
+  const geoLabel = GEOGRAPHY_LABELS[resp.geography_type] || resp.geography_type;
+  scopeEl.textContent = `${geoLabel}: ${resp.geography_value}`;
 
   if (resp.insufficient_data) {
     bannerEl.className = "rounded-xl px-4 py-3 text-sm mb-4 bg-surface-container text-on-surface";
-    bannerEl.textContent = resp.explanation || resp.recommendation || "Sin suficiente historico";
+    bannerEl.textContent = resp.explanation || resp.recommendation || "Sin suficiente histórico";
     bannerEl.classList.remove("hidden");
     kpisEl.innerHTML = "";
     renderForecastProbabilities({});
-    renderForecastMatrix({});
     return;
   }
 
@@ -402,25 +386,33 @@ function renderForecast(resp) {
   bannerEl.innerHTML = `<span class="font-bold">${escapeHtml(resp.recommendation)}</span> · ${escapeHtml(resp.explanation || "")}`;
   bannerEl.classList.remove("hidden");
   kpisEl.innerHTML = [
-    kpi("Regimen", escapeHtml(resp.current_regime || "—"), "local_offer"),
+    kpi("Régimen", escapeHtml(REGIME_LABELS[resp.current_regime] || resp.current_regime || "—"), "local_offer"),
     kpi("Precio actual", resp.current_avg_price != null ? formatPrice(resp.current_avg_price) : "—", "euro"),
-    kpi("Mas barato en 3d", resp.cheaper_within_3d != null ? percent(resp.cheaper_within_3d) : "—", "schedule"),
+    kpi("Más barato en 3d", resp.cheaper_within_3d != null ? percent(resp.cheaper_within_3d) : "—", "schedule"),
     kpi("Confianza", percent(resp.confidence), "analytics"),
   ].join("");
   renderForecastProbabilities(resp.next_day_probabilities);
-  renderForecastMatrix(resp.transition_matrix);
 }
 
 function normalizeForecastZip(zip) {
   return /^\d{5}$/.test(zip || "") ? zip : null;
 }
 
-async function loadForecast(fuel, zip, province, period) {
+async function loadForecast() {
+  const form = document.getElementById("trends-filter");
+  const data = new FormData(form);
+  const zip = (data.get("zip_code") || "").trim();
+  const fuelGroup = data.get("fuel_group");
+  const period = data.get("period");
+  const province = (data.get("province") || "").trim() || null;
+  const cat = await getCatalog();
+  const fuelType = cat.primary[fuelGroup];
+  if (!fuelType) return;
+
   const scopeEl = document.getElementById("forecast-scope");
   const bannerEl = document.getElementById("forecast-banner");
   const kpisEl = document.getElementById("forecast-kpis");
   const probsEl = document.getElementById("forecast-probabilities");
-  const matrixEl = document.getElementById("forecast-matrix");
   const normalizedZip = normalizeForecastZip(zip);
   const windowDays = HISTORICAL_PERIOD_DAYS[period] || HISTORICAL_PERIOD_DAYS.half_year;
 
@@ -428,21 +420,19 @@ async function loadForecast(fuel, zip, province, period) {
   bannerEl.className = "rounded-xl px-4 py-3 text-sm mb-4 bg-surface-container text-on-surface";
   kpisEl.innerHTML = "";
   probsEl.innerHTML = emptyMsg("Cargando…");
-  matrixEl.innerHTML = emptyMsg("Cargando…");
 
   if (!normalizedZip && !province) {
-    bannerEl.textContent = "Introduce un codigo postal o selecciona una provincia para activar el pronostico.";
+    bannerEl.textContent = "Introduce un código postal o selecciona una provincia para activar el pronóstico.";
     bannerEl.classList.remove("hidden");
-    probsEl.innerHTML = emptyMsg("Falta contexto geografico");
-    matrixEl.innerHTML = emptyMsg("Falta contexto geografico");
+    probsEl.innerHTML = emptyMsg("Falta contexto geográfico");
     return;
   }
 
   try {
     const resp = await api(`/historical/forecast?${qs({
-      fuel_type: fuel,
+      fuel_type: fuelType,
       zip_code: normalizedZip,
-      province: province || null,
+      province,
       window_days: windowDays,
     })}`);
     renderForecast(resp);
@@ -450,7 +440,6 @@ async function loadForecast(fuel, zip, province, period) {
     bannerEl.textContent = err.message;
     bannerEl.classList.remove("hidden");
     probsEl.innerHTML = emptyMsg(err.message);
-    matrixEl.innerHTML = emptyMsg(err.message);
   }
 }
 
@@ -458,9 +447,6 @@ async function loadHistorical() {
   const form = document.getElementById("historical-form");
   const data = new FormData(form);
   const fuel = data.get("fuel_type"), period = data.get("period"), province = data.get("province");
-  const zip = (data.get("zip_code") || "").trim();
-
-  await loadForecast(fuel, zip, province, period);
 
   const provEl = document.getElementById("hist-provinces");
   provEl.innerHTML = emptyMsg("Cargando…");
@@ -559,17 +545,27 @@ function switchTab(name) {
 
 async function initTrends() {
   await populateGroupSelect(document.querySelector('#trends-filter select[name="fuel_group"]'));
+  const provSel = document.querySelector('#trends-filter select[name="province"]');
+  try {
+    const provs = await getProvinces();
+    for (const [raw, pretty] of Object.entries(provs)) {
+      const opt = document.createElement("option"); opt.value = raw; opt.textContent = pretty; provSel.appendChild(opt);
+    }
+  } catch {}
+
   document.getElementById("trends-filter").addEventListener("submit", (e) => e.preventDefault());
 
-  const reloadAll = () => { loadTrends(); loadGroupTrends(); };
+  const reloadAll = () => { loadTrends(); loadGroupTrends(); loadForecast(); };
   const dAll = debounce(reloadAll, 600);
 
   document.querySelector('#trends-filter select[name="fuel_group"]').addEventListener("change", reloadAll);
   document.querySelector('#trends-filter select[name="period"]').addEventListener("change", reloadAll);
   document.querySelector('#trends-filter input[name="zip_code"]').addEventListener("input", dAll);
+  provSel.addEventListener("change", loadForecast);
 
   loadTrends();
   loadGroupTrends();
+  loadForecast();
 }
 async function initZones() {
   await populateFuelSelect(document.getElementById("zones-fuel"));

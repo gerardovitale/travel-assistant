@@ -10,6 +10,8 @@ from data.geojson_loader import normalize_data_province_name
 
 REGIMES = ("cheap", "normal", "expensive")
 REGIME_INDEX = {regime: idx for idx, regime in enumerate(REGIMES)}
+REGIME_LABELS = {"cheap": "barato", "normal": "normal", "expensive": "caro"}
+GEOGRAPHY_LABELS = {"zip_code": "Código postal", "province": "Provincia"}
 ZIP_CODE_AGGREGATE = "zip_code_daily_stats.parquet"
 PROVINCE_AGGREGATE = "province_daily_stats.parquet"
 MIN_OBSERVATION_DAYS = 60
@@ -154,11 +156,13 @@ def _explanation(
     cheaper_7d: float,
     confidence: float,
 ) -> str:
-    location_label = f"{geography_type} {geography_value}"
+    geo_label = GEOGRAPHY_LABELS.get(geography_type, geography_type)
+    regime_label = REGIME_LABELS.get(current_regime, current_regime)
+    location_label = f"{geo_label} {geography_value}"
     message = (
-        f"El area {location_label} esta en un regimen {current_regime}. "
-        f"La probabilidad de ver un regimen mas barato en 3 dias es del {cheaper_3d * 100:.0f}% "
-        f"y en 7 dias del {cheaper_7d * 100:.0f}%."
+        f"El área {location_label} está en un régimen {regime_label}. "
+        f"La probabilidad de ver un régimen más barato en 3 días es del {cheaper_3d * 100:.0f}% "
+        f"y en 7 días del {cheaper_7d * 100:.0f}%."
     )
     if confidence < 0.45:
         return f"{message} La confianza es baja por la variabilidad o escasez de transiciones."

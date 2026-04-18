@@ -3,19 +3,15 @@ import { Locator, Page } from "@playwright/test";
 export class InsightsPage {
   readonly page: Page;
   readonly zipInput: Locator;
-  readonly historicalTab: Locator;
-  readonly historicalZipInput: Locator;
-  readonly historicalPeriodSelect: Locator;
-  readonly historicalProvinceSelect: Locator;
+  readonly trendsPeriodSelect: Locator;
+  readonly trendsProvinceSelect: Locator;
   readonly forecastBanner: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.zipInput = page.getByTestId("trends-zip-input");
-    this.historicalTab = page.getByTestId("insight-tab-historical");
-    this.historicalZipInput = page.getByTestId("historical-zip-input");
-    this.historicalPeriodSelect = page.locator('#historical-form select[name="period"]');
-    this.historicalProvinceSelect = page.locator('#historical-form select[name="province"]');
+    this.trendsPeriodSelect = page.locator('#trends-filter select[name="period"]');
+    this.trendsProvinceSelect = page.getByTestId("trends-province-select");
     this.forecastBanner = page.getByTestId("forecast-banner");
   }
 
