@@ -10,6 +10,7 @@ from config import settings
 from fastapi import FastAPI
 from fastapi import Request
 from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from slowapi import _rate_limit_exceeded_handler
@@ -32,6 +33,8 @@ from data.geojson_loader import load_provinces_geojson
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+_WEB_DIR = Path(__file__).parent / "web"
 
 
 @asynccontextmanager
@@ -82,6 +85,30 @@ async def bind_ui_test_fixture_set(request: Request, call_next):
         return await call_next(request)
     finally:
         pop_fixture_set(token)
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    lines = ["User-agent: *", "Allow: /", "Disallow: /api/", "Disallow: /health/", ""]
+    if settings.public_url:
+        lines.append(f"Sitemap: {settings.public_url.rstrip('/')}/sitemap.xml")
+    else:
+        logger.warning("DASHBOARD_PUBLIC_URL not set — Sitemap directive omitted from robots.txt")
+    return Response(content="\n".join(lines) + "\n", media_type="text/plain")
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml():
+    if not settings.public_url:
+        logger.warning("DASHBOARD_PUBLIC_URL not set — sitemap.xml will contain invalid URLs")
+    base = settings.public_url.rstrip("/")
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>{base}/trip</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>{base}/insights</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+</urlset>"""
+    return Response(content=xml, media_type="application/xml")
 
 
 @app.get("/health")
@@ -135,7 +162,6 @@ def health_data():
     )
 
 
-_WEB_DIR = Path(__file__).parent / "web"
 app.mount("/static", StaticFiles(directory=str(_WEB_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
 
@@ -153,29 +179,28 @@ def _build_app_config() -> dict:
     }
 
 
+def _base_context(current_page: str) -> dict:
+    return {
+        "current_page": current_page,
+        "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
+        "app_config": _build_app_config(),
+        "analytics_enabled": settings.analytics_enabled and not settings.ui_test_mode,
+        "analytics_domain": settings.analytics_domain,
+        "public_url": settings.public_url,
+    }
+
+
 def _render_page(request: Request, template_name: str, current_page: str):
     data_ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
     if not data_ready:
         return templates.TemplateResponse(
             request,
             "loading.html",
-            {
-                "current_page": current_page,
-                "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-                "app_config": _build_app_config(),
-            },
+            _base_context(current_page),
             status_code=503,
             headers={"Retry-After": "5"},
         )
-    return templates.TemplateResponse(
-        request,
-        template_name,
-        {
-            "current_page": current_page,
-            "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-            "app_config": _build_app_config(),
-        },
-    )
+    return templates.TemplateResponse(request, template_name, _base_context(current_page))
 
 
 @app.get("/")
@@ -193,32 +218,17 @@ def page_insights(request: Request):
     data_ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
     if not data_ready:
         return templates.TemplateResponse(
-            request,
-            "loading.html",
-            {
-                "current_page": "insights",
-                "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-                "app_config": _build_app_config(),
-            },
-            status_code=503,
-            headers={"Retry-After": "5"},
+            request, "loading.html", _base_context("insights"), status_code=503, headers={"Retry-After": "5"}
         )
     insights_zones_enabled, insights_historical_enabled = (
         ui_test_insights_flags()
         if settings.ui_test_mode
         else (settings.insights_zones_enabled, settings.insights_historical_enabled)
     )
-    return templates.TemplateResponse(
-        request,
-        "insights.html",
-        {
-            "current_page": "insights",
-            "disable_external_assets": settings.disable_external_assets or settings.ui_test_mode,
-            "app_config": _build_app_config(),
-            "insights_zones_enabled": insights_zones_enabled,
-            "insights_historical_enabled": insights_historical_enabled,
-        },
-    )
+    ctx = _base_context("insights")
+    ctx["insights_zones_enabled"] = insights_zones_enabled
+    ctx["insights_historical_enabled"] = insights_historical_enabled
+    return templates.TemplateResponse(request, "insights.html", ctx)
 
 
 if __name__ == "__main__":

@@ -46,5 +46,9 @@ class Settings(BaseSettings):
     insights_zones_enabled: bool = False
     insights_historical_enabled: bool = False
 
+    public_url: str = ""
+    analytics_enabled: bool = False
+    analytics_domain: str = ""
+
 
 settings = Settings()

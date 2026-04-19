@@ -233,3 +233,6 @@ coverage/
 node_modules/
 .swc
 .env.*
+
+# Planning / scratch documents
+money-strat.md

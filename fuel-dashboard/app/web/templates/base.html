@@ -4,11 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Fuel Precision — Precios de combustible{% endblock %}</title>
+<meta name="description" content="{% block meta_description %}Encuentra las gasolineras más baratas de España, planifica viajes y analiza tendencias de precios de combustible en tiempo real.{% endblock %}">
+<meta property="og:title" content="{% block og_title %}Fuel Precision — Precios de combustible en España{% endblock %}">
+<meta property="og:description" content="{% block og_description %}Busca estaciones baratas, planifica tu ruta y ahorra en gasolina o diésel con datos actualizados a diario.{% endblock %}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ public_url }}{{ request.url.path }}">
+<meta property="og:locale" content="es_ES">
+<meta property="og:image" content="{{ public_url }}/static/og-image.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{% block twitter_title %}Fuel Precision — Precios de combustible en España{% endblock %}">
+<meta name="twitter:description" content="{% block twitter_description %}Busca estaciones baratas, planifica tu ruta y ahorra en gasolina o diésel.{% endblock %}">
+<meta name="twitter:image" content="{{ public_url }}/static/og-image.png">
+<link rel="canonical" href="{{ public_url }}{{ request.url.path }}">
+<link rel="alternate" hreflang="es-ES" href="{{ public_url }}{{ request.url.path }}">
+<link rel="alternate" hreflang="x-default" href="{{ public_url }}{{ request.url.path }}">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <link rel="manifest" href="/static/site.webmanifest">
 <meta name="theme-color" content="#003d9b" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#001642" media="(prefers-color-scheme: dark)">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Fuel Precision",
+  "description": "Encuentra gasolineras baratas y planifica viajes en España con datos de precios actualizados a diario.",
+  {% if public_url %}"url": "{{ public_url }}",{% endif %}
+  "applicationCategory": "TravelApplication",
+  "operatingSystem": "Any",
+  "inLanguage": "es",
+  "availableLanguage": { "@type": "Language", "name": "Spanish", "alternateName": "es" },
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" }
+}
+</script>
 {% if disable_external_assets|default(false) %}
 <link rel="stylesheet" href="/static/vendor/test-shell.css">
 <link rel="stylesheet" href="/static/vendor/leaflet-stub.css">
@@ -88,6 +116,9 @@
 <link rel="stylesheet" href="/static/css/tokens.css">
 </head>
 <body class="bg-surface text-on-surface selection:bg-primary-container selection:text-white min-h-screen pb-24 md:pb-8">
+{% if analytics_enabled %}
+<script defer data-domain="{{ analytics_domain }}" src="https://plausible.io/js/script.js"></script>
+{% endif %}
 <script>
   window.__APP_CONFIG__ = {{ (app_config|default({})) | tojson }};
 </script>

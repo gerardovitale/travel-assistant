@@ -19,6 +19,83 @@ def _get_client():
 # ── Page templates ──────────────────────────────────────────────────
 
 
+def test_robots_txt_returns_plain_text_and_disallows_api():
+    resp = _get_client().get("/robots.txt")
+    assert resp.status_code == 200
+    assert "text/plain" in resp.headers["content-type"]
+    assert "User-agent: *" in resp.text
+    assert "Disallow: /api/" in resp.text
+    assert "Disallow: /health/" in resp.text
+    assert "Disallow: /health\n" not in resp.text  # must include trailing slash
+
+
+def test_robots_txt_omits_sitemap_when_public_url_unset():
+    resp = _get_client().get("/robots.txt")
+    assert "Sitemap:" not in resp.text
+
+
+def test_robots_txt_includes_sitemap_when_public_url_set():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"):
+        resp = _get_client().get("/robots.txt")
+    assert "Sitemap: https://fuelprecision.es/sitemap.xml" in resp.text
+
+
+def test_sitemap_xml_returns_xml_with_all_pages():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"):
+        resp = _get_client().get("/sitemap.xml")
+    assert resp.status_code == 200
+    assert "application/xml" in resp.headers["content-type"]
+    assert "<loc>https://fuelprecision.es/</loc>" in resp.text
+    assert "<loc>https://fuelprecision.es/trip</loc>" in resp.text
+    assert "<loc>https://fuelprecision.es/insights</loc>" in resp.text
+
+
+def test_sitemap_xml_without_public_url_still_returns_200():
+    resp = _get_client().get("/sitemap.xml")
+    assert resp.status_code == 200
+    assert "application/xml" in resp.headers["content-type"]
+
+
+def test_analytics_script_not_injected_by_default():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/")
+    assert "plausible.io" not in resp.text
+
+
+def test_analytics_script_injected_when_enabled():
+    with patch.object(settings, "analytics_enabled", True), patch.object(
+        settings, "analytics_domain", "fuelprecision.es"
+    ), patch.object(settings, "ui_test_mode", False), patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/")
+    assert 'data-domain="fuelprecision.es"' in resp.text
+    assert "plausible.io" in resp.text
+
+
+def test_canonical_and_og_url_use_public_url():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"), patch(
+        "main.is_data_ready", return_value=True
+    ):
+        resp = _get_client().get("/")
+    assert 'rel="canonical" href="https://fuelprecision.es/"' in resp.text
+    assert 'rel="alternate" hreflang="es-ES" href="https://fuelprecision.es/"' in resp.text
+    assert 'content="https://fuelprecision.es/"' in resp.text
+    assert "127.0.0.1" not in resp.text
+
+
+def test_json_ld_omits_url_when_public_url_unset():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/")
+    assert '"url": ""' not in resp.text
+
+
+def test_json_ld_includes_url_when_public_url_set():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"), patch(
+        "main.is_data_ready", return_value=True
+    ):
+        resp = _get_client().get("/")
+    assert '"url": "https://fuelprecision.es"' in resp.text
+
+
 def test_page_search_renders():
     with patch("main.is_data_ready", return_value=True):
         resp = _get_client().get("/")
