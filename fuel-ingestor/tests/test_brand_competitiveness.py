@@ -246,6 +246,52 @@ class TestComputeBrandCompetitiveness(TestCase):
         )
         self.assertNotIn("geo_value", monthly.columns)
 
+    def test_schema_evolution_across_files(self):
+        # Simulates the real GCS case: early files have a legacy "date" column
+        # that was later removed. DuckDB glob must handle this via union_by_name.
+        schema_dir = tempfile.mkdtemp(prefix="test_schema_evolution_")
+        try:
+            legacy = pd.DataFrame(
+                [
+                    {
+                        "timestamp": "2024-10-11T11:50:49",
+                        "date": "2024-10-11",  # legacy column — dropped in later files
+                        "zip_code": "28001",
+                        "locality": "Madrid Centro",
+                        "municipality": "Madrid",
+                        "label": "ballenoil",
+                        "gasoline_95_e5_price": 1.50,
+                        "diesel_a_price": 1.40,
+                    }
+                ]
+            )
+            current = pd.DataFrame(
+                [
+                    {
+                        "timestamp": "2026-01-01T05:00:00",
+                        "zip_code": "28001",
+                        "locality": "Madrid Centro",
+                        "municipality": "Madrid",
+                        "label": "ballenoil",
+                        "gasoline_95_e5_price": 1.45,
+                        "diesel_a_price": 1.35,
+                    }
+                ]
+            )
+            legacy.to_parquet(os.path.join(schema_dir, "legacy.parquet"), index=False)
+            current.to_parquet(os.path.join(schema_dir, "current.parquet"), index=False)
+
+            overall, _ = compute_brand_competitiveness(
+                schema_dir,
+                brands=["ballenoil"],
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                min_appearances=1,
+            )
+            self.assertGreater(len(overall), 0)
+        finally:
+            shutil.rmtree(schema_dir, ignore_errors=True)
+
     def test_returns_empty_dataframes_on_empty_input(self):
         empty_dir = tempfile.mkdtemp(prefix="empty_parquets_")
         try:

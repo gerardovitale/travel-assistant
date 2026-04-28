@@ -177,7 +177,9 @@ def compute_brand_competitiveness(
 
     today = datetime.now(timezone.utc).date().isoformat()
     con = duckdb.connect()
-    con.execute(f"create table fuel_prices as select * from read_parquet('{parquet_dir}/*.parquet')")
+    con.execute(
+        f"create table fuel_prices as select * from read_parquet('{parquet_dir}/*.parquet', union_by_name=true)"
+    )
     row_count = con.execute("select count(*) from fuel_prices").fetchone()[0]
     _log_event(logger.info, "duckdb_table_loaded", rows=row_count)
 
