@@ -40,15 +40,17 @@ def extract_fuel_prices_raw_data() -> dict:
                     "curl",
                     "-s",
                     "-f",
+                    "-L",
                     "--connect-timeout",
                     "10",
                     "--max-time",
                     "120",
                     "--tlsv1.2",
-                    "--tls-max",
-                    "1.2",
                     "-H",
                     "Accept: application/json",
+                    "-A",
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36",
                     DATA_SOURCE_URL,
                 ],
                 capture_output=True,
@@ -57,12 +59,22 @@ def extract_fuel_prices_raw_data() -> dict:
                 timeout=130,
             )
             break
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        except subprocess.CalledProcessError as exc:
             if attempt < max_attempts:
-                logger.warning(f"Attempt {attempt}/{max_attempts} failed: {exc}. Retrying in {retry_delay}s...")
+                logger.warning(
+                    f"Attempt {attempt}/{max_attempts} failed: {exc}. stderr: {exc.stderr!r}. "
+                    "Retrying in {retry_delay}s..."
+                )
                 time.sleep(retry_delay)
             else:
-                logger.error(f"All {max_attempts} attempts failed. Last error: {exc}")
+                logger.error(f"All {max_attempts} attempts failed. Last error: {exc}. stderr: {exc.stderr!r}")
+                raise
+        except subprocess.TimeoutExpired as exc:
+            if attempt < max_attempts:
+                logger.warning(f"Attempt {attempt}/{max_attempts} timed out: {exc}. Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"All {max_attempts} attempts timed out. Last error: {exc}")
                 raise
 
     raw_data = json.loads(result.stdout)
