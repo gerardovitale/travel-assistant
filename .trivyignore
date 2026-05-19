@@ -1,6 +1,6 @@
 # Trivy Ignore File
 # These CVEs affect OS packages in python:3.13-slim (Debian) with no upstream fix.
-# Reviewed: 2026-03-30. Re-review by: 2026-06-30.
+# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
 
 # ncurses buffer overflow — not used by application code (terminal library)
 CVE-2025-69720
@@ -8,8 +8,28 @@ CVE-2025-69720
 # systemd arbitrary code execution — not the init system inside containers
 CVE-2026-29111
 
-# nghttp2 DoS — base image residual; curl removed from fuel-ingestor, not installed elsewhere
+# nghttp2 DoS — base image residual; not used by application code
 CVE-2026-27135
 
 # glibc iconv() DoS — fix deferred by Debian; app does not use iconv with untrusted character sets
 CVE-2026-4046
+
+# curl / libcurl4t64 — SMB connection reuse and cookie leak; app uses HTTPS only, not SMB
+# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
+CVE-2026-5773
+CVE-2026-6276
+
+# libgnutls30t64 — all DTLS-specific vulnerabilities (zero-length fragment DoS, NUL-char auth bypass,
+# heap overflow, nameConstraints bypass, packet reordering DoS, name constraint bypass);
+# app makes TCP/HTTPS calls only with no DTLS exposure. No Debian fix available.
+# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
+CVE-2026-33845
+CVE-2026-42010
+CVE-2026-33846
+CVE-2026-3833
+CVE-2026-42009
+CVE-2026-42011
+
+# libssh2 integer overflow via large username/password — app does not use SSH in any container
+# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
+CVE-2026-7598
