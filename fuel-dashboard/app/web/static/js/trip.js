@@ -2,11 +2,42 @@ import { api } from "./app.js";
 import { populateFuelSelect, getLabels } from "./fuel.js";
 import { createMap, drawStations, drawRoute, clearLayer } from "./maps.js";
 import { formatPrice, formatKm, formatEur, formatMin, escapeHtml } from "./format.js";
-import { initBrandsDropdown, populateBrandsList, getSelectedLabels } from "./brands.js";
+import { initBrandsDropdown, populateBrandsList, getSelectedLabels, updateBrandsLabel } from "./brands.js";
 import { attachAutocomplete } from "./addressAutocomplete.js";
 
 let map, stationsLayer, routeLayer, markersLayer;
 const selectedLabels = new Set();
+
+function buildShareUrl(formData, publicUrl) {
+  const base = publicUrl ? publicUrl.replace(/\/$/, "") + "/trip" : window.location.origin + window.location.pathname;
+  const params = new URLSearchParams();
+  params.set("origin", formData.origin);
+  params.set("destination", formData.destination);
+  params.set("fuel_type", formData.fuel_type);
+  params.set("consumption_lper100km", formData.consumption_lper100km);
+  params.set("tank_liters", formData.tank_liters);
+  params.set("fuel_level_pct", formData.fuel_level_pct);
+  params.set("max_detour_minutes", formData.max_detour_minutes);
+  (formData.labels || []).forEach((l) => params.append("labels[]", l));
+  return `${base}?${params.toString()}`;
+}
+
+function readShareParams() {
+  const p = new URLSearchParams(window.location.search);
+  const origin = p.get("origin");
+  const destination = p.get("destination");
+  if (!origin || !destination) return null;
+  return {
+    origin,
+    destination,
+    fuel_type: p.get("fuel_type") || null,
+    consumption_lper100km: p.get("consumption_lper100km") ? parseFloat(p.get("consumption_lper100km")) : null,
+    tank_liters: p.get("tank_liters") ? parseFloat(p.get("tank_liters")) : null,
+    fuel_level_pct: p.get("fuel_level_pct") ? parseFloat(p.get("fuel_level_pct")) : null,
+    max_detour_minutes: p.get("max_detour_minutes") ? parseFloat(p.get("max_detour_minutes")) : null,
+    labels: p.getAll("labels[]"),
+  };
+}
 
 function banner(kind, text) {
   const el = document.getElementById("trip-banner");
@@ -92,12 +123,36 @@ function renderAlternatives(plan) {
   wrap.classList.remove("hidden");
 }
 
+function showShare(formData) {
+  const publicUrl = window.__APP_CONFIG__?.public_url || "";
+  const shareUrl = buildShareUrl(formData, publicUrl);
+  const text = `¡He planificado un viaje de ${formData.origin} a ${formData.destination} con paradas para repostar al mejor precio! ⛽`;
+
+  const copyBtn = document.getElementById("trip-share-copy");
+  const waBtn = document.getElementById("trip-share-whatsapp");
+  const tgBtn = document.getElementById("trip-share-telegram");
+
+  copyBtn.dataset.url = shareUrl;
+  waBtn.href = `https://wa.me/?text=${encodeURIComponent(text + " " + shareUrl)}`;
+  tgBtn.href = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(text)}`;
+
+  // Always push a relative URL — using the canonical publicUrl here would throw
+  // a SecurityError when public_url differs from the current origin (e.g. staging).
+  history.pushState({}, "", window.location.pathname + shareUrl.slice(shareUrl.indexOf("?")));
+  document.getElementById("trip-share").classList.remove("hidden");
+}
+
+function hideShare() {
+  document.getElementById("trip-share").classList.add("hidden");
+}
+
 function resetPlanView(message = "Introduce origen y destino para planificar.") {
   document.getElementById("trip-kpis").classList.add("hidden");
   document.getElementById("trip-stops").innerHTML = `
     <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">${escapeHtml(message)}</div>`;
   document.getElementById("alt-plans-wrap").classList.add("hidden");
   document.getElementById("alt-plans").innerHTML = "";
+  hideShare();
   routeLayer && map.removeLayer(routeLayer);
   markersLayer && map.removeLayer(markersLayer);
   stationsLayer = clearLayer(map, stationsLayer);
@@ -178,6 +233,7 @@ async function runPlan(form) {
     renderStops(plan);
     renderAlternatives(plan);
     renderMap(plan);
+    showShare(body);
   } catch (err) {
     resetPlanView(err.message || "No se pudo generar una nueva ruta.");
     banner("error", err.message || "Error calculando el viaje");
@@ -210,10 +266,48 @@ async function init() {
     const t = o.value; o.value = d.value; d.value = t;
   });
 
-  document.getElementById("trip-form").addEventListener("submit", (e) => {
+  const form = document.getElementById("trip-form");
+  form.addEventListener("submit", (e) => {
     e.preventDefault();
     runPlan(e.target);
   });
+
+  const copyBtn = document.getElementById("trip-share-copy");
+  copyBtn?.addEventListener("click", () => {
+    const url = copyBtn.dataset.url;
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+      const prev = copyBtn.textContent;
+      copyBtn.textContent = "¡Copiado!";
+      setTimeout(() => { copyBtn.textContent = prev; }, 2000);
+    }).catch(() => {});
+  });
+
+  const params = readShareParams();
+  if (params) {
+    if (params.origin) document.querySelector('[name="origin"]').value = params.origin;
+    if (params.destination) document.querySelector('[name="destination"]').value = params.destination;
+    if (params.fuel_type) {
+      const sel = document.querySelector('select[name="fuel_type"]');
+      if (sel) sel.value = params.fuel_type;
+    }
+    if (params.consumption_lper100km != null) document.querySelector('[name="consumption_lper100km"]').value = params.consumption_lper100km;
+    if (params.tank_liters != null) document.querySelector('[name="tank_liters"]').value = params.tank_liters;
+    if (params.fuel_level_pct != null) {
+      levelInput.value = params.fuel_level_pct;
+      levelLabel.textContent = `${params.fuel_level_pct}%`;
+    }
+    if (params.max_detour_minutes != null) document.querySelector('[name="max_detour_minutes"]').value = params.max_detour_minutes;
+    if (params.labels?.length) {
+      params.labels.forEach((l) => {
+        selectedLabels.add(l);
+        const cb = document.querySelector(`input[data-testid="brand-checkbox-${CSS.escape(l)}"]`);
+        if (cb) cb.checked = true;
+      });
+      updateBrandsLabel(document.getElementById("brands-label"), selectedLabels);
+    }
+    runPlan(form);
+  }
 }
 
 document.addEventListener("DOMContentLoaded", init);

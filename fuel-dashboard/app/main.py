@@ -176,6 +176,7 @@ def _build_app_config() -> dict:
         "default_fuel_level_pct": settings.default_fuel_level_pct,
         "default_max_detour_minutes": settings.default_max_detour_minutes,
         "default_refill_liters": settings.default_refill_liters,
+        "public_url": settings.public_url,
     }
 
 

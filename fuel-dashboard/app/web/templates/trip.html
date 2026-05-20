@@ -93,6 +93,25 @@
 
   <div id="trip-kpis" data-testid="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3"></div>
 
+  <div id="trip-share" data-testid="trip-share" class="hidden bg-surface-container-lowest rounded-2xl border border-outline-variant/40 px-5 py-4 flex flex-wrap items-center gap-3 shadow-sm">
+    <span class="text-xs font-label font-bold text-outline uppercase tracking-wider flex items-center gap-1">
+      <span class="material-symbols-outlined text-[16px]">share</span>
+      Compartir plan
+    </span>
+    <button type="button" id="trip-share-copy" data-testid="trip-share-copy" class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
+      <span class="material-symbols-outlined text-[16px]">content_copy</span>
+      Copiar enlace
+    </button>
+    <a id="trip-share-whatsapp" data-testid="trip-share-whatsapp" href="#" target="_blank" rel="noopener noreferrer" aria-label="Compartir plan por WhatsApp" class="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition">
+      <span class="material-symbols-outlined text-[16px]">chat</span>
+      WhatsApp
+    </a>
+    <a id="trip-share-telegram" data-testid="trip-share-telegram" href="#" target="_blank" rel="noopener noreferrer" aria-label="Compartir plan por Telegram" class="inline-flex items-center gap-1.5 rounded-lg bg-[#2AABEE] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition">
+      <span class="material-symbols-outlined text-[16px]">send</span>
+      Telegram
+    </a>
+  </div>
+
   <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">
     <div id="trip-map" data-testid="trip-map" class="h-[360px] md:h-[500px]"></div>
   </div>

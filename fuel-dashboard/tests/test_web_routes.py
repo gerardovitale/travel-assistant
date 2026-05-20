@@ -112,6 +112,32 @@ def test_page_trip_renders():
     assert "/static/js/trip.js" in resp.text
 
 
+def test_trip_page_renders_with_query_params():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/trip?origin=Madrid&destination=Sevilla&fuel_type=diesel_a_price")
+    assert resp.status_code == 200
+    assert "/static/js/trip.js" in resp.text
+
+
+def test_trip_page_app_config_includes_public_url():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"), patch(
+        "main.is_data_ready", return_value=True
+    ):
+        resp = _get_client().get("/trip")
+    assert resp.status_code == 200
+    assert '"public_url": "https://fuelprecision.es"' in resp.text
+
+
+def test_trip_share_section_in_html():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/trip")
+    assert resp.status_code == 200
+    assert 'data-testid="trip-share"' in resp.text
+    assert 'data-testid="trip-share-copy"' in resp.text
+    assert 'data-testid="trip-share-whatsapp"' in resp.text
+    assert 'data-testid="trip-share-telegram"' in resp.text
+
+
 def test_page_insights_renders():
     with patch("main.is_data_ready", return_value=True):
         resp = _get_client().get("/insights")

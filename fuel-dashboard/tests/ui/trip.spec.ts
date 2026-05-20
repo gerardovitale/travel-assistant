@@ -74,3 +74,38 @@ test("trip planner errors reset the previous plan", async ({ page }) => {
   await expect(page.getByTestId("trip-stops")).toContainText("Route unavailable for selected itinerary");
   await expect(page.getByTestId("trip-alt-plans-wrap")).toBeHidden();
 });
+
+test("share section appears after successful plan and hides after an error", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+
+  const firstDone = page.waitForResponse((r) => r.url().includes("/api/v1/trip/plan"));
+  await tripPage.plan("Madrid", "Sevilla");
+  await firstDone;
+
+  await expect(page.getByTestId("trip-share")).toBeVisible();
+  await expect(page.getByTestId("trip-share-copy")).toBeVisible();
+  await expect(page.getByTestId("trip-share-whatsapp")).toBeVisible();
+  await expect(page.getByTestId("trip-share-telegram")).toBeVisible();
+
+  await setFixture(page, "trip_error");
+  await tripPage.plan("Madrid", "Sevilla");
+
+  await expect(page.getByTestId("trip-share")).toBeHidden();
+});
+
+test("share URL pre-populates form and auto-runs plan on load", async ({ page }) => {
+  const planRequest = page.waitForRequest((r) => r.url().includes("/api/v1/trip/plan"));
+  await page.goto(
+    "/trip?origin=Madrid&destination=Sevilla&fuel_type=gasoline_95_e5_price" +
+    "&consumption_lper100km=7&tank_liters=40&fuel_level_pct=25&max_detour_minutes=5"
+  );
+
+  await expect(page.getByTestId("trip-origin-input")).toHaveValue("Madrid");
+  await expect(page.getByTestId("trip-destination-input")).toHaveValue("Sevilla");
+
+  const req = await planRequest;
+  expect(req.postDataJSON()).toMatchObject({ origin: "Madrid", destination: "Sevilla", fuel_type: "gasoline_95_e5_price" });
+
+  await expect(page.getByTestId("trip-share")).toBeVisible();
+});
