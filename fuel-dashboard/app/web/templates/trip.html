@@ -112,6 +112,28 @@
     </a>
   </div>
 
+  <div id="trip-nav" data-testid="trip-nav" class="hidden bg-surface-container-lowest rounded-2xl border border-outline-variant/40 px-5 py-4 flex flex-wrap items-center gap-3 shadow-sm">
+    <span class="text-xs font-label font-bold text-outline uppercase tracking-wider flex items-center gap-1">
+      <span class="material-symbols-outlined text-[16px]">navigation</span>
+      Navegar con
+    </span>
+    <a id="nav-google" data-testid="trip-nav-google" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir ruta completa en Google Maps"
+       class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
+      <span class="material-symbols-outlined text-[16px]">map</span>
+      Google Maps
+    </a>
+    <a id="nav-waze" data-testid="trip-nav-waze" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir navegación en Waze"
+       class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
+      <span class="material-symbols-outlined text-[16px]">navigation</span>
+      <span>Waze <span id="nav-waze-label" class="text-[11px] font-normal text-outline ml-0.5"></span></span>
+    </a>
+    <a id="nav-apple" data-testid="trip-nav-apple" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir ruta en Apple Maps"
+       class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
+      <span class="material-symbols-outlined text-[16px]">near_me</span>
+      Apple Maps
+    </a>
+  </div>
+
   <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">
     <div id="trip-map" data-testid="trip-map" class="h-[360px] md:h-[500px]"></div>
   </div>

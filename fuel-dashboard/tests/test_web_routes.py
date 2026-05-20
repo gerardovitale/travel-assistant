@@ -136,6 +136,10 @@ def test_trip_share_section_in_html():
     assert 'data-testid="trip-share-copy"' in resp.text
     assert 'data-testid="trip-share-whatsapp"' in resp.text
     assert 'data-testid="trip-share-telegram"' in resp.text
+    assert 'data-testid="trip-nav"' in resp.text
+    assert 'data-testid="trip-nav-google"' in resp.text
+    assert 'data-testid="trip-nav-waze"' in resp.text
+    assert 'data-testid="trip-nav-apple"' in resp.text
 
 
 def test_page_insights_renders():

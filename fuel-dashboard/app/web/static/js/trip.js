@@ -130,7 +130,48 @@ function renderAlternatives(plan) {
   wrap.classList.remove("hidden");
 }
 
-function showShare(formData) {
+function tryOpenNativeApp(appUrl, webFallbackUrl) {
+  let fallbackTimer;
+  const onVisibility = () => {
+    if (document.hidden) clearTimeout(fallbackTimer);
+    document.removeEventListener("visibilitychange", onVisibility);
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+  fallbackTimer = setTimeout(() => {
+    document.removeEventListener("visibilitychange", onVisibility);
+    window.open(webFallbackUrl, "_blank");
+  }, 1500);
+  window.location.href = appUrl;
+}
+
+function buildNavUrls(plan) {
+  const [oLat, oLon] = plan.origin_coords;
+  const [dLat, dLon] = plan.destination_coords;
+
+  // Google Maps web URL works via Universal Links on iOS and Android's intent system.
+  const segments = [
+    `${oLat},${oLon}`,
+    ...plan.stops.map((s) => `${s.station.latitude},${s.station.longitude}`),
+    `${dLat},${dLon}`,
+  ];
+  const googleUrl = `https://www.google.com/maps/dir/${segments.join("/")}`;
+
+  // Waze URL scheme has no multi-waypoint support — navigate to first stop if available.
+  // waze:// custom scheme opens the native app; web URL is the fallback if not installed.
+  const wazeTarget = plan.stops.length
+    ? [plan.stops[0].station.latitude, plan.stops[0].station.longitude]
+    : [dLat, dLon];
+  const wazeAppUrl = `waze://ul?ll=${wazeTarget[0]},${wazeTarget[1]}&navigate=yes`;
+  const wazeWebUrl = `https://waze.com/ul?ll=${wazeTarget[0]},${wazeTarget[1]}&navigate=yes`;
+  const wazeLabel = plan.stops.length ? "primera parada" : "destino";
+
+  // Apple Maps: https URL opens the native Maps app on iOS/macOS automatically.
+  const appleUrl = `https://maps.apple.com/?saddr=${oLat},${oLon}&daddr=${dLat},${dLon}`;
+
+  return { googleUrl, wazeAppUrl, wazeWebUrl, wazeLabel, appleUrl };
+}
+
+function showShare(formData, plan) {
   const publicUrl = window.__APP_CONFIG__?.public_url || "";
   const shareUrl = buildShareUrl(formData, publicUrl);
   const text = `¡He planificado un viaje de ${formData.origin} a ${formData.destination} con paradas para repostar al mejor precio! ⛽`;
@@ -143,6 +184,15 @@ function showShare(formData) {
   waBtn.href = `https://wa.me/?text=${encodeURIComponent(text + " " + shareUrl)}`;
   tgBtn.href = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(text)}`;
 
+  const { googleUrl, wazeAppUrl, wazeWebUrl, wazeLabel, appleUrl } = buildNavUrls(plan);
+  document.getElementById("nav-google").href = googleUrl;
+  const wazeEl = document.getElementById("nav-waze");
+  wazeEl.href = wazeWebUrl;
+  wazeEl.dataset.appUrl = wazeAppUrl;
+  document.getElementById("nav-waze-label").textContent = `(${wazeLabel})`;
+  document.getElementById("nav-apple").href = appleUrl;
+  document.getElementById("trip-nav").classList.remove("hidden");
+
   // Always push a relative URL — using the canonical publicUrl here would throw
   // a SecurityError when public_url differs from the current origin (e.g. staging).
   history.pushState({}, "", window.location.pathname + shareUrl.slice(shareUrl.indexOf("?")));
@@ -151,6 +201,7 @@ function showShare(formData) {
 
 function hideShare() {
   document.getElementById("trip-share").classList.add("hidden");
+  document.getElementById("trip-nav").classList.add("hidden");
 }
 
 function resetPlanView(message = "Introduce origen y destino para planificar.") {
@@ -282,7 +333,7 @@ async function runPlan(form) {
     renderStops(plan);
     renderAlternatives(plan);
     renderMap(plan);
-    showShare(body);
+    showShare(body, plan);
   } catch (err) {
     resetPlanView(err.message || "No se pudo generar una nueva ruta.");
     banner("error", err.message || "Error calculando el viaje");
@@ -322,6 +373,13 @@ async function init() {
   });
 
   attachStopInteraction();
+
+  document.getElementById("nav-waze")?.addEventListener("click", (e) => {
+    const appUrl = e.currentTarget.dataset.appUrl;
+    if (!appUrl) return;
+    e.preventDefault();
+    tryOpenNativeApp(appUrl, e.currentTarget.href);
+  });
 
   const copyBtn = document.getElementById("trip-share-copy");
   copyBtn?.addEventListener("click", () => {
