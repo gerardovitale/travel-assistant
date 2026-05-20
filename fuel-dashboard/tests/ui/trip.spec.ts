@@ -23,9 +23,16 @@ test("trip planner renders KPIs, stops, and alternatives from the happy path fix
   });
 
   await expect(page.getByTestId("trip-kpis")).toBeVisible();
+  await expect(page.getByTestId("trip-kpis")).toContainText("%");
   await expect(page.getByTestId("trip-stops").getByTestId("trip-stop-card")).toHaveCount(2);
   await expect(page.getByTestId("trip-alt-plans").getByTestId("trip-alt-plan-card")).toHaveCount(2);
   await expect(page.getByTestId("trip-map")).toBeVisible();
+
+  const stopCard = page.getByTestId("trip-stop-card").first();
+  const mapsLink = stopCard.locator('a[title="Cómo llegar"]');
+  await expect(mapsLink).toHaveAttribute("href", /google\.com\/maps.*destination=/);
+  await expect(mapsLink).toHaveAttribute("target", "_blank");
+  await expect(mapsLink).toHaveAttribute("rel", "noopener");
 });
 
 test("swap button and fuel-level slider update the form state", async ({ page }) => {

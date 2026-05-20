@@ -14,7 +14,8 @@ export class SearchPage {
   }
 
   async goto() {
-    return this.page.goto("/");
+    await this.page.goto("/");
+    await this.page.waitForLoadState("networkidle");
   }
 
   async selectMode(mode: "best_by_address" | "cheapest_by_address" | "nearest_by_address") {

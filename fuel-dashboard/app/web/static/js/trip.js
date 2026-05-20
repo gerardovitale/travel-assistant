@@ -6,6 +6,8 @@ import { initBrandsDropdown, populateBrandsList, getSelectedLabels, updateBrands
 import { attachAutocomplete } from "./addressAutocomplete.js";
 
 let map, stationsLayer, routeLayer, markersLayer;
+let stopMarkerRefs = [];
+let activeStopIdx = -1;
 const selectedLabels = new Set();
 
 function buildShareUrl(formData, publicUrl) {
@@ -64,14 +66,16 @@ function renderKpis(plan) {
     kpi("Duración", formatMin(plan.duration_minutes), "schedule", 60),
     kpi("Coste combustible", formatEur(plan.total_fuel_cost), "payments", 120),
     kpi("Ahorro estimado", formatEur(plan.savings_eur), "savings", 180),
+    kpi("Combustible al llegar", `${plan.fuel_at_destination_pct?.toFixed(0) ?? "—"}%`, "local_gas_station", 240),
   ].join("");
   el.classList.remove("hidden");
 }
 
 function stopCard(s, i) {
   const st = s.station;
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${st.latitude},${st.longitude}`;
   return `
-    <article data-testid="trip-stop-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 60, 360)}ms">
+    <article data-testid="trip-stop-card" data-index="${i}" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 60, 360)}ms">
       <div class="h-10 w-10 rounded-full bg-primary-container text-white flex items-center justify-center font-headline font-bold">${i + 1}</div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
@@ -86,6 +90,9 @@ function stopCard(s, i) {
           <span class="font-semibold text-on-surface">${formatEur(s.cost_eur)}</span>
         </div>
       </div>
+      <a href="${mapsUrl}" target="_blank" rel="noopener" class="p-2 rounded-lg hover:bg-surface-container-high text-primary-container" title="Cómo llegar">
+        <span class="material-symbols-outlined">directions</span>
+      </a>
     </article>`;
 }
 
@@ -158,6 +165,47 @@ function resetPlanView(message = "Introduce origen y destino para planificar.") 
   stationsLayer = clearLayer(map, stationsLayer);
   routeLayer = null;
   markersLayer = null;
+  stopMarkerRefs = [];
+  activeStopIdx = -1;
+}
+
+const STOP_BASE_STYLE = { color: "#001642", fillColor: "#001642", fillOpacity: 1, weight: 2 };
+const STOP_ACTIVE_STYLE = { color: "#FFB300", fillColor: "#FFB300", fillOpacity: 1, weight: 2 };
+
+function resetStopHighlights() {
+  activeStopIdx = -1;
+  stopMarkerRefs.forEach((m) => { m.setStyle(STOP_BASE_STYLE); m.setRadius(10); });
+}
+
+function highlightStop(idx) {
+  if (idx === activeStopIdx) return;
+  resetStopHighlights();
+  const marker = stopMarkerRefs[idx];
+  if (!marker) return;
+  activeStopIdx = idx;
+  marker.setStyle(STOP_ACTIVE_STYLE);
+  marker.setRadius(14);
+  const latlng = marker.getLatLng();
+  if (!map.getBounds().contains(latlng)) map.panTo(latlng, { animate: true });
+}
+
+function attachStopInteraction() {
+  const container = document.getElementById("trip-stops");
+
+  container.addEventListener("mouseover", (e) => {
+    const article = e.target.closest("article[data-index]");
+    if (!article) return;
+    highlightStop(parseInt(article.dataset.index, 10));
+  });
+
+  container.addEventListener("mouseleave", () => resetStopHighlights());
+
+  container.addEventListener("click", (e) => {
+    if (e.target.closest("a")) return;
+    const article = e.target.closest("article[data-index]");
+    if (!article) return;
+    highlightStop(parseInt(article.dataset.index, 10));
+  });
 }
 
 function fitPlanBounds(plan) {
@@ -188,6 +236,8 @@ function renderMap(plan) {
   routeLayer && map.removeLayer(routeLayer);
   markersLayer && map.removeLayer(markersLayer);
   stationsLayer = clearLayer(map, stationsLayer);
+  stopMarkerRefs = [];
+  activeStopIdx = -1;
 
   if (plan.route_coordinates?.length) {
     routeLayer = drawRoute(map, plan.route_coordinates);
@@ -197,12 +247,11 @@ function renderMap(plan) {
   }
   const stops = plan.stops.map((s) => s.station);
   if (stops.length || plan.origin_coords) {
-    // Highlight stops
     const hl = [];
     for (const st of stops) {
-      hl.push(L.circleMarker([st.latitude, st.longitude], {
-        radius: 10, color: "#001642", fillColor: "#001642", fillOpacity: 1, weight: 2,
-      }).bindTooltip(st.label));
+      const marker = L.circleMarker([st.latitude, st.longitude], { radius: 10, ...STOP_BASE_STYLE }).bindTooltip(st.label);
+      stopMarkerRefs.push(marker);
+      hl.push(marker);
     }
     if (plan.origin_coords) hl.push(L.marker(plan.origin_coords).bindTooltip("Origen"));
     if (plan.destination_coords) hl.push(L.marker(plan.destination_coords).bindTooltip("Destino"));
@@ -271,6 +320,8 @@ async function init() {
     e.preventDefault();
     runPlan(e.target);
   });
+
+  attachStopInteraction();
 
   const copyBtn = document.getElementById("trip-share-copy");
   copyBtn?.addEventListener("click", () => {
