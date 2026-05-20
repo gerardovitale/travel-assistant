@@ -1,7 +1,9 @@
 {
     "name": "fuel-dashboard-ui-tests",
     "private": true,
+    "type": "module",
     "scripts": {
+        "unit:test": "node --test tests/unit/*.test.js",
         "ui:test": "playwright test",
         "ui:test:headed": "playwright test --headed",
         "ui:test:debug": "playwright test --debug"

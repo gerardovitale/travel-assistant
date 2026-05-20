@@ -7,7 +7,14 @@ const pct1 = new Intl.NumberFormat("es-ES", { style: "percent", minimumFractionD
 export const formatPrice = (v) => (v == null || isNaN(v)) ? "—" : euro.format(v);
 export const formatEur = (v) => (v == null || isNaN(v)) ? "—" : euro2.format(v);
 export const formatKm = (v) => (v == null || isNaN(v)) ? "—" : `${num1.format(v)} km`;
-export const formatMin = (v) => (v == null || isNaN(v)) ? "—" : `${Math.round(v)} min`;
+export const formatMin = (v) => {
+  if (v == null || typeof v !== "number" || isNaN(v)) return "—";
+  const totalMin = Math.round(v);
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}min`;
+};
 export const formatPct = (v) => (v == null || isNaN(v)) ? "—" : pct1.format(v / 100);
 export const formatDelta = (v) => {
   if (v == null || isNaN(v)) return "—";

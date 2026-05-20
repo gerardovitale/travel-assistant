@@ -17,7 +17,7 @@ export default defineConfig({
   },
   webServer: {
     command: `uv run uvicorn main:app --app-dir app --host 127.0.0.1 --port ${PORT}`,
-    cwd: __dirname,
+    cwd: import.meta.dirname,
     env: {
       DASHBOARD_DISABLE_EXTERNAL_ASSETS: "true",
       DASHBOARD_UI_FIXTURE_SET: "happy_path",
