@@ -16,12 +16,15 @@ export function attachAutocomplete(input) {
   const wrapper = document.createElement("div");
   const hasFlex1 = input.classList.contains("flex-1");
   wrapper.className = "relative" + (hasFlex1 ? " flex-1" : "");
+  const savedValue = input.value;
   input.parentNode.insertBefore(wrapper, input);
   wrapper.appendChild(input);
   if (hasFlex1) {
     input.classList.remove("flex-1");
     input.classList.add("w-full");
   }
+  // Chromium can reset value when a node is re-parented; restore if that happened
+  if (input.value !== savedValue) input.value = savedValue;
 
   const dropdown = document.createElement("ul");
   dropdown.className =

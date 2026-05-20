@@ -1,4 +1,4 @@
-import { api } from "./app.js";
+import { api, toast } from "./app.js";
 import { populateFuelSelect, getLabels } from "./fuel.js";
 import { createMap, drawStations, drawRoute, clearLayer } from "./maps.js";
 import { formatPrice, formatKm, formatEur, formatMin, escapeHtml } from "./format.js";
@@ -9,6 +9,7 @@ let map, stationsLayer, routeLayer, markersLayer;
 let stopMarkerRefs = [];
 let activeStopIdx = -1;
 const selectedLabels = new Set();
+const APP_CONFIG = window.__APP_CONFIG__ || {};
 
 function buildShareUrl(formData, publicUrl) {
   const base = publicUrl ? publicUrl.replace(/\/$/, "") + "/trip" : window.location.origin + window.location.pathname;
@@ -340,8 +341,37 @@ async function runPlan(form) {
   }
 }
 
+// ── Geolocation ─────────────────────────────────────────────────────
+
+function initTripGeolocation() {
+  const btn = document.getElementById("geo-btn-origin");
+  if (!btn || APP_CONFIG.disable_geolocation_lookup || !navigator.geolocation) return;
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const body = await r.json();
+          const addr = body.display_name || `${latitude},${longitude}`;
+          document.querySelector('input[name="origin"]').value = addr;
+          toast("Ubicación detectada", "success");
+        } catch { toast("No se pudo detectar la dirección", "error"); }
+        btn.disabled = false;
+      },
+      () => { toast("Permiso de ubicación denegado", "error"); btn.disabled = false; },
+      { timeout: 8000 },
+    );
+  });
+}
+
 async function init() {
   map = createMap(document.getElementById("trip-map"));
+  // Must run before any await so inputs are wrapped before the page becomes interactive.
+  attachAutocomplete(document.querySelector('[name="origin"]'));
+  attachAutocomplete(document.querySelector('[name="destination"]'));
+  initTripGeolocation();
   await populateFuelSelect(document.querySelector('select[name="fuel_type"]'));
 
   initBrandsDropdown("brands-toggle", "brands-list");
@@ -351,9 +381,6 @@ async function init() {
   } catch (err) {
     console.warn("Failed to load brand labels:", err);
   }
-
-  attachAutocomplete(document.querySelector('[name="origin"]'));
-  attachAutocomplete(document.querySelector('[name="destination"]'));
 
   const levelInput = document.querySelector('input[name="fuel_level_pct"]');
   const levelLabel = document.getElementById("fuel-level-val");

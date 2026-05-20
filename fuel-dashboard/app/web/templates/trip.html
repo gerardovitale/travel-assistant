@@ -25,14 +25,19 @@
     <div class="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 md:gap-4 items-end">
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Origen</span>
-        <input type="text" name="origin" data-testid="trip-origin-input" required placeholder="Madrid" autocomplete="off" class="w-full rounded-lg border-outline-variant">
+        <div class="flex gap-2">
+          <input type="text" name="origin" data-testid="trip-origin-input" required placeholder="Madrid" autocomplete="off" class="flex-1 h-[42px] rounded-lg border-outline-variant">
+          <button type="button" id="geo-btn-origin" data-testid="trip-geo-button" class="h-[42px] w-[42px] flex items-center justify-center rounded-lg bg-surface-container text-primary-container hover:bg-surface-container-high transition" title="Usar mi ubicación">
+            <span class="material-symbols-outlined">my_location</span>
+          </button>
+        </div>
       </label>
       <button type="button" id="swap-btn" data-testid="trip-swap" class="hidden md:inline-flex p-3 rounded-full bg-surface-container text-primary-container hover:bg-surface-container-high transition mb-1" aria-label="Intercambiar origen y destino">
         <span class="material-symbols-outlined">swap_horiz</span>
       </button>
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Destino</span>
-        <input type="text" name="destination" data-testid="trip-destination-input" required placeholder="Barcelona" autocomplete="off" class="w-full rounded-lg border-outline-variant">
+        <input type="text" name="destination" data-testid="trip-destination-input" required placeholder="Barcelona" autocomplete="off" class="w-full h-[42px] rounded-lg border-outline-variant">
       </label>
     </div>
 
