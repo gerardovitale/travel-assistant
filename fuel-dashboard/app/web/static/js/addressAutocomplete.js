@@ -10,7 +10,7 @@ function debounce(fn, ms) {
 }
 
 export function attachAutocomplete(input) {
-  if (!input) return;
+  if (!input) return { setValue() {} };
 
   // Wrap input in a relative-positioned container so the dropdown anchors to it
   const wrapper = document.createElement("div");
@@ -33,6 +33,7 @@ export function attachAutocomplete(input) {
 
   let activeIndex = -1;
   let currentSuggestions = [];
+  let fetchGeneration = 0;
 
   function showDropdown(suggestions) {
     currentSuggestions = suggestions;
@@ -88,13 +89,15 @@ export function attachAutocomplete(input) {
   }
 
   const onInput = debounce(async () => {
+    const gen = ++fetchGeneration;
     const query = input.value.trim();
     if (query.length < MIN_CHARS) {
       hideDropdown();
       return;
     }
     const suggestions = await fetchSuggestions(query);
-    showDropdown(suggestions);
+    // Discard results from a superseded fetch (e.g. setValue() called while fetch was in-flight)
+    if (gen === fetchGeneration) showDropdown(suggestions);
   }, DEBOUNCE_MS);
 
   input.addEventListener("input", onInput);
@@ -122,4 +125,12 @@ export function attachAutocomplete(input) {
     // Small delay so mousedown on a suggestion fires before blur hides the dropdown
     setTimeout(hideDropdown, 150);
   });
+
+  return {
+    setValue(val) {
+      fetchGeneration++;  // invalidate any in-flight suggestion fetch
+      input.value = val;
+      hideDropdown();
+    },
+  };
 }

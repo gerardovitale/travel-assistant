@@ -343,7 +343,7 @@ async function runPlan(form) {
 
 // ── Geolocation ─────────────────────────────────────────────────────
 
-function initTripGeolocation() {
+function initTripGeolocation(originAC) {
   const btn = document.getElementById("geo-btn-origin");
   if (!btn || APP_CONFIG.disable_geolocation_lookup || !navigator.geolocation) return;
   btn.addEventListener("click", () => {
@@ -355,13 +355,20 @@ function initTripGeolocation() {
           const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
           const body = await r.json();
           const addr = body.display_name || `${latitude},${longitude}`;
-          document.querySelector('input[name="origin"]').value = addr;
+          originAC.setValue(addr);
           toast("Ubicación detectada", "success");
         } catch { toast("No se pudo detectar la dirección", "error"); }
         btn.disabled = false;
       },
-      () => { toast("Permiso de ubicación denegado", "error"); btn.disabled = false; },
-      { timeout: 8000 },
+      (err) => {
+        const msg =
+          err.code === err.PERMISSION_DENIED  ? "Permiso de ubicación denegado" :
+          err.code === err.TIMEOUT            ? "Tiempo agotado al obtener ubicación" :
+                                               "No se pudo obtener la ubicación";
+        toast(msg, "error");
+        btn.disabled = false;
+      },
+      { timeout: 10000, maximumAge: 60000 },
     );
   });
 }
@@ -369,9 +376,9 @@ function initTripGeolocation() {
 async function init() {
   map = createMap(document.getElementById("trip-map"));
   // Must run before any await so inputs are wrapped before the page becomes interactive.
-  attachAutocomplete(document.querySelector('[name="origin"]'));
-  attachAutocomplete(document.querySelector('[name="destination"]'));
-  initTripGeolocation();
+  const originAC = attachAutocomplete(document.querySelector('[name="origin"]'));
+  attachAutocomplete(document.querySelector('[name="destination"]'));  // no geo button; controller unused
+  initTripGeolocation(originAC);
   await populateFuelSelect(document.querySelector('select[name="fuel_type"]'));
 
   initBrandsDropdown("brands-toggle", "brands-list");

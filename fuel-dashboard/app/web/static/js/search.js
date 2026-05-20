@@ -290,7 +290,7 @@ function attachHoverHandlers() {
 
 // ── Geolocation ─────────────────────────────────────────────────────
 
-function initGeolocation() {
+function initGeolocation(locationAC) {
   const btn = document.getElementById("geo-btn");
   if (!btn || APP_CONFIG.disable_geolocation_lookup || !navigator.geolocation) return;
   btn.addEventListener("click", () => {
@@ -302,13 +302,20 @@ function initGeolocation() {
           const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
           const body = await r.json();
           const addr = body.display_name || `${latitude},${longitude}`;
-          document.querySelector('input[name="location"]').value = addr;
+          locationAC.setValue(addr);
           toast("Ubicación detectada", "success");
         } catch { toast("No se pudo detectar la dirección", "error"); }
         btn.disabled = false;
       },
-      () => { toast("Permiso de ubicación denegado", "error"); btn.disabled = false; },
-      { timeout: 8000 },
+      (err) => {
+        const msg =
+          err.code === err.PERMISSION_DENIED  ? "Permiso de ubicación denegado" :
+          err.code === err.TIMEOUT            ? "Tiempo agotado al obtener ubicación" :
+                                               "No se pudo obtener la ubicación";
+        toast(msg, "error");
+        btn.disabled = false;
+      },
+      { timeout: 10000, maximumAge: 60000 },
     );
   });
 }
@@ -318,8 +325,8 @@ function initGeolocation() {
 async function init() {
   map = createMap(document.getElementById("map"));
   // Must run before any await so inputs are wrapped before the page becomes interactive.
-  attachAutocomplete(document.querySelector('[name="location"]'));
-  initGeolocation();
+  const locationAC = attachAutocomplete(document.querySelector('[name="location"]'));
+  initGeolocation(locationAC);
   await populateFuelSelect(document.querySelector('select[name="fuel_type"]'));
 
   initBrandsDropdown("brands-toggle", "brands-list");
