@@ -82,6 +82,7 @@ def _find_stops_with_strategy(
     pick_fn: Callable[[List[dict], float, float], dict],
     safety: float = 0.15,
     reason_template: str = "Mas barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
+    min_fuel_at_destination_pct: float = 0.0,
 ) -> List[dict]:
     """Greedy stop selection with pluggable candidate picker.
 
@@ -93,6 +94,7 @@ def _find_stops_with_strategy(
         fuel_pct: initial fuel level as percentage (0-100).
         pick_fn: callable(candidates, window_start_km, window_end_km) -> best candidate dict.
         safety: safety margin fraction (default 15%).
+        min_fuel_at_destination_pct: minimum fuel level (%) to guarantee on arrival (0–80).
 
     Returns:
         list of stop dicts with added 'fuel_at_arrival_pct', 'liters_to_fill', 'cost_eur', 'reasoning'.
@@ -109,7 +111,12 @@ def _find_stops_with_strategy(
 
     sorted_stations = sorted(stations, key=lambda s: s["route_km"])
 
-    while current_km + current_range_km < total_km:
+    # Extend the effective target by the reserved fuel distance so the last stop is
+    # forced close enough to the destination to guarantee min_fuel_at_destination_pct.
+    reserve_km = max_range_km * (min_fuel_at_destination_pct / 100)
+    virtual_total_km = total_km + reserve_km
+
+    while current_km + current_range_km < virtual_total_km:
         effective_range = current_range_km - max_range_km * safety
         if effective_range <= 0:
             effective_range = current_range_km * 0.9
@@ -176,6 +183,7 @@ def find_optimal_stops(
     consumption_lper100km: float,
     fuel_pct: float,
     safety: float = 0.15,
+    min_fuel_at_destination_pct: float = 0.0,
 ) -> List[dict]:
     """Greedy cheapest-in-reachable-window stop selection."""
     return _find_stops_with_strategy(
@@ -187,6 +195,7 @@ def find_optimal_stops(
         _pick_cheapest,
         safety,
         reason_template="Mas barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
+        min_fuel_at_destination_pct=min_fuel_at_destination_pct,
     )
 
 
@@ -197,6 +206,7 @@ def find_min_stops(
     consumption_lper100km: float,
     fuel_pct: float,
     safety: float = 0.15,
+    min_fuel_at_destination_pct: float = 0.0,
 ) -> List[dict]:
     """Fewer stops by picking stations in the far zone of each window."""
     return _find_stops_with_strategy(
@@ -208,6 +218,7 @@ def find_min_stops(
         _pick_min_stops,
         safety,
         reason_template="Mas lejana y barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
+        min_fuel_at_destination_pct=min_fuel_at_destination_pct,
     )
 
 
@@ -218,6 +229,7 @@ def find_min_detour(
     consumption_lper100km: float,
     fuel_pct: float,
     safety: float = 0.15,
+    min_fuel_at_destination_pct: float = 0.0,
 ) -> List[dict]:
     """Prefer on-route stations with minimal detour."""
     return _find_stops_with_strategy(
@@ -229,6 +241,7 @@ def find_min_detour(
         _pick_min_detour,
         safety,
         reason_template="Menor desvio de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
+        min_fuel_at_destination_pct=min_fuel_at_destination_pct,
     )
 
 
@@ -282,6 +295,7 @@ def plan_trip(
     tank_liters: float,
     fuel_level_pct: float,
     max_detour_minutes: float,
+    min_fuel_at_destination_pct: float = 50.0,
     labels: Optional[List[str]] = None,
 ) -> TripPlan:
     """Main trip planning orchestrator.
@@ -314,7 +328,8 @@ def plan_trip(
     stations_df = query_stations_along_corridor(waypoints, fuel_type, corridor_km, labels=labels)
 
     if stations_df.empty:
-        # No stations found — return plan with no stops
+        # No stations in corridor — min_fuel_at_destination_pct cannot be enforced;
+        # return plan with computed arrival fuel so the KPI reflects reality.
         dest_fuel = _fuel_at_destination_pct([], total_km, tank_liters, consumption_lper100km, fuel_level_pct)
         return TripPlan(
             stops=[],
@@ -383,6 +398,7 @@ def plan_trip(
         tank_liters,
         consumption_lper100km,
         fuel_level_pct,
+        min_fuel_at_destination_pct=min_fuel_at_destination_pct,
     )
 
     # 8. Build TripStop list
@@ -410,7 +426,7 @@ def plan_trip(
 
     alternative_plans = []
     for name, description, strategy_fn in alternative_strategies:
-        alt_stops_raw = strategy_fn(*stop_args)
+        alt_stops_raw = strategy_fn(*stop_args, min_fuel_at_destination_pct=min_fuel_at_destination_pct)
         alt_trip_stops = [_build_trip_stop(s) for s in alt_stops_raw]
         alt_labels = {s.station.label for s in alt_trip_stops}
         if alt_labels == recommended_labels:

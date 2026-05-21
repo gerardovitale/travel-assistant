@@ -148,6 +148,8 @@ def test_trip_share_section_in_html():
     assert 'data-testid="trip-nav-google"' in resp.text
     assert 'data-testid="trip-nav-waze"' in resp.text
     assert 'data-testid="trip-nav-apple"' in resp.text
+    # Advanced parameter slider
+    assert 'data-testid="trip-min-fuel-dest"' in resp.text
 
 
 def test_page_insights_renders():
@@ -181,6 +183,7 @@ def test_page_trip_renders_config_defaults():
     assert f'value="{settings.default_tank_liters}"' in resp.text
     assert f'value="{settings.default_max_detour_minutes}"' in resp.text
     assert f'value="{settings.default_consumption_lper100km}"' in resp.text
+    assert f'value="{settings.default_min_fuel_at_destination_pct}"' in resp.text
 
 
 def test_static_token_css_served():
@@ -369,6 +372,7 @@ def test_trip_plan_endpoint(mock_service):
         "tank_liters": 50,
         "fuel_level_pct": 30,
         "max_detour_minutes": 15,
+        "min_fuel_at_destination_pct": 50,
     }
     resp = _get_client().post("/api/v1/trip/plan", json=body)
     assert resp.status_code == 200

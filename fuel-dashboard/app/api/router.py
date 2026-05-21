@@ -262,6 +262,7 @@ def trip_plan(request: Request, body: TripPlanRequest = Body(...)):
             tank_liters=body.tank_liters,
             fuel_level_pct=body.fuel_level_pct,
             max_detour_minutes=body.max_detour_minutes,
+            min_fuel_at_destination_pct=body.min_fuel_at_destination_pct,
             labels=body.labels,
         )
     except ValueError as exc:

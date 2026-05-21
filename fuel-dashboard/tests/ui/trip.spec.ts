@@ -141,11 +141,13 @@ test("share URL pre-populates form and auto-runs plan on load", async ({ page })
   const planRequest = page.waitForRequest((r) => r.url().includes("/api/v1/trip/plan"));
   await page.goto(
     "/trip?origin=Madrid&destination=Sevilla&fuel_type=gasoline_95_e5_price" +
-    "&consumption_lper100km=7&tank_liters=40&fuel_level_pct=25&max_detour_minutes=5"
+    "&consumption_lper100km=7&tank_liters=40&fuel_level_pct=25&max_detour_minutes=5" +
+    "&min_fuel_at_destination_pct=30"
   );
 
   await expect(page.getByTestId("trip-origin-input")).toHaveValue("Madrid");
   await expect(page.getByTestId("trip-destination-input")).toHaveValue("Sevilla");
+  await expect(page.getByTestId("trip-min-fuel-dest")).toHaveValue("30");
 
   const req = await planRequest;
   expect(req.postDataJSON()).toMatchObject({ origin: "Madrid", destination: "Sevilla", fuel_type: "gasoline_95_e5_price" });

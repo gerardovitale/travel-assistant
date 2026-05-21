@@ -85,6 +85,20 @@
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Nivel inicial de combustible: <span id="fuel-level-val">{{ app_config.default_fuel_level_pct|int }}%</span></span>
         <input type="range" name="fuel_level_pct" data-testid="trip-fuel-level" min="0" max="100" step="5" value="{{ app_config.default_fuel_level_pct }}" class="w-full">
       </label>
+      <label class="block mt-4">
+        <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible mínimo al llegar: <span id="min-fuel-dest-val">{{ app_config.default_min_fuel_at_destination_pct|int }}%</span> <span class="font-normal text-outline">(garantizado ≥ este valor)</span></span>
+        <div class="relative">
+          <input type="range" name="min_fuel_at_destination_pct" data-testid="trip-min-fuel-dest" min="0" max="100" step="5" value="{{ app_config.default_min_fuel_at_destination_pct }}" class="w-full relative z-10">
+          <div class="absolute inset-y-0 right-0 rounded-r-sm pointer-events-none" style="left:80%;background:repeating-linear-gradient(45deg,rgba(116,119,130,.18) 0,rgba(116,119,130,.18) 3px,transparent 3px,transparent 7px);"></div>
+          <div class="absolute inset-y-0 w-px bg-outline-variant pointer-events-none" style="left:80%;"></div>
+        </div>
+        <div class="relative h-5">
+          <div class="absolute flex items-center gap-0.5 text-[10px] text-outline font-label -translate-x-1/2 top-0.5" style="left:80%;">
+            <span class="material-symbols-outlined" style="font-size:11px;line-height:1;">lock</span>
+            <span class="whitespace-nowrap">reserva del sistema</span>
+          </div>
+        </div>
+      </label>
     </details>
 
     <button type="submit" data-testid="trip-submit" class="w-full cta-gradient text-white font-headline font-extrabold py-4 rounded-xl shadow-lg hover:opacity-95 active:scale-[0.99] transition">

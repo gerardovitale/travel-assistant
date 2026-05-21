@@ -250,6 +250,9 @@ class TripPlanRequest(BaseModel):
     tank_liters: float = Field(default_factory=lambda: settings.default_tank_liters, ge=5.0, le=120.0)
     fuel_level_pct: float = Field(default_factory=lambda: settings.default_fuel_level_pct, ge=0.0, le=100.0)
     max_detour_minutes: float = Field(default_factory=lambda: settings.default_max_detour_minutes, ge=0.0, le=180.0)
+    min_fuel_at_destination_pct: float = Field(
+        default_factory=lambda: settings.default_min_fuel_at_destination_pct, ge=0.0, le=80.0
+    )
     labels: Optional[List[str]] = None
 
 

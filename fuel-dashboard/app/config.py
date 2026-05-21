@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     default_refill_liters: float = 30.0
     default_fuel_level_pct: float = 25.0
     default_max_detour_minutes: float = 5.0
+    default_min_fuel_at_destination_pct: float = 40.0
 
     osrm_base_url: str = "https://router.project-osrm.org"
     osrm_timeout: float = 5.0

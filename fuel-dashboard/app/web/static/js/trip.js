@@ -21,6 +21,7 @@ function buildShareUrl(formData, publicUrl) {
   params.set("tank_liters", formData.tank_liters);
   params.set("fuel_level_pct", formData.fuel_level_pct);
   params.set("max_detour_minutes", formData.max_detour_minutes);
+  params.set("min_fuel_at_destination_pct", formData.min_fuel_at_destination_pct);
   (formData.labels || []).forEach((l) => params.append("labels[]", l));
   return `${base}?${params.toString()}`;
 }
@@ -38,6 +39,7 @@ function readShareParams() {
     tank_liters: p.get("tank_liters") ? parseFloat(p.get("tank_liters")) : null,
     fuel_level_pct: p.get("fuel_level_pct") ? parseFloat(p.get("fuel_level_pct")) : null,
     max_detour_minutes: p.get("max_detour_minutes") ? parseFloat(p.get("max_detour_minutes")) : null,
+    min_fuel_at_destination_pct: p.get("min_fuel_at_destination_pct") ? parseFloat(p.get("min_fuel_at_destination_pct")) : null,
     labels: p.getAll("labels[]"),
   };
 }
@@ -353,6 +355,7 @@ async function runPlan(form) {
     tank_liters: parseFloat(data.get("tank_liters")),
     fuel_level_pct: parseFloat(data.get("fuel_level_pct")),
     max_detour_minutes: parseFloat(data.get("max_detour_minutes")),
+    min_fuel_at_destination_pct: parseFloat(data.get("min_fuel_at_destination_pct")),
     labels: getSelectedLabels(selectedLabels),
   };
   try {
@@ -425,6 +428,13 @@ async function init() {
   const levelInput = document.querySelector('input[name="fuel_level_pct"]');
   const levelLabel = document.getElementById("fuel-level-val");
   levelInput.addEventListener("input", () => { levelLabel.textContent = `${levelInput.value}%`; });
+
+  const minFuelDestInput = document.querySelector('input[name="min_fuel_at_destination_pct"]');
+  const minFuelDestLabel = document.getElementById("min-fuel-dest-val");
+  minFuelDestInput.addEventListener("input", () => {
+    if (parseInt(minFuelDestInput.value, 10) > 80) minFuelDestInput.value = 80;
+    minFuelDestLabel.textContent = `${minFuelDestInput.value}%`;
+  });
 
   const swap = document.getElementById("swap-btn");
   swap?.addEventListener("click", () => {
@@ -519,6 +529,10 @@ async function init() {
       levelLabel.textContent = `${params.fuel_level_pct}%`;
     }
     if (params.max_detour_minutes != null) document.querySelector('[name="max_detour_minutes"]').value = params.max_detour_minutes;
+    if (params.min_fuel_at_destination_pct != null) {
+      minFuelDestInput.value = params.min_fuel_at_destination_pct;
+      minFuelDestLabel.textContent = `${params.min_fuel_at_destination_pct}%`;
+    }
     if (params.labels?.length) {
       params.labels.forEach((l) => {
         selectedLabels.add(l);

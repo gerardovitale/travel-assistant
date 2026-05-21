@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 from services.trip_planner import _build_trip_stop
 from services.trip_planner import _find_stops_with_strategy
+from services.trip_planner import _fuel_at_destination_pct
 from services.trip_planner import find_min_detour
 from services.trip_planner import find_min_stops
 from services.trip_planner import find_optimal_stops
@@ -155,6 +156,55 @@ def test_find_stops_low_fuel():
     )
     assert len(stops) >= 1
     assert stops[0]["label"] == "Near"
+
+
+def test_min_fuel_at_destination_forces_extra_stop():
+    """Car can reach destination unaided but would arrive with < 50% fuel.
+    min_fuel_at_destination_pct=50 must force at least one stop."""
+    # tank=40L, consumption=7L/100km → max_range=571km
+    # initial fuel 80% → initial_range=457km > 300km (destination reachable without stop)
+    # without reserve: fuel at destination ≈ 27.5%  (< 50%)
+    station = {
+        "label": "Mid",
+        "route_km": 200,
+        "price": 1.50,
+        "address": "Calle Test 1",
+        "municipality": "Madrid",
+        "province": "Madrid",
+        "zip_code": "28001",
+        "latitude": 40.4,
+        "longitude": -3.7,
+        "detour_minutes": 0,
+        "min_distance_km": 0,
+    }
+    stops_with = find_optimal_stops(
+        [station],
+        total_km=300,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=80,
+        min_fuel_at_destination_pct=50,
+    )
+    assert len(stops_with) >= 1, "algorithm should add a stop to guarantee 50% arrival fuel"
+    # Verify the guaranteed arrival fuel is at least the requested floor (safety adds extra margin)
+    trip_stops = [_build_trip_stop(s) for s in stops_with]
+    dest_fuel = _fuel_at_destination_pct(trip_stops, 300, 40, 7.0, 80)
+    assert dest_fuel >= 50.0
+
+
+def test_min_fuel_at_destination_zero_matches_baseline():
+    """min_fuel_at_destination_pct=0 must reproduce the same behaviour as the default."""
+    stations = [{"label": "S1", "route_km": 200, "price": 1.50}]
+    stops_baseline = find_optimal_stops(stations, total_km=300, tank_liters=40, consumption_lper100km=7.0, fuel_pct=80)
+    stops_zero = find_optimal_stops(
+        stations,
+        total_km=300,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=80,
+        min_fuel_at_destination_pct=0,
+    )
+    assert [s["label"] for s in stops_baseline] == [s["label"] for s in stops_zero]
 
 
 # --- plan_trip (integration with mocks) ---
