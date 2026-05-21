@@ -33,3 +33,9 @@ CVE-2026-42011
 # libssh2 integer overflow via large username/password — app does not use SSH in any container
 # Reviewed: 2026-05-19. Re-review by: 2026-08-31.
 CVE-2026-7598
+
+# libkrb5 / Kerberos DoS via integer underflow (libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0)
+# No Debian fix available. App does not use Kerberos or GSSAPI; these packages are
+# transitive OS-level dependencies of the python:3.13-slim base image.
+# Reviewed: 2026-05-21. Re-review by: 2026-08-31.
+CVE-2026-40356
