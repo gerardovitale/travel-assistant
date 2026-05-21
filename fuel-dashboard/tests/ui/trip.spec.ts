@@ -101,6 +101,32 @@ test("share section appears after successful plan and hides after an error", asy
   await expect(page.getByTestId("trip-share")).toBeHidden();
 });
 
+test("nav section appears after successful plan with correct navigation links", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+
+  await tripPage.plan("Madrid", "Sevilla");
+
+  await expect(page.getByTestId("trip-nav")).toBeVisible();
+  await expect(page.getByTestId("trip-nav-google")).toHaveAttribute("href", /google\.com\/maps/);
+  await expect(page.getByTestId("trip-nav-waze")).toBeVisible();
+  await expect(page.getByTestId("trip-nav-apple")).toContainText("solo ruta directa");
+});
+
+test("nav section hides after a plan error", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+
+  const firstDone = page.waitForResponse((r) => r.url().includes("/api/v1/trip/plan"));
+  await tripPage.plan("Madrid", "Sevilla");
+  await firstDone;
+  await expect(page.getByTestId("trip-nav")).toBeVisible();
+
+  await setFixture(page, "trip_error");
+  await tripPage.plan("Madrid", "Sevilla");
+  await expect(page.getByTestId("trip-nav")).toBeHidden();
+});
+
 test("share URL pre-populates form and auto-runs plan on load", async ({ page }) => {
   const planRequest = page.waitForRequest((r) => r.url().includes("/api/v1/trip/plan"));
   await page.goto(

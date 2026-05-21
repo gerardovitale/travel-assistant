@@ -49,25 +49,30 @@ function banner(kind, text) {
 }
 function hideBanner() { document.getElementById("trip-banner").classList.add("hidden"); }
 
-function kpi(label, value, icon, delay = 0) {
+function kpi(label, value, icon, delay = 0, valueClass = "text-on-surface") {
   return `
     <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm fade-in" style="animation-delay:${delay}ms">
       <div class="flex items-center gap-2 text-outline">
         <span class="material-symbols-outlined text-[18px]">${icon}</span>
         <span class="text-[11px] font-label font-bold tracking-wider uppercase">${label}</span>
       </div>
-      <p class="mt-2 font-headline font-extrabold text-2xl text-on-surface">${value}</p>
+      <p class="mt-2 font-headline font-extrabold text-2xl ${valueClass}">${value}</p>
     </div>`;
 }
 
 function renderKpis(plan) {
+  const fuelPct = plan.fuel_at_destination_pct;
+  const fuelClass = fuelPct == null ? "text-on-surface"
+    : fuelPct < 15             ? "text-error"
+    : fuelPct < 30             ? "text-amber-600"
+    :                            "text-tertiary-container";
   const el = document.getElementById("trip-kpis");
   el.innerHTML = [
     kpi("Distancia total", formatKm(plan.total_distance_km), "straighten", 0),
     kpi("Duración", formatMin(plan.duration_minutes), "schedule", 60),
     kpi("Coste combustible", formatEur(plan.total_fuel_cost), "payments", 120),
     kpi("Ahorro estimado", formatEur(plan.savings_eur), "savings", 180),
-    kpi("Combustible al llegar", `${plan.fuel_at_destination_pct?.toFixed(0) ?? "—"}%`, "local_gas_station", 240),
+    kpi("Combustible al llegar", `${fuelPct?.toFixed(0) ?? "—"}%`, "local_gas_station", 240, fuelClass),
   ].join("");
   el.classList.remove("hidden");
 }
@@ -164,7 +169,7 @@ function buildNavUrls(plan) {
     : [dLat, dLon];
   const wazeAppUrl = `waze://ul?ll=${wazeTarget[0]},${wazeTarget[1]}&navigate=yes`;
   const wazeWebUrl = `https://waze.com/ul?ll=${wazeTarget[0]},${wazeTarget[1]}&navigate=yes`;
-  const wazeLabel = plan.stops.length ? "primera parada" : "destino";
+  const wazeLabel = plan.stops.length ? "solo 1.ª parada" : "destino";
 
   // Apple Maps: https URL opens the native Maps app on iOS/macOS automatically.
   const appleUrl = `https://maps.apple.com/?saddr=${oLat},${oLon}&daddr=${dLat},${dLon}`;
@@ -314,6 +319,12 @@ function renderMap(plan) {
 }
 
 async function runPlan(form) {
+  const submitBtn = form.querySelector('[type="submit"]');
+  if (!submitBtn) return;
+  const originalHTML = submitBtn.innerHTML;
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<span class="material-symbols-outlined animate-spin align-middle">refresh</span><span class="ml-2">Calculando…</span>';
+
   const data = new FormData(form);
   const body = {
     origin: data.get("origin"),
@@ -338,6 +349,9 @@ async function runPlan(form) {
   } catch (err) {
     resetPlanView(err.message || "No se pudo generar una nueva ruta.");
     banner("error", err.message || "Error calculando el viaje");
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalHTML;
   }
 }
 
@@ -416,13 +430,18 @@ async function init() {
   });
 
   const copyBtn = document.getElementById("trip-share-copy");
+  const copyIcon = copyBtn?.querySelector(".material-symbols-outlined");
+  const copyLabel = document.getElementById("trip-share-copy-label");
   copyBtn?.addEventListener("click", () => {
     const url = copyBtn.dataset.url;
     if (!url) return;
     navigator.clipboard.writeText(url).then(() => {
-      const prev = copyBtn.textContent;
-      copyBtn.textContent = "¡Copiado!";
-      setTimeout(() => { copyBtn.textContent = prev; }, 2000);
+      copyIcon.textContent = "check";
+      copyLabel.textContent = "¡Copiado!";
+      setTimeout(() => {
+        copyIcon.textContent = "content_copy";
+        copyLabel.textContent = "Copiar enlace";
+      }, 2000);
     }).catch(() => {});
   });
 

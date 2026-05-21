@@ -32,7 +32,7 @@
           </button>
         </div>
       </label>
-      <button type="button" id="swap-btn" data-testid="trip-swap" class="hidden md:inline-flex p-3 rounded-full bg-surface-container text-primary-container hover:bg-surface-container-high transition mb-1" aria-label="Intercambiar origen y destino">
+      <button type="button" id="swap-btn" data-testid="trip-swap" class="inline-flex justify-self-center p-3 rounded-full bg-surface-container text-primary-container hover:bg-surface-container-high transition mb-1" aria-label="Intercambiar origen y destino">
         <span class="material-symbols-outlined">swap_horiz</span>
       </button>
       <label class="block">
@@ -98,6 +98,22 @@
 
   <div id="trip-kpis" data-testid="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-5 gap-3"></div>
 
+  <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">
+    <div id="trip-map" data-testid="trip-map" class="h-[360px] md:h-[500px]"></div>
+  </div>
+
+  <div>
+    <h2 class="font-headline font-bold text-xl mb-3">Paradas recomendadas</h2>
+    <div id="trip-stops" data-testid="trip-stops" class="space-y-3">
+      <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">Introduce origen y destino para planificar.</div>
+    </div>
+  </div>
+
+  <div id="alt-plans-wrap" data-testid="trip-alt-plans-wrap" class="hidden">
+    <h2 class="font-headline font-bold text-xl mb-3">Alternativas</h2>
+    <div id="alt-plans" data-testid="trip-alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
+  </div>
+
   <div id="trip-share" data-testid="trip-share" class="hidden bg-surface-container-lowest rounded-2xl border border-outline-variant/40 px-5 py-4 flex flex-wrap items-center gap-3 shadow-sm">
     <span class="text-xs font-label font-bold text-outline uppercase tracking-wider flex items-center gap-1">
       <span class="material-symbols-outlined text-[16px]">share</span>
@@ -105,7 +121,7 @@
     </span>
     <button type="button" id="trip-share-copy" data-testid="trip-share-copy" class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
       <span class="material-symbols-outlined text-[16px]">content_copy</span>
-      Copiar enlace
+      <span id="trip-share-copy-label">Copiar enlace</span>
     </button>
     <a id="trip-share-whatsapp" data-testid="trip-share-whatsapp" href="#" target="_blank" rel="noopener noreferrer" aria-label="Compartir plan por WhatsApp" class="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition">
       <span class="material-symbols-outlined text-[16px]">chat</span>
@@ -130,29 +146,13 @@
     <a id="nav-waze" data-testid="trip-nav-waze" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir navegación en Waze"
        class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
       <span class="material-symbols-outlined text-[16px]">navigation</span>
-      <span>Waze <span id="nav-waze-label" class="text-[11px] font-normal text-outline ml-0.5"></span></span>
+      <span>Waze <span id="nav-waze-label" class="text-[12px] font-normal text-on-surface-variant ml-0.5"></span></span>
     </a>
     <a id="nav-apple" data-testid="trip-nav-apple" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir ruta en Apple Maps"
        class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
       <span class="material-symbols-outlined text-[16px]">near_me</span>
-      Apple Maps
+      <span>Apple Maps <span class="text-[12px] font-normal text-on-surface-variant ml-0.5">(solo ruta directa)</span></span>
     </a>
-  </div>
-
-  <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">
-    <div id="trip-map" data-testid="trip-map" class="h-[360px] md:h-[500px]"></div>
-  </div>
-
-  <div>
-    <h2 class="font-headline font-bold text-xl mb-3">Paradas recomendadas</h2>
-    <div id="trip-stops" data-testid="trip-stops" class="space-y-3">
-      <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">Introduce origen y destino para planificar.</div>
-    </div>
-  </div>
-
-  <div id="alt-plans-wrap" data-testid="trip-alt-plans-wrap" class="hidden">
-    <h2 class="font-headline font-bold text-xl mb-3">Alternativas</h2>
-    <div id="alt-plans" data-testid="trip-alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
   </div>
 </section>
 {% endblock %}

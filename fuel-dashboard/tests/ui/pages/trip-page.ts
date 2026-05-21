@@ -1,4 +1,4 @@
-import { Locator, Page } from "@playwright/test";
+import { expect, Locator, Page } from "@playwright/test";
 
 export class TripPage {
   readonly page: Page;
@@ -20,6 +20,7 @@ export class TripPage {
   async plan(origin: string, destination: string) {
     await this.originInput.fill(origin);
     await this.destinationInput.fill(destination);
+    await expect(this.submitButton).toBeEnabled();
     await this.submitButton.click();
   }
 }
