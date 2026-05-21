@@ -185,10 +185,15 @@ function showShare(formData, plan) {
   const copyBtn = document.getElementById("trip-share-copy");
   const waBtn = document.getElementById("trip-share-whatsapp");
   const tgBtn = document.getElementById("trip-share-telegram");
+  const xBtn = document.getElementById("trip-share-x");
+  const nativeBtn = document.getElementById("trip-share-native");
 
   copyBtn.dataset.url = shareUrl;
   waBtn.href = `https://wa.me/?text=${encodeURIComponent(text + " " + shareUrl)}`;
   tgBtn.href = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(text)}`;
+  xBtn.href = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(shareUrl)}`;
+  nativeBtn.dataset.url = shareUrl;
+  nativeBtn.dataset.text = text;
 
   const { googleUrl, wazeAppUrl, wazeWebUrl, wazeLabel, appleUrl } = buildNavUrls(plan);
   document.getElementById("nav-google").href = googleUrl;
@@ -197,17 +202,31 @@ function showShare(formData, plan) {
   wazeEl.dataset.appUrl = wazeAppUrl;
   document.getElementById("nav-waze-label").textContent = `(${wazeLabel})`;
   document.getElementById("nav-apple").href = appleUrl;
-  document.getElementById("trip-nav").classList.remove("hidden");
 
   // Always push a relative URL — using the canonical publicUrl here would throw
   // a SecurityError when public_url differs from the current origin (e.g. staging).
   history.pushState({}, "", window.location.pathname + shareUrl.slice(shareUrl.indexOf("?")));
-  document.getElementById("trip-share").classList.remove("hidden");
+  document.getElementById("trip-actions").classList.remove("hidden");
 }
 
 function hideShare() {
-  document.getElementById("trip-share").classList.add("hidden");
-  document.getElementById("trip-nav").classList.add("hidden");
+  document.getElementById("trip-actions").classList.add("hidden");
+  closeDialog("trip-share-dialog");
+  closeDialog("trip-nav-dialog");
+}
+
+function openDialog(id) {
+  const dlg = document.getElementById(id);
+  if (!dlg || dlg.open) return;
+  if (typeof dlg.showModal === "function") dlg.showModal();
+  else dlg.setAttribute("open", "");
+}
+
+function closeDialog(id) {
+  const dlg = document.getElementById(id);
+  if (!dlg || !dlg.open) return;
+  if (typeof dlg.close === "function") dlg.close();
+  else dlg.removeAttribute("open");
 }
 
 function resetPlanView(message = "Introduce origen y destino para planificar.") {
@@ -422,26 +441,66 @@ async function init() {
 
   attachStopInteraction();
 
+  // Dialog open/close wiring
+  document.getElementById("trip-share-button")?.addEventListener("click", () => openDialog("trip-share-dialog"));
+  document.getElementById("trip-nav-button")?.addEventListener("click", () => openDialog("trip-nav-dialog"));
+  document.querySelectorAll("[data-close-dialog]").forEach((btn) => {
+    btn.addEventListener("click", () => closeDialog(btn.dataset.closeDialog));
+  });
+  // Click on backdrop (outside the inner panel) closes the dialog
+  document.querySelectorAll("dialog.trip-action-sheet").forEach((dlg) => {
+    dlg.addEventListener("click", (e) => { if (e.target === dlg) closeDialog(dlg.id); });
+  });
+
+  // Close dialog after picking an external link target (visual feedback / clean state)
+  document.querySelectorAll(
+    "#trip-share-whatsapp, #trip-share-telegram, #trip-share-x",
+  ).forEach((el) => el.addEventListener("click", () => closeDialog("trip-share-dialog")));
+  document.querySelectorAll(
+    "#nav-google, #nav-apple",
+  ).forEach((el) => el.addEventListener("click", () => closeDialog("trip-nav-dialog")));
+
+  // Waze: try native app, fall back to web — preserved behavior, just routed through dialog
   document.getElementById("nav-waze")?.addEventListener("click", (e) => {
     const appUrl = e.currentTarget.dataset.appUrl;
+    closeDialog("trip-nav-dialog");
     if (!appUrl) return;
     e.preventDefault();
     tryOpenNativeApp(appUrl, e.currentTarget.href);
   });
 
+  // Native Web Share API — only surface the tile if supported
+  const nativeBtn = document.getElementById("trip-share-native");
+  if (nativeBtn && typeof navigator.share === "function") {
+    nativeBtn.classList.remove("hidden");
+    nativeBtn.addEventListener("click", async () => {
+      const url = nativeBtn.dataset.url;
+      const text = nativeBtn.dataset.text;
+      if (!url) return;
+      try {
+        await navigator.share({ title: "Plan de viaje", text, url });
+        closeDialog("trip-share-dialog");
+      } catch (_) { /* user cancelled or share failed silently */ }
+    });
+  }
+
   const copyBtn = document.getElementById("trip-share-copy");
-  const copyIcon = copyBtn?.querySelector(".material-symbols-outlined");
   const copyLabel = document.getElementById("trip-share-copy-label");
+  const copyIconIdle = copyBtn?.querySelector('[data-copy-state="idle"]');
+  const copyIconDone = copyBtn?.querySelector('[data-copy-state="done"]');
   copyBtn?.addEventListener("click", () => {
     const url = copyBtn.dataset.url;
     if (!url) return;
     navigator.clipboard.writeText(url).then(() => {
-      copyIcon.textContent = "check";
+      copyIconIdle.classList.add("hidden");
+      copyIconDone.classList.remove("hidden");
       copyLabel.textContent = "¡Copiado!";
       setTimeout(() => {
-        copyIcon.textContent = "content_copy";
+        copyIconIdle.classList.remove("hidden");
+        copyIconDone.classList.add("hidden");
         copyLabel.textContent = "Copiar enlace";
-      }, 2000);
+        closeDialog("trip-share-dialog");
+      }, 1200);
     }).catch(() => {});
   });
 

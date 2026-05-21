@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_brand_icons.html" import brand_icon %}
 {% set current_page = 'trip' %}
 {% block title %}Planificar viaje · Fuel Precision{% endblock %}
 {% block meta_description %}Planifica tu ruta y repostar en las gasolineras más baratas del camino. Calcula paradas estratégicas y ahorra en combustible en cualquier viaje por España.{% endblock %}
@@ -114,46 +115,77 @@
     <div id="alt-plans" data-testid="trip-alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
   </div>
 
-  <div id="trip-share" data-testid="trip-share" class="hidden bg-surface-container-lowest rounded-2xl border border-outline-variant/40 px-5 py-4 flex flex-wrap items-center gap-3 shadow-sm">
-    <span class="text-xs font-label font-bold text-outline uppercase tracking-wider flex items-center gap-1">
-      <span class="material-symbols-outlined text-[16px]">share</span>
-      Compartir plan
-    </span>
-    <button type="button" id="trip-share-copy" data-testid="trip-share-copy" class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
-      <span class="material-symbols-outlined text-[16px]">content_copy</span>
-      <span id="trip-share-copy-label">Copiar enlace</span>
+  <div id="trip-actions" data-testid="trip-actions" class="hidden bg-surface-container-lowest rounded-2xl border border-outline-variant/40 px-5 py-4 flex flex-wrap items-center gap-3 shadow-sm">
+    <button type="button" id="trip-share-button" data-testid="trip-share-button" class="trip-action-pill" aria-haspopup="dialog" aria-controls="trip-share-dialog">
+      {{ brand_icon('share', 'w-5 h-5') }}
+      <span>Compartir</span>
     </button>
-    <a id="trip-share-whatsapp" data-testid="trip-share-whatsapp" href="#" target="_blank" rel="noopener noreferrer" aria-label="Compartir plan por WhatsApp" class="inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition">
-      <span class="material-symbols-outlined text-[16px]">chat</span>
-      WhatsApp
-    </a>
-    <a id="trip-share-telegram" data-testid="trip-share-telegram" href="#" target="_blank" rel="noopener noreferrer" aria-label="Compartir plan por Telegram" class="inline-flex items-center gap-1.5 rounded-lg bg-[#2AABEE] text-white px-3 py-1.5 text-sm font-medium hover:opacity-90 transition">
-      <span class="material-symbols-outlined text-[16px]">send</span>
-      Telegram
-    </a>
+    <button type="button" id="trip-nav-button" data-testid="trip-nav-button" class="trip-action-pill" aria-haspopup="dialog" aria-controls="trip-nav-dialog">
+      {{ brand_icon('navigate', 'w-5 h-5') }}
+      <span>Navegar</span>
+    </button>
   </div>
 
-  <div id="trip-nav" data-testid="trip-nav" class="hidden bg-surface-container-lowest rounded-2xl border border-outline-variant/40 px-5 py-4 flex flex-wrap items-center gap-3 shadow-sm">
-    <span class="text-xs font-label font-bold text-outline uppercase tracking-wider flex items-center gap-1">
-      <span class="material-symbols-outlined text-[16px]">navigation</span>
-      Navegar con
-    </span>
-    <a id="nav-google" data-testid="trip-nav-google" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir ruta completa en Google Maps"
-       class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
-      <span class="material-symbols-outlined text-[16px]">map</span>
-      Google Maps
-    </a>
-    <a id="nav-waze" data-testid="trip-nav-waze" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir navegación en Waze"
-       class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
-      <span class="material-symbols-outlined text-[16px]">navigation</span>
-      <span>Waze <span id="nav-waze-label" class="text-[12px] font-normal text-on-surface-variant ml-0.5"></span></span>
-    </a>
-    <a id="nav-apple" data-testid="trip-nav-apple" href="#" target="_blank" rel="noopener noreferrer" aria-label="Abrir ruta en Apple Maps"
-       class="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-container-low transition">
-      <span class="material-symbols-outlined text-[16px]">near_me</span>
-      <span>Apple Maps <span class="text-[12px] font-normal text-on-surface-variant ml-0.5">(solo ruta directa)</span></span>
-    </a>
-  </div>
+  <dialog id="trip-share-dialog" data-testid="trip-share-dialog" class="trip-action-sheet" aria-labelledby="trip-share-dialog-title">
+    <div class="trip-action-sheet__inner">
+      <header class="flex items-center justify-between mb-4">
+        <h3 id="trip-share-dialog-title" class="font-headline font-bold text-lg">Compartir</h3>
+        <button type="button" class="trip-action-sheet__close" data-close-dialog="trip-share-dialog" aria-label="Cerrar">
+          {{ brand_icon('close', 'w-5 h-5') }}
+        </button>
+      </header>
+      <div class="trip-action-sheet__grid">
+        <button type="button" id="trip-share-copy" data-testid="trip-share-copy" class="trip-action-tile">
+          <span class="trip-action-tile__icon" id="trip-share-copy-icon" style="background:#E0E3EB;color:#001642;">
+            <span data-copy-state="idle">{{ brand_icon('copy_link', 'w-6 h-6') }}</span>
+            <span data-copy-state="done" class="hidden">{{ brand_icon('check', 'w-6 h-6') }}</span>
+          </span>
+          <span class="trip-action-tile__label" id="trip-share-copy-label">Copiar enlace</span>
+        </button>
+        <a id="trip-share-whatsapp" data-testid="trip-share-whatsapp" href="#" target="_blank" rel="noopener noreferrer" class="trip-action-tile">
+          <span class="trip-action-tile__icon" style="background:#25D366;color:#fff;">{{ brand_icon('whatsapp', 'w-6 h-6') }}</span>
+          <span class="trip-action-tile__label">WhatsApp</span>
+        </a>
+        <a id="trip-share-telegram" data-testid="trip-share-telegram" href="#" target="_blank" rel="noopener noreferrer" class="trip-action-tile">
+          <span class="trip-action-tile__icon" style="background:#2AABEE;color:#fff;">{{ brand_icon('telegram', 'w-6 h-6') }}</span>
+          <span class="trip-action-tile__label">Telegram</span>
+        </a>
+        <a id="trip-share-x" data-testid="trip-share-x" href="#" target="_blank" rel="noopener noreferrer" aria-label="Compartir en X" class="trip-action-tile">
+          <span class="trip-action-tile__icon" style="background:#000;color:#fff;">{{ brand_icon('x', 'w-5 h-5') }}</span>
+          <span class="trip-action-tile__label" aria-hidden="true">X</span>
+        </a>
+        <button type="button" id="trip-share-native" data-testid="trip-share-native" class="trip-action-tile hidden" aria-label="Más opciones para compartir">
+          <span class="trip-action-tile__icon" style="background:#001642;color:#fff;">{{ brand_icon('ios_share', 'w-6 h-6') }}</span>
+          <span class="trip-action-tile__label">Más opciones</span>
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="trip-nav-dialog" data-testid="trip-nav-dialog" class="trip-action-sheet" aria-labelledby="trip-nav-dialog-title">
+    <div class="trip-action-sheet__inner">
+      <header class="flex items-center justify-between mb-4">
+        <h3 id="trip-nav-dialog-title" class="font-headline font-bold text-lg">Navegar</h3>
+        <button type="button" class="trip-action-sheet__close" data-close-dialog="trip-nav-dialog" aria-label="Cerrar">
+          {{ brand_icon('close', 'w-5 h-5') }}
+        </button>
+      </header>
+      <div class="trip-action-sheet__grid">
+        <a id="nav-google" data-testid="trip-nav-google" href="#" target="_blank" rel="noopener noreferrer" class="trip-action-tile">
+          <span class="trip-action-tile__icon" style="background:#fff;border:1px solid #E0E3EB;">{{ brand_icon('googlemaps', 'w-7 h-7') }}</span>
+          <span class="trip-action-tile__label">Google Maps <span class="block text-[11px] font-normal text-on-surface-variant">ruta completa</span></span>
+        </a>
+        <a id="nav-waze" data-testid="trip-nav-waze" href="#" target="_blank" rel="noopener noreferrer" class="trip-action-tile">
+          <span class="trip-action-tile__icon" style="background:#33CCFF;color:#fff;">{{ brand_icon('waze', 'w-6 h-6') }}</span>
+          <span class="trip-action-tile__label">Waze <span id="nav-waze-label" class="block text-[11px] font-normal text-on-surface-variant"></span></span>
+        </a>
+        <a id="nav-apple" data-testid="trip-nav-apple" href="#" target="_blank" rel="noopener noreferrer" class="trip-action-tile">
+          <span class="trip-action-tile__icon" style="background:#fff;border:1px solid #E0E3EB;">{{ brand_icon('applemaps', 'w-7 h-7') }}</span>
+          <span class="trip-action-tile__label">Apple Maps <span class="block text-[11px] font-normal text-on-surface-variant">solo ruta directa</span></span>
+        </a>
+      </div>
+    </div>
+  </dialog>
 </section>
 {% endblock %}
 

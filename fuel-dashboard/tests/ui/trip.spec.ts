@@ -82,7 +82,7 @@ test("trip planner errors reset the previous plan", async ({ page }) => {
   await expect(page.getByTestId("trip-alt-plans-wrap")).toBeHidden();
 });
 
-test("share section appears after successful plan and hides after an error", async ({ page }) => {
+test("share dialog exposes copy, WhatsApp, and Telegram tiles after a successful plan", async ({ page }) => {
   const tripPage = new TripPage(page);
   await tripPage.goto();
 
@@ -90,41 +90,51 @@ test("share section appears after successful plan and hides after an error", asy
   await tripPage.plan("Madrid", "Sevilla");
   await firstDone;
 
-  await expect(page.getByTestId("trip-share")).toBeVisible();
-  await expect(page.getByTestId("trip-share-copy")).toBeVisible();
-  await expect(page.getByTestId("trip-share-whatsapp")).toBeVisible();
-  await expect(page.getByTestId("trip-share-telegram")).toBeVisible();
+  await expect(page.getByTestId("trip-actions")).toBeVisible();
+  await page.getByTestId("trip-share-button").click();
+  const shareDialog = page.getByTestId("trip-share-dialog");
+  await expect(shareDialog).toBeVisible();
+  await expect(shareDialog.getByTestId("trip-share-copy")).toBeVisible();
+  await expect(shareDialog.getByTestId("trip-share-whatsapp")).toHaveAttribute("href", /wa\.me/);
+  await expect(shareDialog.getByTestId("trip-share-telegram")).toHaveAttribute("href", /t\.me\/share/);
+  await expect(shareDialog.getByTestId("trip-share-x")).toHaveAttribute("href", /twitter\.com\/intent\/tweet/);
+
+  // Close dialog before next assertion
+  await page.keyboard.press("Escape");
 
   await setFixture(page, "trip_error");
   await tripPage.plan("Madrid", "Sevilla");
 
-  await expect(page.getByTestId("trip-share")).toBeHidden();
+  await expect(page.getByTestId("trip-actions")).toBeHidden();
 });
 
-test("nav section appears after successful plan with correct navigation links", async ({ page }) => {
+test("nav dialog exposes Google Maps, Waze, and Apple Maps tiles after a successful plan", async ({ page }) => {
   const tripPage = new TripPage(page);
   await tripPage.goto();
 
   await tripPage.plan("Madrid", "Sevilla");
 
-  await expect(page.getByTestId("trip-nav")).toBeVisible();
-  await expect(page.getByTestId("trip-nav-google")).toHaveAttribute("href", /google\.com\/maps/);
-  await expect(page.getByTestId("trip-nav-waze")).toBeVisible();
-  await expect(page.getByTestId("trip-nav-apple")).toContainText("solo ruta directa");
+  await expect(page.getByTestId("trip-actions")).toBeVisible();
+  await page.getByTestId("trip-nav-button").click();
+  const navDialog = page.getByTestId("trip-nav-dialog");
+  await expect(navDialog).toBeVisible();
+  await expect(navDialog.getByTestId("trip-nav-google")).toHaveAttribute("href", /google\.com\/maps/);
+  await expect(navDialog.getByTestId("trip-nav-waze")).toBeVisible();
+  await expect(navDialog.getByTestId("trip-nav-apple")).toContainText("solo ruta directa");
 });
 
-test("nav section hides after a plan error", async ({ page }) => {
+test("action row hides after a plan error", async ({ page }) => {
   const tripPage = new TripPage(page);
   await tripPage.goto();
 
   const firstDone = page.waitForResponse((r) => r.url().includes("/api/v1/trip/plan"));
   await tripPage.plan("Madrid", "Sevilla");
   await firstDone;
-  await expect(page.getByTestId("trip-nav")).toBeVisible();
+  await expect(page.getByTestId("trip-actions")).toBeVisible();
 
   await setFixture(page, "trip_error");
   await tripPage.plan("Madrid", "Sevilla");
-  await expect(page.getByTestId("trip-nav")).toBeHidden();
+  await expect(page.getByTestId("trip-actions")).toBeHidden();
 });
 
 test("share URL pre-populates form and auto-runs plan on load", async ({ page }) => {
@@ -140,5 +150,5 @@ test("share URL pre-populates form and auto-runs plan on load", async ({ page })
   const req = await planRequest;
   expect(req.postDataJSON()).toMatchObject({ origin: "Madrid", destination: "Sevilla", fuel_type: "gasoline_95_e5_price" });
 
-  await expect(page.getByTestId("trip-share")).toBeVisible();
+  await expect(page.getByTestId("trip-actions")).toBeVisible();
 });

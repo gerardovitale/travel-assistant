@@ -132,11 +132,19 @@ def test_trip_share_section_in_html():
     with patch("main.is_data_ready", return_value=True):
         resp = _get_client().get("/trip")
     assert resp.status_code == 200
-    assert 'data-testid="trip-share"' in resp.text
+    # Unified action row with two pill buttons
+    assert 'data-testid="trip-actions"' in resp.text
+    assert 'data-testid="trip-share-button"' in resp.text
+    assert 'data-testid="trip-nav-button"' in resp.text
+    # Share dialog + tiles
+    assert 'data-testid="trip-share-dialog"' in resp.text
     assert 'data-testid="trip-share-copy"' in resp.text
     assert 'data-testid="trip-share-whatsapp"' in resp.text
     assert 'data-testid="trip-share-telegram"' in resp.text
-    assert 'data-testid="trip-nav"' in resp.text
+    assert 'data-testid="trip-share-x"' in resp.text
+    assert 'data-testid="trip-share-native"' in resp.text
+    # Nav dialog + tiles
+    assert 'data-testid="trip-nav-dialog"' in resp.text
     assert 'data-testid="trip-nav-google"' in resp.text
     assert 'data-testid="trip-nav-waze"' in resp.text
     assert 'data-testid="trip-nav-apple"' in resp.text
