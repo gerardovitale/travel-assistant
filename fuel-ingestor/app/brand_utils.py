@@ -19,6 +19,7 @@ BRAND_ALIASES = {
     "shell recharge": "shell",
     "galp energia": "galp",
     "avia operador": "avia",
+    "costco wholesale": "costco",
 }
 
 MIN_STATION_COUNT = 10

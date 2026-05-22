@@ -1,11 +1,27 @@
 import io
 import logging
 import re
+import time
 from datetime import datetime
 from datetime import timezone
 
 import pandas as pd
 from google.cloud import storage
+from pipeline.base import PipelineResult
+from pipeline.runner import write_step_summary
+from pipelines.brand_stats import BRAND_DAILY_STATS_COLUMNS
+from pipelines.brand_stats import compute_brand_daily_stats
+from pipelines.day_of_week_stats import build_day_of_week_stats_from_province_daily_stats
+from pipelines.day_of_week_stats import compute_day_of_week_stats  # noqa: F401
+from pipelines.ingestion_stats import compute_daily_ingestion_stats
+from pipelines.ingestion_stats import DAILY_INGESTION_STATS_COLUMNS
+from pipelines.province_stats import compute_province_daily_stats
+from pipelines.province_stats import PROVINCE_DAILY_STATS_COLUMNS
+from pipelines.zip_code_stats import compute_zip_code_daily_stats
+from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_COLUMNS
+from shared import _log_event
+from shared import _snapshot_date
+from shared import FUEL_PRICE_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -17,31 +33,6 @@ DAILY_INGESTION_STATS_BLOB = f"{AGGREGATES_PREFIX}daily_ingestion_stats.parquet"
 BRAND_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}brand_daily_stats.parquet"
 ZIP_CODE_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}zip_code_daily_stats.parquet"
 RAW_PARQUET_PATTERN = re.compile(r"spain_fuel_prices_(\d{4}-\d{2}-\d{2})T")
-PROVINCE_DAILY_STATS_COLUMNS = ["date", "province", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
-BRAND_DAILY_STATS_COLUMNS = ["date", "brand", "fuel_type", "avg_price", "min_price", "max_price", "station_count"]
-ZIP_CODE_DAILY_STATS_COLUMNS = [
-    "date",
-    "zip_code",
-    "province",
-    "fuel_type",
-    "avg_price",
-    "min_price",
-    "max_price",
-    "station_count",
-]
-DAILY_INGESTION_STATS_COLUMNS = [
-    "date",
-    "record_count",
-    "unique_stations",
-    "unique_station_labels",
-    "unique_provinces",
-    "unique_municipalities",
-    "unique_municipality_names",
-    "unique_localities",
-    "unique_locality_names",
-    "unique_communities",
-    "unique_fuel_types",
-]
 ZIP_CODE_DAILY_STATS_RETENTION_DAYS = 365
 REQUIRED_AGGREGATE_BLOBS = [
     PROVINCE_DAILY_STATS_BLOB,
@@ -50,35 +41,6 @@ REQUIRED_AGGREGATE_BLOBS = [
     BRAND_DAILY_STATS_BLOB,
     ZIP_CODE_DAILY_STATS_BLOB,
 ]
-
-FUEL_PRICE_COLUMNS = [
-    "biodiesel_price",
-    "bioethanol_price",
-    "compressed_natural_gas_price",
-    "liquefied_natural_gas_price",
-    "liquefied_petroleum_gases_price",
-    "diesel_a_price",
-    "diesel_b_price",
-    "diesel_premium_price",
-    "gasoline_95_e10_price",
-    "gasoline_95_e5_price",
-    "gasoline_95_e5_premium_price",
-    "gasoline_98_e10_price",
-    "gasoline_98_e5_price",
-    "hydrogen_price",
-]
-
-
-def _log_event(log_method, event, **fields):
-    if fields:
-        details = " ".join(f"{key}={value!r}" for key, value in fields.items())
-        log_method(f"{event} {details}")
-        return
-    log_method(event)
-
-
-def _snapshot_date(raw_df):
-    return pd.to_datetime(raw_df["timestamp"].iloc[0]).date()
 
 
 def _province_daily_stats_log_fields(df):
@@ -193,270 +155,6 @@ def _get_latest_raw_file(bucket):
             return latest_file
     _log_event(logger.warning, "latest_raw_file_missing", checked_days=3)
     return None
-
-
-def compute_daily_ingestion_stats(raw_df):
-    """Compute per-day ingestion stats from a raw snapshot."""
-    date_val = _snapshot_date(raw_df)
-    locality_keys = raw_df[raw_df["locality"].notna()][["province_id", "municipality_id", "locality"]].drop_duplicates()
-    return pd.DataFrame(
-        [
-            {
-                "date": date_val,
-                "record_count": len(raw_df),
-                "unique_stations": raw_df["eess_id"].nunique(),
-                "unique_station_labels": raw_df["label"].nunique(),
-                "unique_provinces": raw_df["province"].nunique(),
-                "unique_municipalities": raw_df["municipality_id"].nunique(),
-                "unique_municipality_names": raw_df["municipality"].nunique(),
-                "unique_localities": len(locality_keys),
-                "unique_locality_names": raw_df["locality"].nunique(),
-                "unique_communities": raw_df["ccaa_id"].nunique(),
-                "unique_fuel_types": sum(
-                    1 for col in FUEL_PRICE_COLUMNS if col in raw_df.columns and raw_df[col].notna().any()
-                ),
-            }
-        ],
-        columns=DAILY_INGESTION_STATS_COLUMNS,
-    )
-
-
-def compute_province_daily_stats(raw_df):
-    """Compute per-province, per-fuel-type daily stats from a raw snapshot."""
-    date_val = _snapshot_date(raw_df)
-    rows = []
-    for fuel_col in FUEL_PRICE_COLUMNS:
-        if fuel_col not in raw_df.columns:
-            continue
-        valid = raw_df[raw_df[fuel_col].notna() & (raw_df[fuel_col] > 0)]
-        if valid.empty:
-            continue
-        grouped = valid.groupby("province")[fuel_col].agg(["mean", "min", "max", "count"]).reset_index()
-        for _, row in grouped.iterrows():
-            rows.append(
-                {
-                    "date": date_val,
-                    "province": row["province"],
-                    "fuel_type": fuel_col,
-                    "avg_price": round(row["mean"], 4),
-                    "min_price": round(row["min"], 4),
-                    "max_price": round(row["max"], 4),
-                    "station_count": int(row["count"]),
-                }
-            )
-    return pd.DataFrame(rows, columns=PROVINCE_DAILY_STATS_COLUMNS)
-
-
-def compute_brand_daily_stats(raw_df):
-    """Compute per-brand, per-fuel-type daily stats from a raw snapshot."""
-    from brand_utils import MIN_STATION_COUNT
-    from brand_utils import normalize_brand
-
-    if raw_df.empty:
-        return pd.DataFrame(columns=BRAND_DAILY_STATS_COLUMNS)
-
-    date_val = _snapshot_date(raw_df)
-    brands = raw_df["label"].apply(normalize_brand)
-    brand_df = raw_df[brands.notna()].copy()
-    brand_df["brand"] = brands[brands.notna()]
-
-    rows = []
-    for fuel_col in FUEL_PRICE_COLUMNS:
-        if fuel_col not in brand_df.columns:
-            continue
-        valid = brand_df[brand_df[fuel_col].notna() & (brand_df[fuel_col] > 0)]
-        if valid.empty:
-            continue
-        grouped = valid.groupby("brand")[fuel_col].agg(["mean", "min", "max", "count"]).reset_index()
-        grouped = grouped[grouped["count"] >= MIN_STATION_COUNT]
-        for _, row in grouped.iterrows():
-            rows.append(
-                {
-                    "date": date_val,
-                    "brand": row["brand"],
-                    "fuel_type": fuel_col,
-                    "avg_price": round(row["mean"], 4),
-                    "min_price": round(row["min"], 4),
-                    "max_price": round(row["max"], 4),
-                    "station_count": int(row["count"]),
-                }
-            )
-    return pd.DataFrame(rows, columns=BRAND_DAILY_STATS_COLUMNS)
-
-
-def compute_zip_code_daily_stats(raw_df):
-    """Compute per-zip-code, per-fuel-type daily stats from a raw snapshot."""
-    if raw_df.empty or "zip_code" not in raw_df.columns or "province" not in raw_df.columns:
-        return pd.DataFrame(columns=ZIP_CODE_DAILY_STATS_COLUMNS)
-
-    date_val = _snapshot_date(raw_df)
-    rows = []
-    zip_df = raw_df[raw_df["zip_code"].notna() & raw_df["province"].notna()].copy()
-    if zip_df.empty:
-        return pd.DataFrame(columns=ZIP_CODE_DAILY_STATS_COLUMNS)
-    zip_df["zip_code"] = zip_df["zip_code"].astype(str)
-
-    for fuel_col in FUEL_PRICE_COLUMNS:
-        if fuel_col not in zip_df.columns:
-            continue
-        valid = zip_df[zip_df[fuel_col].notna() & (zip_df[fuel_col] > 0)]
-        if valid.empty:
-            continue
-        grouped = valid.groupby(["zip_code", "province"])[fuel_col].agg(["mean", "min", "max", "count"]).reset_index()
-        for _, row in grouped.iterrows():
-            rows.append(
-                {
-                    "date": date_val,
-                    "zip_code": row["zip_code"],
-                    "province": row["province"],
-                    "fuel_type": fuel_col,
-                    "avg_price": round(row["mean"], 4),
-                    "min_price": round(row["min"], 4),
-                    "max_price": round(row["max"], 4),
-                    "station_count": int(row["count"]),
-                }
-            )
-
-    return pd.DataFrame(rows, columns=ZIP_CODE_DAILY_STATS_COLUMNS)
-
-
-def compute_day_of_week_stats(raw_df, existing_dow_df=None):
-    """Compute or update day-of-week running stats from a raw snapshot."""
-    date_val = _snapshot_date(raw_df)
-    dow = date_val.weekday()  # 0=Monday, 6=Sunday
-    today_rows = []
-    for fuel_col in FUEL_PRICE_COLUMNS:
-        if fuel_col not in raw_df.columns:
-            continue
-        valid = raw_df[raw_df[fuel_col].notna() & (raw_df[fuel_col] > 0)]
-        if valid.empty:
-            continue
-        national_avg = valid[fuel_col].mean()
-
-        # Per-province stats
-        province_groups = valid.groupby("province")[fuel_col].mean()
-        for province, prov_avg in province_groups.items():
-            today_rows.append(
-                {
-                    "day_of_week": dow,
-                    "fuel_type": fuel_col,
-                    "province": province,
-                    "sum_price": round(prov_avg, 6),
-                    "count_days": 1,
-                    "min_daily_avg": round(prov_avg, 4),
-                    "max_daily_avg": round(prov_avg, 4),
-                }
-            )
-
-        # National stats (province=None)
-        today_rows.append(
-            {
-                "day_of_week": dow,
-                "fuel_type": fuel_col,
-                "province": "__national__",
-                "sum_price": round(national_avg, 6),
-                "count_days": 1,
-                "min_daily_avg": round(national_avg, 4),
-                "max_daily_avg": round(national_avg, 4),
-            }
-        )
-
-    today_df = pd.DataFrame(today_rows)
-
-    if existing_dow_df is None or existing_dow_df.empty:
-        return today_df
-
-    # Merge with existing running stats
-    merge_keys = ["day_of_week", "fuel_type", "province"]
-    merged = existing_dow_df.merge(today_df, on=merge_keys, how="outer", suffixes=("_old", "_new"))
-
-    result_rows = []
-    for _, row in merged.iterrows():
-        old_sum = 0 if pd.isna(row.get("sum_price_old")) else row["sum_price_old"]
-        old_count = 0 if pd.isna(row.get("count_days_old")) else row["count_days_old"]
-        old_min = row.get("min_daily_avg_old")
-        old_max = row.get("max_daily_avg_old")
-        new_sum = 0 if pd.isna(row.get("sum_price_new")) else row["sum_price_new"]
-        new_count = 0 if pd.isna(row.get("count_days_new")) else row["count_days_new"]
-        new_min = row.get("min_daily_avg_new")
-        new_max = row.get("max_daily_avg_new")
-
-        total_sum = old_sum + new_sum
-        total_count = int(old_count + new_count)
-
-        combined_min = min(v for v in [old_min, new_min] if pd.notna(v))
-        combined_max = max(v for v in [old_max, new_max] if pd.notna(v))
-
-        result_rows.append(
-            {
-                "day_of_week": int(row["day_of_week"]),
-                "fuel_type": row["fuel_type"],
-                "province": row["province"],
-                "sum_price": round(total_sum, 6),
-                "count_days": total_count,
-                "min_daily_avg": round(combined_min, 4),
-                "max_daily_avg": round(combined_max, 4),
-            }
-        )
-
-    return pd.DataFrame(result_rows)
-
-
-def build_day_of_week_stats_from_province_daily_stats(province_daily_df):
-    """Build day-of-week aggregates from deduplicated province daily stats."""
-    columns = ["day_of_week", "fuel_type", "province", "sum_price", "count_days", "min_daily_avg", "max_daily_avg"]
-    if province_daily_df is None or province_daily_df.empty:
-        return pd.DataFrame(columns=columns)
-
-    daily_df = province_daily_df.copy()
-    daily_df["date"] = pd.to_datetime(daily_df["date"])
-
-    province_daily_patterns = daily_df[["date", "fuel_type", "province", "avg_price"]].copy()
-    province_daily_patterns["day_of_week"] = province_daily_patterns["date"].dt.dayofweek
-
-    province_aggregates = (
-        province_daily_patterns.groupby(["day_of_week", "fuel_type", "province"], as_index=False)
-        .agg(
-            sum_price=("avg_price", "sum"),
-            count_days=("date", "nunique"),
-            min_daily_avg=("avg_price", "min"),
-            max_daily_avg=("avg_price", "max"),
-        )
-        .reset_index(drop=True)
-    )
-
-    national_daily_patterns = (
-        daily_df.assign(weighted_price=daily_df["avg_price"] * daily_df["station_count"])
-        .groupby(["date", "fuel_type"], as_index=False)
-        .agg(
-            weighted_price=("weighted_price", "sum"),
-            station_count=("station_count", "sum"),
-        )
-    )
-    national_daily_patterns = national_daily_patterns[national_daily_patterns["station_count"] > 0].copy()
-    national_daily_patterns["avg_price"] = (
-        national_daily_patterns["weighted_price"] / national_daily_patterns["station_count"]
-    )
-    national_daily_patterns["province"] = "__national__"
-    national_daily_patterns["day_of_week"] = national_daily_patterns["date"].dt.dayofweek
-
-    national_aggregates = (
-        national_daily_patterns.groupby(["day_of_week", "fuel_type", "province"], as_index=False)
-        .agg(
-            sum_price=("avg_price", "sum"),
-            count_days=("date", "nunique"),
-            min_daily_avg=("avg_price", "min"),
-            max_daily_avg=("avg_price", "max"),
-        )
-        .reset_index(drop=True)
-    )
-
-    result = pd.concat([province_aggregates, national_aggregates], ignore_index=True)
-    result["sum_price"] = result["sum_price"].round(6)
-    result["count_days"] = result["count_days"].astype(int)
-    result["min_daily_avg"] = result["min_daily_avg"].round(4)
-    result["max_daily_avg"] = result["max_daily_avg"].round(4)
-    return result[columns].sort_values(["day_of_week", "fuel_type", "province"]).reset_index(drop=True)
 
 
 def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
@@ -699,7 +397,11 @@ def run_aggregation(bucket=None):
         snapshot_date=snapshot_date,
     )
 
+    pipeline_results = []
+    raw_row_count = len(raw_df)
+
     # Province daily stats: append today's rows
+    step_start = time.monotonic()
     today_province_stats = compute_province_daily_stats(raw_df)
     _log_event(
         logger.info,
@@ -735,8 +437,20 @@ def run_aggregation(bucket=None):
         )
 
     _upload_parquet_to_gcs(bucket, PROVINCE_DAILY_STATS_BLOB, province_stats)
+    pipeline_results.append(
+        PipelineResult(
+            name="province_daily_stats",
+            description="Province × fuel type daily aggregation",
+            output_blob=PROVINCE_DAILY_STATS_BLOB,
+            input_rows=raw_row_count,
+            output_rows=len(province_stats),
+            duration_seconds=round(time.monotonic() - step_start, 2),
+            status="ok",
+        )
+    )
 
     # Daily ingestion stats: append today's row
+    step_start = time.monotonic()
     today_ingestion_stats = compute_daily_ingestion_stats(raw_df)
     _log_event(
         logger.info,
@@ -778,8 +492,20 @@ def run_aggregation(bucket=None):
         )
 
     _upload_parquet_to_gcs(bucket, DAILY_INGESTION_STATS_BLOB, ingestion_stats)
+    pipeline_results.append(
+        PipelineResult(
+            name="daily_ingestion_stats",
+            description="Daily ingestion summary — station and entity counts",
+            output_blob=DAILY_INGESTION_STATS_BLOB,
+            input_rows=raw_row_count,
+            output_rows=len(ingestion_stats),
+            duration_seconds=round(time.monotonic() - step_start, 2),
+            status="ok",
+        )
+    )
 
     # Day-of-week stats: rebuild from deduplicated daily province stats
+    step_start = time.monotonic()
     dow_stats = build_day_of_week_stats_from_province_daily_stats(province_stats)
     _log_event(
         logger.info,
@@ -788,8 +514,20 @@ def run_aggregation(bucket=None):
         **_day_of_week_stats_log_fields(dow_stats),
     )
     _upload_parquet_to_gcs(bucket, DAY_OF_WEEK_STATS_BLOB, dow_stats)
+    pipeline_results.append(
+        PipelineResult(
+            name="day_of_week_stats",
+            description="Day-of-week price patterns (province + national)",
+            output_blob=DAY_OF_WEEK_STATS_BLOB,
+            input_rows=len(province_stats),
+            output_rows=len(dow_stats),
+            duration_seconds=round(time.monotonic() - step_start, 2),
+            status="ok",
+        )
+    )
 
     # Brand daily stats: append today's rows
+    step_start = time.monotonic()
     today_brand_stats = compute_brand_daily_stats(raw_df)
     _log_event(
         logger.info,
@@ -827,8 +565,20 @@ def run_aggregation(bucket=None):
         )
 
     _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_stats)
+    pipeline_results.append(
+        PipelineResult(
+            name="brand_daily_stats",
+            description="Brand × fuel type daily aggregation",
+            output_blob=BRAND_DAILY_STATS_BLOB,
+            input_rows=raw_row_count,
+            output_rows=len(brand_stats),
+            duration_seconds=round(time.monotonic() - step_start, 2),
+            status="ok",
+        )
+    )
 
     # Zip-code daily trend stats: append today's rows, replace same-day rows, and retain only the latest rolling year.
+    step_start = time.monotonic()
     today_zip_code_stats = compute_zip_code_daily_stats(raw_df)
     _log_event(
         logger.info,
@@ -881,7 +631,19 @@ def run_aggregation(bucket=None):
         )
 
     _upload_parquet_to_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB, zip_code_stats)
+    pipeline_results.append(
+        PipelineResult(
+            name="zip_code_daily_stats",
+            description="Zip-code × fuel type daily aggregation (365-day rolling)",
+            output_blob=ZIP_CODE_DAILY_STATS_BLOB,
+            input_rows=raw_row_count,
+            output_rows=len(zip_code_stats),
+            duration_seconds=round(time.monotonic() - step_start, 2),
+            status="ok",
+        )
+    )
 
+    write_step_summary(pipeline_results, title=f"Aggregation Results — {str(snapshot_date)}")
     _log_event(logger.info, "aggregation_complete", file=latest_file, snapshot_date=str(snapshot_date))
 
 

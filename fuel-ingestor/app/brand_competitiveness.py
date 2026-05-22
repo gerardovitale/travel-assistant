@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import tempfile
+import time
 from datetime import datetime
 from datetime import timezone
 
@@ -11,9 +12,19 @@ import pandas as pd
 from aggregator import _get_bucket
 from aggregator import _latest_raw_file_per_day
 from aggregator import _list_raw_parquet_files
-from aggregator import _log_event
 from aggregator import _upload_parquet_to_gcs
 from aggregator import AGGREGATES_PREFIX
+from pipeline.base import PipelineResult
+from pipeline.base import TaskConfig
+from pipeline.gcs import CallableSink
+from pipeline.gcs import CallableSource
+from pipeline.runner import TaskRunner
+from pipeline.runner import write_step_summary
+from reports.brand_comparison import BRAND_COMPARISON_BLOB
+from reports.brand_comparison import compute_brand_price_comparison
+from reports.brand_win_rate import BRAND_WIN_RATE_BLOB
+from reports.brand_win_rate import compute_brand_win_rate
+from shared import _log_event
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +79,16 @@ def _download_parquets_to_dir(bucket, parquet_files):
 
     _log_event(logger.info, "raw_parquets_downloaded", succeeded=len(parquet_files) - len(failed))
     return tmp_dir
+
+
+def _load_duckdb(parquet_dir):
+    con = duckdb.connect()
+    con.execute(
+        f"create table fuel_prices as select * from read_parquet('{parquet_dir}/*.parquet', union_by_name=true)"
+    )
+    row_count = con.execute("select count(*) from fuel_prices").fetchone()[0]
+    _log_event(logger.info, "duckdb_table_loaded", rows=row_count)
+    return con
 
 
 def _compute_for_combination(con, geo_col, fuel_col, brands, min_appearances, today):
@@ -165,24 +186,7 @@ def _compute_for_combination(con, geo_col, fuel_col, brands, min_appearances, to
     return overall_df, monthly_df
 
 
-def compute_brand_competitiveness(
-    parquet_dir, brands=None, fuel_cols=None, geo_cols=None, min_appearances=MIN_APPEARANCES
-):
-    if brands is None:
-        brands = BRANDS_TO_ANALYZE
-    if fuel_cols is None:
-        fuel_cols = FUEL_COLS
-    if geo_cols is None:
-        geo_cols = GEO_COLS
-
-    today = datetime.now(timezone.utc).date().isoformat()
-    con = duckdb.connect()
-    con.execute(
-        f"create table fuel_prices as select * from read_parquet('{parquet_dir}/*.parquet', union_by_name=true)"
-    )
-    row_count = con.execute("select count(*) from fuel_prices").fetchone()[0]
-    _log_event(logger.info, "duckdb_table_loaded", rows=row_count)
-
+def _compute_brand_competitiveness_with_con(con, brands, fuel_cols, geo_cols, min_appearances, today):
     all_overall = []
     all_monthly = []
 
@@ -191,8 +195,6 @@ def compute_brand_competitiveness(
             overall_df, monthly_df = _compute_for_combination(con, geo_col, fuel_col, brands, min_appearances, today)
             all_overall.append(overall_df)
             all_monthly.append(monthly_df)
-
-    con.close()
 
     overall = (
         pd.concat(all_overall, ignore_index=True)
@@ -206,6 +208,24 @@ def compute_brand_competitiveness(
     )
     _log_event(logger.info, "brand_competitiveness_computed", overall_rows=len(overall), monthly_rows=len(monthly))
     return overall, monthly
+
+
+def compute_brand_competitiveness(
+    parquet_dir, brands=None, fuel_cols=None, geo_cols=None, min_appearances=MIN_APPEARANCES
+):
+    if brands is None:
+        brands = BRANDS_TO_ANALYZE
+    if fuel_cols is None:
+        fuel_cols = FUEL_COLS
+    if geo_cols is None:
+        geo_cols = GEO_COLS
+
+    today = datetime.now(timezone.utc).date().isoformat()
+    con = _load_duckdb(parquet_dir)
+    try:
+        return _compute_brand_competitiveness_with_con(con, brands, fuel_cols, geo_cols, min_appearances, today)
+    finally:
+        con.close()
 
 
 def run_brand_competitiveness(bucket=None):
@@ -223,10 +243,67 @@ def run_brand_competitiveness(bucket=None):
 
     tmp_dir = _download_parquets_to_dir(bucket, parquet_files)
     try:
-        overall_df, monthly_df = compute_brand_competitiveness(tmp_dir)
-        _upload_parquet_to_gcs(bucket, BRAND_COMPETITIVENESS_BLOB, overall_df)
-        _upload_parquet_to_gcs(bucket, BRAND_COMPETITIVENESS_MONTHLY_BLOB, monthly_df)
-        _log_event(logger.info, "brand_competitiveness_run_complete")
+        con = _load_duckdb(tmp_dir)
+        try:
+            today = datetime.now(timezone.utc).date().isoformat()
+            fuel_row_count = con.execute("select count(*) from fuel_prices").fetchone()[0]
+
+            legacy_start = time.monotonic()
+            overall_df, monthly_df = _compute_brand_competitiveness_with_con(
+                con, BRANDS_TO_ANALYZE, FUEL_COLS, GEO_COLS, MIN_APPEARANCES, today
+            )
+            _upload_parquet_to_gcs(bucket, BRAND_COMPETITIVENESS_BLOB, overall_df)
+            _upload_parquet_to_gcs(bucket, BRAND_COMPETITIVENESS_MONTHLY_BLOB, monthly_df)
+            legacy_duration = round(time.monotonic() - legacy_start, 2)
+
+            # New reports; DuckDB table reused from same connection
+            tasks = [
+                TaskConfig(
+                    name="brand_win_rate",
+                    description="Probability of brand being cheapest or priciest by geo area",
+                    output_blob=BRAND_WIN_RATE_BLOB,
+                    source=CallableSource(lambda: compute_brand_win_rate(con, today=today)),
+                    sink=CallableSink(lambda df: _upload_parquet_to_gcs(bucket, BRAND_WIN_RATE_BLOB, df)),
+                ),
+                TaskConfig(
+                    name="brand_price_comparison",
+                    description="Brand average price vs market average by geo area",
+                    output_blob=BRAND_COMPARISON_BLOB,
+                    source=CallableSource(lambda: compute_brand_price_comparison(con, today=today)),
+                    sink=CallableSink(lambda df: _upload_parquet_to_gcs(bucket, BRAND_COMPARISON_BLOB, df)),
+                ),
+            ]
+            new_results = TaskRunner().run(tasks)
+
+            failed = [r.name for r in new_results if r.status == "failed"]
+            if failed:
+                raise RuntimeError(f"Pipelines failed: {failed}")
+
+            existing_results = [
+                PipelineResult(
+                    name="brand_competitiveness",
+                    description="Brand cheapest win rate by geo area (overall)",
+                    output_blob=BRAND_COMPETITIVENESS_BLOB,
+                    input_rows=fuel_row_count,
+                    output_rows=len(overall_df),
+                    duration_seconds=legacy_duration,
+                    status="ok",
+                ),
+                PipelineResult(
+                    name="brand_competitiveness_monthly",
+                    description="Brand cheapest win rate by geo area (monthly trend)",
+                    output_blob=BRAND_COMPETITIVENESS_MONTHLY_BLOB,
+                    input_rows=fuel_row_count,
+                    output_rows=len(monthly_df),
+                    duration_seconds=0.0,  # shared computation; duration tracked above
+                    status="ok",
+                ),
+            ]
+            write_step_summary(existing_results + new_results, title="Brand Competitiveness Pipeline Results")
+            _log_event(logger.info, "brand_competitiveness_run_complete")
+
+        finally:
+            con.close()
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
