@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from typing import Any
 from typing import Optional
 
 import pandas as pd
+from pipeline.base import TaskConfig
+from pipeline.gcs import GCSParquetSink
+from pipeline.gcs import GCSParquetSource
+from pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
+from shared import _rows_with_positive_price
 from shared import _snapshot_date
 from shared import FUEL_PRICE_COLUMNS
+
+DAY_OF_WEEK_STATS_BLOB = "aggregates/day_of_week_stats.parquet"
 
 DAY_OF_WEEK_STATS_COLUMNS = [
     "day_of_week",
@@ -15,10 +23,6 @@ DAY_OF_WEEK_STATS_COLUMNS = [
     "min_daily_avg",
     "max_daily_avg",
 ]
-
-
-def _rows_with_positive_price(raw_df: pd.DataFrame, fuel_col: str) -> pd.DataFrame:
-    return raw_df[raw_df[fuel_col].notna() & (raw_df[fuel_col] > 0)]
 
 
 def _today_rows_from_snapshot(raw_df: pd.DataFrame, dow: int) -> list:
@@ -145,4 +149,20 @@ def build_day_of_week_stats_from_province_daily_stats(province_daily_df: pd.Data
     result["max_daily_avg"] = result["max_daily_avg"].round(4)
     return (
         result[DAY_OF_WEEK_STATS_COLUMNS].sort_values(["day_of_week", "fuel_type", "province"]).reset_index(drop=True)
+    )
+
+
+def build_task(bucket: Any) -> TaskConfig:
+    """Build the day-of-week stats task.
+
+    Sources from the already-written province_daily_stats blob rather than raw data,
+    so this task must run after province_stats in the same TaskRunner call.
+    """
+    return TaskConfig(
+        name="day_of_week_stats",
+        description="Day-of-week price patterns (province + national)",
+        output_blob=DAY_OF_WEEK_STATS_BLOB,
+        source=GCSParquetSource(bucket, PROVINCE_DAILY_STATS_BLOB),
+        transformations=[build_day_of_week_stats_from_province_daily_stats],
+        sink=GCSParquetSink(bucket, DAY_OF_WEEK_STATS_BLOB),
     )

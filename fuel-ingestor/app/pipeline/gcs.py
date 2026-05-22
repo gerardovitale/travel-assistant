@@ -67,3 +67,32 @@ class CallableSink:
 
     def write(self, df: pd.DataFrame) -> None:
         self.fn(df)
+
+
+@dataclass
+class IncrementalGCSParquetSink:
+    """GCS parquet sink that merges new rows with existing data.
+
+    Deduplicates on `date_col` (removes existing rows for today before appending)
+    and optionally prunes rows older than `retention_days`.
+    """
+
+    bucket: Any
+    blob_name: str
+    date_col: str = "date"
+    retention_days: Optional[int] = None
+
+    def write(self, df: pd.DataFrame) -> None:
+        if df.empty:
+            logger.warning(f"incremental_sink_skipped_empty blob={self.blob_name!r}")
+            return
+        existing = GCSParquetSource(self.bucket, self.blob_name).read()
+        if not existing.empty:
+            # Assumes all rows in df share the same date — callers pass one day's slice at a time.
+            date_val = pd.Timestamp(df[self.date_col].iloc[0])
+            existing = existing[pd.to_datetime(existing[self.date_col]) != date_val]
+            if self.retention_days is not None:
+                cutoff = date_val - pd.Timedelta(days=self.retention_days - 1)
+                existing = existing[pd.to_datetime(existing[self.date_col]) >= cutoff]
+            df = pd.concat([existing, df], ignore_index=True)
+        GCSParquetSink(self.bucket, self.blob_name).write(df)

@@ -1,12 +1,15 @@
+import io
 import os
 import tempfile
 from unittest import TestCase
+from unittest.mock import MagicMock
 
 import pandas as pd
 from pipeline.base import PipelineResult
 from pipeline.base import TaskConfig
 from pipeline.gcs import CallableSink
 from pipeline.gcs import CallableSource
+from pipeline.gcs import IncrementalGCSParquetSink
 from pipeline.runner import TaskRunner
 from pipeline.runner import write_step_summary
 
@@ -179,3 +182,89 @@ class TestWriteStepSummary(TestCase):
         finally:
             del os.environ["GITHUB_STEP_SUMMARY"]
             os.unlink(summary_path)
+
+
+def _make_bucket_mock(existing_df=None):
+    """Return a mock GCS bucket that serves `existing_df` on blob.download_as_bytes()."""
+    bucket = MagicMock()
+    blob = MagicMock()
+    bucket.blob.return_value = blob
+    if existing_df is None:
+        blob.exists.return_value = False
+    else:
+        blob.exists.return_value = True
+        blob.download_as_bytes.return_value = existing_df.to_parquet(index=False, compression="snappy")
+    return bucket, blob
+
+
+class TestIncrementalGCSParquetSink(TestCase):
+
+    def test_writes_directly_when_no_existing_blob(self):
+        df = pd.DataFrame({"date": ["2026-01-01"], "value": [10]})
+        bucket, blob = _make_bucket_mock(existing_df=None)
+
+        IncrementalGCSParquetSink(bucket, "test.parquet").write(df)
+
+        blob.upload_from_string.assert_called_once()
+
+    def test_merged_df_contains_existing_and_new_rows(self):
+        existing = pd.DataFrame({"date": ["2026-01-01"], "value": [10]})
+        new_day = pd.DataFrame({"date": ["2026-01-02"], "value": [20]})
+        bucket, blob = _make_bucket_mock(existing_df=existing)
+
+        captured = []
+
+        def capture(data, *args, **kwargs):
+            captured.append(pd.read_parquet(io.BytesIO(data)))
+
+        blob.upload_from_string.side_effect = capture
+        IncrementalGCSParquetSink(bucket, "test.parquet").write(new_day)
+
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(len(captured[0]), 2)
+
+    def test_deduplicates_same_date_on_rerun(self):
+        existing = pd.DataFrame({"date": ["2026-01-01", "2026-01-02"], "value": [10, 20]})
+        same_day = pd.DataFrame({"date": ["2026-01-02"], "value": [99]})
+        bucket, blob = _make_bucket_mock(existing_df=existing)
+
+        captured = []
+
+        def capture(data, *args, **kwargs):
+            captured.append(pd.read_parquet(io.BytesIO(data)))
+
+        blob.upload_from_string.side_effect = capture
+        IncrementalGCSParquetSink(bucket, "test.parquet").write(same_day)
+
+        result = captured[0]
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[result["date"] == "2026-01-02"]["value"].iloc[0], 99)
+
+    def test_prunes_rows_beyond_retention_days(self):
+        existing = pd.DataFrame(
+            {
+                "date": ["2025-01-01", "2026-01-01"],
+                "value": [10, 20],
+            }
+        )
+        new_day = pd.DataFrame({"date": ["2026-01-02"], "value": [30]})
+        bucket, blob = _make_bucket_mock(existing_df=existing)
+
+        captured = []
+
+        def capture(data, *args, **kwargs):
+            captured.append(pd.read_parquet(io.BytesIO(data)))
+
+        blob.upload_from_string.side_effect = capture
+        IncrementalGCSParquetSink(bucket, "test.parquet", retention_days=365).write(new_day)
+
+        result = captured[0]
+        dates = set(result["date"].astype(str).tolist())
+        self.assertNotIn("2025-01-01", dates)
+        self.assertIn("2026-01-01", dates)
+        self.assertIn("2026-01-02", dates)
+
+    def test_noop_when_df_is_empty(self):
+        bucket, blob = _make_bucket_mock(existing_df=None)
+        IncrementalGCSParquetSink(bucket, "test.parquet").write(pd.DataFrame())
+        blob.upload_from_string.assert_not_called()

@@ -1,9 +1,13 @@
 import logging
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 from typing import List
 
 import pandas as pd
+from pipeline.base import TaskConfig
+from pipeline.gcs import CallableSource
+from pipeline.gcs import GCSParquetSink
 from reports.config import REPORT_BRANDS
 from reports.config import REPORT_DIRECTIONS
 from reports.config import REPORT_FUEL_COLS
@@ -76,7 +80,7 @@ def _compute_win_rate_for_combination(con, geo_col, fuel_col, brands, direction,
             round(avg(is_winner::int) * 100, 2) as win_rate_pct,
             '{today}' as last_updated
         from joint
-        group by brand, geo_value
+        group by brand, direction, geo_level, geo_value, fuel_type, last_updated
         having count(*) >= {min_appearances}
         """
     ).df()
@@ -125,3 +129,13 @@ def compute_brand_win_rate(
     result = pd.concat(all_frames, ignore_index=True)
     logger.info(f"brand_win_rate_computed total_rows={len(result)}")
     return result[BRAND_WIN_RATE_COLUMNS]
+
+
+def build_task(bucket: Any, con: Any, today: str) -> TaskConfig:
+    return TaskConfig(
+        name="brand_win_rate",
+        description="Probability of brand being cheapest or priciest by geo area",
+        output_blob=BRAND_WIN_RATE_BLOB,
+        source=CallableSource(lambda: compute_brand_win_rate(con, today=today)),
+        sink=GCSParquetSink(bucket, BRAND_WIN_RATE_BLOB),
+    )

@@ -1,24 +1,34 @@
 import io
 import logging
 import re
-import time
 from datetime import datetime
 from datetime import timezone
 
 import pandas as pd
 from google.cloud import storage
-from pipeline.base import PipelineResult
+from pipeline.runner import TaskRunner
 from pipeline.runner import write_step_summary
+from pipelines import brand_stats
+from pipelines import day_of_week_stats
+from pipelines import ingestion_stats
+from pipelines import province_stats
+from pipelines import zip_code_stats
+from pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
 from pipelines.brand_stats import BRAND_DAILY_STATS_COLUMNS
 from pipelines.brand_stats import compute_brand_daily_stats
 from pipelines.day_of_week_stats import build_day_of_week_stats_from_province_daily_stats
 from pipelines.day_of_week_stats import compute_day_of_week_stats  # noqa: F401
+from pipelines.day_of_week_stats import DAY_OF_WEEK_STATS_BLOB
 from pipelines.ingestion_stats import compute_daily_ingestion_stats
+from pipelines.ingestion_stats import DAILY_INGESTION_STATS_BLOB
 from pipelines.ingestion_stats import DAILY_INGESTION_STATS_COLUMNS
 from pipelines.province_stats import compute_province_daily_stats
+from pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
 from pipelines.province_stats import PROVINCE_DAILY_STATS_COLUMNS
 from pipelines.zip_code_stats import compute_zip_code_daily_stats
+from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
 from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_COLUMNS
+from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_RETENTION_DAYS
 from shared import _log_event
 from shared import _snapshot_date
 from shared import FUEL_PRICE_COLUMNS
@@ -26,14 +36,7 @@ from shared import FUEL_PRICE_COLUMNS
 logger = logging.getLogger(__name__)
 
 DATA_DESTINATION_BUCKET = "travel-assistant-spain-fuel-prices"
-AGGREGATES_PREFIX = "aggregates/"
-PROVINCE_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}province_daily_stats.parquet"
-DAY_OF_WEEK_STATS_BLOB = f"{AGGREGATES_PREFIX}day_of_week_stats.parquet"
-DAILY_INGESTION_STATS_BLOB = f"{AGGREGATES_PREFIX}daily_ingestion_stats.parquet"
-BRAND_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}brand_daily_stats.parquet"
-ZIP_CODE_DAILY_STATS_BLOB = f"{AGGREGATES_PREFIX}zip_code_daily_stats.parquet"
 RAW_PARQUET_PATTERN = re.compile(r"spain_fuel_prices_(\d{4}-\d{2}-\d{2})T")
-ZIP_CODE_DAILY_STATS_RETENTION_DAYS = 365
 REQUIRED_AGGREGATE_BLOBS = [
     PROVINCE_DAILY_STATS_BLOB,
     DAY_OF_WEEK_STATS_BLOB,
@@ -41,24 +44,6 @@ REQUIRED_AGGREGATE_BLOBS = [
     BRAND_DAILY_STATS_BLOB,
     ZIP_CODE_DAILY_STATS_BLOB,
 ]
-
-
-def _province_daily_stats_log_fields(df):
-    return {
-        "rows": len(df),
-        "unique_dates": df["date"].nunique() if not df.empty else 0,
-        "unique_provinces": df["province"].nunique() if not df.empty else 0,
-        "unique_fuel_types": df["fuel_type"].nunique() if not df.empty else 0,
-    }
-
-
-def _day_of_week_stats_log_fields(df):
-    return {
-        "rows": len(df),
-        "unique_weekdays": df["day_of_week"].nunique() if not df.empty else 0,
-        "unique_provinces": df["province"].nunique() if not df.empty else 0,
-        "unique_fuel_types": df["fuel_type"].nunique() if not df.empty else 0,
-    }
 
 
 def _zip_code_daily_stats_log_fields(df):
@@ -397,253 +382,21 @@ def run_aggregation(bucket=None):
         snapshot_date=snapshot_date,
     )
 
-    pipeline_results = []
-    raw_row_count = len(raw_df)
+    daily_tasks = [
+        province_stats.build_task(bucket, raw_df),
+        ingestion_stats.build_task(bucket, raw_df),
+        brand_stats.build_task(bucket, raw_df),
+        zip_code_stats.build_task(bucket, raw_df),
+        # day_of_week reads the uploaded province_stats from GCS — must stay last.
+        day_of_week_stats.build_task(bucket),
+    ]
+    daily_results = TaskRunner().run(daily_tasks)
 
-    # Province daily stats: append today's rows
-    step_start = time.monotonic()
-    today_province_stats = compute_province_daily_stats(raw_df)
-    _log_event(
-        logger.info,
-        "province_daily_stats_computed",
-        date=snapshot_date,
-        **_province_daily_stats_log_fields(today_province_stats),
-    )
-    existing_province_stats = _download_parquet_from_gcs(bucket, PROVINCE_DAILY_STATS_BLOB)
+    from brand_competitiveness import run_brand_analytics  # local import to avoid circular dependency
 
-    if existing_province_stats is not None:
-        # Deduplicate: remove existing rows for today's date if re-running
-        date_val = pd.Timestamp(today_province_stats["date"].iloc[0])
-        existing_rows = len(existing_province_stats)
-        existing_province_stats = existing_province_stats[pd.to_datetime(existing_province_stats["date"]) != date_val]
-        removed_rows = existing_rows - len(existing_province_stats)
-        province_stats = pd.concat([existing_province_stats, today_province_stats], ignore_index=True)
-        _log_event(
-            logger.info,
-            "province_daily_stats_updated",
-            date=str(date_val.date()),
-            existing_rows=existing_rows,
-            removed_rows=removed_rows,
-            added_rows=len(today_province_stats),
-            final_rows=len(province_stats),
-        )
-    else:
-        province_stats = today_province_stats
-        _log_event(
-            logger.info,
-            "province_daily_stats_initialized",
-            date=str(snapshot_date),
-            final_rows=len(province_stats),
-        )
+    brand_results = run_brand_analytics(bucket)
 
-    _upload_parquet_to_gcs(bucket, PROVINCE_DAILY_STATS_BLOB, province_stats)
-    pipeline_results.append(
-        PipelineResult(
-            name="province_daily_stats",
-            description="Province × fuel type daily aggregation",
-            output_blob=PROVINCE_DAILY_STATS_BLOB,
-            input_rows=raw_row_count,
-            output_rows=len(province_stats),
-            duration_seconds=round(time.monotonic() - step_start, 2),
-            status="ok",
-        )
-    )
-
-    # Daily ingestion stats: append today's row
-    step_start = time.monotonic()
-    today_ingestion_stats = compute_daily_ingestion_stats(raw_df)
-    _log_event(
-        logger.info,
-        "daily_ingestion_stats_computed",
-        date=str(snapshot_date),
-        rows=len(today_ingestion_stats),
-        record_count=int(today_ingestion_stats["record_count"].iloc[0]),
-        unique_stations=int(today_ingestion_stats["unique_stations"].iloc[0]),
-        unique_provinces=int(today_ingestion_stats["unique_provinces"].iloc[0]),
-        unique_municipalities=int(today_ingestion_stats["unique_municipalities"].iloc[0]),
-        unique_localities=int(today_ingestion_stats["unique_localities"].iloc[0]),
-    )
-    existing_ingestion_stats = _download_parquet_from_gcs(bucket, DAILY_INGESTION_STATS_BLOB)
-
-    if existing_ingestion_stats is not None:
-        date_val = pd.Timestamp(today_ingestion_stats["date"].iloc[0])
-        existing_rows = len(existing_ingestion_stats)
-        existing_ingestion_stats = existing_ingestion_stats[
-            pd.to_datetime(existing_ingestion_stats["date"]) != date_val
-        ]
-        removed_rows = existing_rows - len(existing_ingestion_stats)
-        ingestion_stats = pd.concat([existing_ingestion_stats, today_ingestion_stats], ignore_index=True)
-        _log_event(
-            logger.info,
-            "daily_ingestion_stats_updated",
-            date=str(date_val.date()),
-            existing_rows=existing_rows,
-            removed_rows=removed_rows,
-            added_rows=len(today_ingestion_stats),
-            final_rows=len(ingestion_stats),
-        )
-    else:
-        ingestion_stats = today_ingestion_stats
-        _log_event(
-            logger.info,
-            "daily_ingestion_stats_initialized",
-            date=str(snapshot_date),
-            final_rows=len(ingestion_stats),
-        )
-
-    _upload_parquet_to_gcs(bucket, DAILY_INGESTION_STATS_BLOB, ingestion_stats)
-    pipeline_results.append(
-        PipelineResult(
-            name="daily_ingestion_stats",
-            description="Daily ingestion summary — station and entity counts",
-            output_blob=DAILY_INGESTION_STATS_BLOB,
-            input_rows=raw_row_count,
-            output_rows=len(ingestion_stats),
-            duration_seconds=round(time.monotonic() - step_start, 2),
-            status="ok",
-        )
-    )
-
-    # Day-of-week stats: rebuild from deduplicated daily province stats
-    step_start = time.monotonic()
-    dow_stats = build_day_of_week_stats_from_province_daily_stats(province_stats)
-    _log_event(
-        logger.info,
-        "day_of_week_stats_rebuilt",
-        date=str(snapshot_date),
-        **_day_of_week_stats_log_fields(dow_stats),
-    )
-    _upload_parquet_to_gcs(bucket, DAY_OF_WEEK_STATS_BLOB, dow_stats)
-    pipeline_results.append(
-        PipelineResult(
-            name="day_of_week_stats",
-            description="Day-of-week price patterns (province + national)",
-            output_blob=DAY_OF_WEEK_STATS_BLOB,
-            input_rows=len(province_stats),
-            output_rows=len(dow_stats),
-            duration_seconds=round(time.monotonic() - step_start, 2),
-            status="ok",
-        )
-    )
-
-    # Brand daily stats: append today's rows
-    step_start = time.monotonic()
-    today_brand_stats = compute_brand_daily_stats(raw_df)
-    _log_event(
-        logger.info,
-        "brand_daily_stats_computed",
-        date=str(snapshot_date),
-        rows=len(today_brand_stats),
-    )
-    existing_brand_stats = _download_parquet_from_gcs(bucket, BRAND_DAILY_STATS_BLOB)
-
-    if existing_brand_stats is not None:
-        date_val = pd.Timestamp(today_brand_stats["date"].iloc[0]) if not today_brand_stats.empty else None
-        if date_val is not None:
-            existing_rows = len(existing_brand_stats)
-            existing_brand_stats = existing_brand_stats[pd.to_datetime(existing_brand_stats["date"]) != date_val]
-            removed_rows = existing_rows - len(existing_brand_stats)
-            brand_stats = pd.concat([existing_brand_stats, today_brand_stats], ignore_index=True)
-            _log_event(
-                logger.info,
-                "brand_daily_stats_updated",
-                date=str(date_val.date()),
-                existing_rows=existing_rows,
-                removed_rows=removed_rows,
-                added_rows=len(today_brand_stats),
-                final_rows=len(brand_stats),
-            )
-        else:
-            brand_stats = existing_brand_stats
-    else:
-        brand_stats = today_brand_stats
-        _log_event(
-            logger.info,
-            "brand_daily_stats_initialized",
-            date=str(snapshot_date),
-            final_rows=len(brand_stats),
-        )
-
-    _upload_parquet_to_gcs(bucket, BRAND_DAILY_STATS_BLOB, brand_stats)
-    pipeline_results.append(
-        PipelineResult(
-            name="brand_daily_stats",
-            description="Brand × fuel type daily aggregation",
-            output_blob=BRAND_DAILY_STATS_BLOB,
-            input_rows=raw_row_count,
-            output_rows=len(brand_stats),
-            duration_seconds=round(time.monotonic() - step_start, 2),
-            status="ok",
-        )
-    )
-
-    # Zip-code daily trend stats: append today's rows, replace same-day rows, and retain only the latest rolling year.
-    step_start = time.monotonic()
-    today_zip_code_stats = compute_zip_code_daily_stats(raw_df)
-    _log_event(
-        logger.info,
-        "zip_code_daily_stats_computed",
-        date=str(snapshot_date),
-        **_zip_code_daily_stats_log_fields(today_zip_code_stats),
-    )
-    existing_zip_code_stats = _download_parquet_from_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB)
-
-    if existing_zip_code_stats is not None and not today_zip_code_stats.empty:
-        date_val = pd.Timestamp(today_zip_code_stats["date"].iloc[0])
-        existing_rows = len(existing_zip_code_stats)
-        existing_zip_code_stats = existing_zip_code_stats[pd.to_datetime(existing_zip_code_stats["date"]) != date_val]
-        retention_cutoff = date_val - pd.Timedelta(days=ZIP_CODE_DAILY_STATS_RETENTION_DAYS - 1)
-        within_retention = pd.to_datetime(existing_zip_code_stats["date"]) >= retention_cutoff
-        pruned_rows = int((~within_retention).sum())
-        existing_zip_code_stats = existing_zip_code_stats[within_retention]
-        removed_rows = existing_rows - len(existing_zip_code_stats) - pruned_rows
-        zip_code_stats = pd.concat([existing_zip_code_stats, today_zip_code_stats], ignore_index=True)
-        _log_event(
-            logger.info,
-            "zip_code_daily_stats_updated",
-            date=str(date_val.date()),
-            existing_rows=existing_rows,
-            removed_rows=removed_rows,
-            pruned_rows=pruned_rows,
-            added_rows=len(today_zip_code_stats),
-            final_rows=len(zip_code_stats),
-        )
-    elif existing_zip_code_stats is not None:
-        date_val = pd.Timestamp(snapshot_date)
-        retention_cutoff = date_val - pd.Timedelta(days=ZIP_CODE_DAILY_STATS_RETENTION_DAYS - 1)
-        within_retention = pd.to_datetime(existing_zip_code_stats["date"]) >= retention_cutoff
-        pruned_rows = int((~within_retention).sum())
-        zip_code_stats = existing_zip_code_stats[within_retention].copy()
-        _log_event(
-            logger.info,
-            "zip_code_daily_stats_retained_existing",
-            date=str(date_val.date()),
-            pruned_rows=pruned_rows,
-            final_rows=len(zip_code_stats),
-        )
-    else:
-        zip_code_stats = today_zip_code_stats
-        _log_event(
-            logger.info,
-            "zip_code_daily_stats_initialized",
-            date=str(snapshot_date),
-            final_rows=len(zip_code_stats),
-        )
-
-    _upload_parquet_to_gcs(bucket, ZIP_CODE_DAILY_STATS_BLOB, zip_code_stats)
-    pipeline_results.append(
-        PipelineResult(
-            name="zip_code_daily_stats",
-            description="Zip-code × fuel type daily aggregation (365-day rolling)",
-            output_blob=ZIP_CODE_DAILY_STATS_BLOB,
-            input_rows=raw_row_count,
-            output_rows=len(zip_code_stats),
-            duration_seconds=round(time.monotonic() - step_start, 2),
-            status="ok",
-        )
-    )
-
-    write_step_summary(pipeline_results, title=f"Aggregation Results — {str(snapshot_date)}")
+    write_step_summary(daily_results + brand_results, title=f"Aggregation Results — {str(snapshot_date)}")
     _log_event(logger.info, "aggregation_complete", file=latest_file, snapshot_date=str(snapshot_date))
 
 

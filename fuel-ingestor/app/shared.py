@@ -18,6 +18,10 @@ FUEL_PRICE_COLUMNS = [
 ]
 
 
+def _rows_with_positive_price(df: pd.DataFrame, fuel_col: str) -> pd.DataFrame:
+    return df[df[fuel_col].notna() & (df[fuel_col] > 0)]
+
+
 def _snapshot_date(raw_df: pd.DataFrame):
     return pd.to_datetime(raw_df["timestamp"].iloc[0]).date()
 

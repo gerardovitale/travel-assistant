@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from typing import Any
 from typing import List
 
 import pandas as pd
+from pipeline.base import TaskConfig
+from pipeline.gcs import DataFrameSource
+from pipeline.gcs import IncrementalGCSParquetSink
+from shared import _rows_with_positive_price
 from shared import _snapshot_date
 from shared import FUEL_PRICE_COLUMNS
+
+PROVINCE_DAILY_STATS_BLOB = "aggregates/province_daily_stats.parquet"
 
 PROVINCE_DAILY_STATS_COLUMNS = [
     "date",
@@ -15,10 +22,6 @@ PROVINCE_DAILY_STATS_COLUMNS = [
     "max_price",
     "station_count",
 ]
-
-
-def _rows_with_positive_price(raw_df: pd.DataFrame, fuel_col: str) -> pd.DataFrame:
-    return raw_df[raw_df[fuel_col].notna() & (raw_df[fuel_col] > 0)]
 
 
 def _aggregate_by_province(valid: pd.DataFrame, fuel_col: str, date_val) -> List[dict]:
@@ -48,3 +51,14 @@ def compute_province_daily_stats(raw_df: pd.DataFrame) -> pd.DataFrame:
             continue
         rows.extend(_aggregate_by_province(valid, fuel_col, date_val))
     return pd.DataFrame(rows, columns=PROVINCE_DAILY_STATS_COLUMNS)
+
+
+def build_task(bucket: Any, raw_df: pd.DataFrame) -> TaskConfig:
+    return TaskConfig(
+        name="province_daily_stats",
+        description="Province × fuel type daily aggregation",
+        output_blob=PROVINCE_DAILY_STATS_BLOB,
+        source=DataFrameSource(raw_df),
+        transformations=[compute_province_daily_stats],
+        sink=IncrementalGCSParquetSink(bucket, PROVINCE_DAILY_STATS_BLOB),
+    )

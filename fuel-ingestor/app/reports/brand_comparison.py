@@ -1,9 +1,13 @@
 import logging
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 from typing import List
 
 import pandas as pd
+from pipeline.base import TaskConfig
+from pipeline.gcs import CallableSource
+from pipeline.gcs import GCSParquetSink
 from reports.config import REPORT_BRANDS
 from reports.config import REPORT_FUEL_COLS
 from reports.config import REPORT_GEO_COLS
@@ -82,7 +86,7 @@ def _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appe
             count(*) as appearances,
             '{today}' as last_updated
         from joint
-        group by brand, geo_value
+        group by brand, geo_level, geo_value, fuel_type, last_updated
         having count(*) >= {min_appearances}
         """
     ).df()
@@ -121,3 +125,13 @@ def compute_brand_price_comparison(
     result = pd.concat(all_frames, ignore_index=True)
     logger.info(f"brand_comparison_computed total_rows={len(result)}")
     return result[BRAND_COMPARISON_COLUMNS]
+
+
+def build_task(bucket: Any, con: Any, today: str) -> TaskConfig:
+    return TaskConfig(
+        name="brand_price_comparison",
+        description="Brand average price vs market average by geo area",
+        output_blob=BRAND_COMPARISON_BLOB,
+        source=CallableSource(lambda: compute_brand_price_comparison(con, today=today)),
+        sink=GCSParquetSink(bucket, BRAND_COMPARISON_BLOB),
+    )

@@ -20,6 +20,7 @@ class TaskRunner:
 
     def _run_one(self, task: TaskConfig) -> PipelineResult:
         start = time.monotonic()
+        input_rows = 0
         try:
             df = task.source.read()
             input_rows = len(df)
@@ -48,7 +49,7 @@ class TaskRunner:
                 name=task.name,
                 description=task.description,
                 output_blob=task.output_blob,
-                input_rows=0,
+                input_rows=input_rows,
                 output_rows=0,
                 duration_seconds=duration,
                 status="failed",

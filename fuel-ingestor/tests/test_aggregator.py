@@ -1,22 +1,54 @@
+import io
 from unittest import TestCase
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
-from aggregator import BRAND_DAILY_STATS_BLOB
-from aggregator import build_day_of_week_stats_from_province_daily_stats
-from aggregator import compute_daily_ingestion_stats
-from aggregator import compute_day_of_week_stats
-from aggregator import compute_province_daily_stats
-from aggregator import compute_zip_code_daily_stats
-from aggregator import DAILY_INGESTION_STATS_BLOB
-from aggregator import PROVINCE_DAILY_STATS_BLOB
 from aggregator import run_aggregation
-from aggregator import ZIP_CODE_DAILY_STATS_BLOB
+from pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
+from pipelines.day_of_week_stats import build_day_of_week_stats_from_province_daily_stats
+from pipelines.day_of_week_stats import compute_day_of_week_stats
+from pipelines.ingestion_stats import compute_daily_ingestion_stats
+from pipelines.ingestion_stats import DAILY_INGESTION_STATS_BLOB
+from pipelines.province_stats import compute_province_daily_stats
+from pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
+from pipelines.zip_code_stats import compute_zip_code_daily_stats
+from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
 
 
 def _logged_messages(mock_calls):
     return [call.args[0] for call in mock_calls]
+
+
+class _StatefulBucketMock:
+    """Minimal GCS bucket mock that persists uploads so subsequent reads see the written data.
+
+    Used to test the incremental aggregation path where IncrementalGCSParquetSink reads
+    existing data, merges, and uploads — and the day_of_week task then reads the freshly
+    uploaded province_stats.
+    """
+
+    def __init__(self, initial_data=None):
+        self._data = {}
+        for blob_name, df in (initial_data or {}).items():
+            if df is not None:
+                self._data[blob_name] = df.to_parquet(index=False, compression="snappy")
+        self.uploaded = {}
+
+    def blob(self, blob_name):
+        mock = MagicMock()
+        mock.exists.return_value = blob_name in self._data
+        mock.download_as_bytes.return_value = self._data.get(blob_name, b"")
+
+        def _upload(data, *args, **kwargs):
+            self._data[blob_name] = data
+            self.uploaded[blob_name] = pd.read_parquet(io.BytesIO(data))
+
+        mock.upload_from_string.side_effect = _upload
+        return mock
+
+    def list_blobs(self, prefix=""):
+        return []
 
 
 def _make_raw_df():
@@ -288,19 +320,28 @@ class TestBuildDayOfWeekStatsFromProvinceDailyStats(TestCase):
 
 class TestRunAggregation(TestCase):
 
-    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("brand_competitiveness.run_brand_analytics")
+    @patch("aggregator._blob_exists")
     @patch("aggregator._download_parquet_from_gcs")
     @patch("aggregator._get_latest_raw_file")
-    def test_run_aggregation_creates_new_aggregates(self, mock_latest, mock_download, mock_upload):
+    def test_run_aggregation_creates_new_aggregates(
+        self, mock_latest, mock_download, mock_blob_exists, mock_brand_analytics
+    ):
         raw_df = _make_raw_df()
         mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
-        mock_download.side_effect = _make_download_side_effect(raw_df)
+        mock_download.return_value = raw_df
+        mock_blob_exists.return_value = True
+        mock_brand_analytics.return_value = []
 
-        bucket = MagicMock()
+        bucket = _StatefulBucketMock()
         with patch("aggregator.logger") as mock_logger:
             run_aggregation(bucket)
 
-        self.assertEqual(mock_upload.call_count, 5)
+        self.assertIn(PROVINCE_DAILY_STATS_BLOB, bucket.uploaded)
+        self.assertIn(DAILY_INGESTION_STATS_BLOB, bucket.uploaded)
+        self.assertIn("aggregates/day_of_week_stats.parquet", bucket.uploaded)
+        self.assertIn(ZIP_CODE_DAILY_STATS_BLOB, bucket.uploaded)
+        mock_brand_analytics.assert_called_once_with(bucket)
         info_messages = _logged_messages(mock_logger.info.call_args_list)
         self.assertTrue(
             any(
@@ -309,11 +350,6 @@ class TestRunAggregation(TestCase):
             )
         )
         self.assertTrue(any("raw_snapshot_loaded" in message for message in info_messages))
-        self.assertTrue(any("province_daily_stats_computed" in message for message in info_messages))
-        self.assertTrue(any("daily_ingestion_stats_computed" in message for message in info_messages))
-        self.assertTrue(any("day_of_week_stats_rebuilt" in message for message in info_messages))
-        self.assertTrue(any("brand_daily_stats_computed" in message for message in info_messages))
-        self.assertTrue(any("zip_code_daily_stats_computed" in message for message in info_messages))
         self.assertTrue(any("aggregation_complete" in message for message in info_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
@@ -330,10 +366,12 @@ class TestRunAggregation(TestCase):
         warning_messages = _logged_messages(mock_logger.warning.call_args_list)
         self.assertTrue(any("aggregation_skipped_no_raw_file" in message for message in warning_messages))
 
-    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._blob_exists")
     @patch("aggregator._download_parquet_from_gcs")
     @patch("aggregator._get_latest_raw_file")
-    def test_run_aggregation_rebuilds_dow_from_deduplicated_daily_rows(self, mock_latest, mock_download, mock_upload):
+    def test_run_aggregation_rebuilds_dow_from_deduplicated_daily_rows(
+        self, mock_latest, mock_download, mock_blob_exists
+    ):
         raw_df = _make_raw_df()
         today_stats = compute_province_daily_stats(raw_df)
         stale_today_stats = today_stats.copy()
@@ -342,19 +380,18 @@ class TestRunAggregation(TestCase):
         previous_day_stats["date"] = pd.Timestamp("2026-03-21").date()
 
         mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
-        mock_download.side_effect = _make_download_side_effect(
-            raw_df,
-            aggregate_overrides={
+        mock_download.return_value = raw_df
+        mock_blob_exists.return_value = True
+
+        bucket = _StatefulBucketMock(
+            initial_data={
                 PROVINCE_DAILY_STATS_BLOB: pd.concat([previous_day_stats, stale_today_stats], ignore_index=True),
-            },
+            }
         )
+        run_aggregation(bucket)
 
-        bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
-            run_aggregation(bucket)
-
-        province_daily_df = mock_upload.call_args_list[0].args[2]
-        dow_stats_df = mock_upload.call_args_list[2].args[2]
+        province_daily_df = bucket.uploaded[PROVINCE_DAILY_STATS_BLOB]
+        dow_stats_df = bucket.uploaded["aggregates/day_of_week_stats.parquet"]
 
         self.assertEqual(len(province_daily_df), len(previous_day_stats) + len(today_stats))
 
@@ -365,12 +402,6 @@ class TestRunAggregation(TestCase):
         ].iloc[0]
         self.assertAlmostEqual(madrid_sunday["sum_price"], 1.4767, places=6)
         self.assertEqual(madrid_sunday["count_days"], 1)
-        info_messages = _logged_messages(mock_logger.info.call_args_list)
-        self.assertTrue(
-            any("province_daily_stats_updated" in message and "removed_rows=4" in message for message in info_messages)
-        )
-        self.assertTrue(any("daily_ingestion_stats_initialized" in message for message in info_messages))
-        self.assertTrue(any("zip_code_daily_stats_initialized" in message for message in info_messages))
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._download_parquet_from_gcs")
@@ -531,10 +562,12 @@ class TestRunAggregation(TestCase):
         )
         self.assertTrue(any("zip_code_daily_backfill_frame_ready" in message for message in info_messages))
 
-    @patch("aggregator._upload_parquet_to_gcs")
+    @patch("aggregator._blob_exists")
     @patch("aggregator._download_parquet_from_gcs")
     @patch("aggregator._get_latest_raw_file")
-    def test_run_aggregation_prunes_zip_code_stats_older_than_retention(self, mock_latest, mock_download, mock_upload):
+    def test_run_aggregation_prunes_zip_code_stats_older_than_retention(
+        self, mock_latest, mock_download, mock_blob_exists
+    ):
         raw_df = _make_raw_df().copy()
         raw_df["timestamp"] = "2026-03-31T05:48:06"
 
@@ -551,26 +584,18 @@ class TestRunAggregation(TestCase):
             }
         )
         mock_latest.return_value = "spain_fuel_prices_2026-03-31T05:48:06.parquet"
-        mock_download.side_effect = _make_download_side_effect(
-            raw_df,
-            aggregate_overrides={ZIP_CODE_DAILY_STATS_BLOB: existing_zip_stats},
-        )
+        mock_download.return_value = raw_df
+        mock_blob_exists.return_value = True
 
-        bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
-            run_aggregation(bucket)
+        bucket = _StatefulBucketMock(initial_data={ZIP_CODE_DAILY_STATS_BLOB: existing_zip_stats})
+        run_aggregation(bucket)
 
-        zip_code_daily_df = mock_upload.call_args_list[4].args[2]
+        zip_code_daily_df = bucket.uploaded[ZIP_CODE_DAILY_STATS_BLOB]
         retained_dates = set(pd.to_datetime(zip_code_daily_df["date"]).dt.date)
 
         self.assertNotIn(pd.Timestamp("2025-03-31").date(), retained_dates)
         self.assertIn(pd.Timestamp("2025-04-01").date(), retained_dates)
         self.assertIn(pd.Timestamp("2026-03-31").date(), retained_dates)
-
-        info_messages = _logged_messages(mock_logger.info.call_args_list)
-        self.assertTrue(
-            any("zip_code_daily_stats_updated" in message and "pruned_rows=1" in message for message in info_messages)
-        )
 
     @patch("aggregator._upload_parquet_to_gcs")
     @patch("aggregator._list_raw_parquet_files")

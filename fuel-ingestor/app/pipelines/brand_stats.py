@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from typing import Any
 from typing import List
 
 import pandas as pd
 from brand_utils import MIN_STATION_COUNT
 from brand_utils import normalize_brand
+from pipeline.base import TaskConfig
+from pipeline.gcs import DataFrameSource
+from pipeline.gcs import IncrementalGCSParquetSink
+from shared import _rows_with_positive_price
 from shared import _snapshot_date
 from shared import FUEL_PRICE_COLUMNS
+
+BRAND_DAILY_STATS_BLOB = "aggregates/brand_daily_stats.parquet"
 
 BRAND_DAILY_STATS_COLUMNS = [
     "date",
@@ -24,10 +31,6 @@ def _normalize_brands(raw_df: pd.DataFrame) -> pd.DataFrame:
     brand_df = raw_df[brands.notna()].copy()
     brand_df["brand"] = brands[brands.notna()]
     return brand_df
-
-
-def _rows_with_positive_price(brand_df: pd.DataFrame, fuel_col: str) -> pd.DataFrame:
-    return brand_df[brand_df[fuel_col].notna() & (brand_df[fuel_col] > 0)]
 
 
 def _aggregate_by_brand(valid: pd.DataFrame, fuel_col: str, date_val) -> List[dict]:
@@ -63,3 +66,14 @@ def compute_brand_daily_stats(raw_df: pd.DataFrame) -> pd.DataFrame:
             continue
         rows.extend(_aggregate_by_brand(valid, fuel_col, date_val))
     return pd.DataFrame(rows, columns=BRAND_DAILY_STATS_COLUMNS)
+
+
+def build_task(bucket: Any, raw_df: pd.DataFrame) -> TaskConfig:
+    return TaskConfig(
+        name="brand_daily_stats",
+        description="Brand × fuel type daily aggregation",
+        output_blob=BRAND_DAILY_STATS_BLOB,
+        source=DataFrameSource(raw_df),
+        transformations=[compute_brand_daily_stats],
+        sink=IncrementalGCSParquetSink(bucket, BRAND_DAILY_STATS_BLOB),
+    )

@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pandas as pd
+from pipeline.base import TaskConfig
+from pipeline.gcs import DataFrameSource
+from pipeline.gcs import IncrementalGCSParquetSink
 from shared import _snapshot_date
 from shared import FUEL_PRICE_COLUMNS
+
+DAILY_INGESTION_STATS_BLOB = "aggregates/daily_ingestion_stats.parquet"
 
 DAILY_INGESTION_STATS_COLUMNS = [
     "date",
@@ -46,4 +53,15 @@ def compute_daily_ingestion_stats(raw_df: pd.DataFrame) -> pd.DataFrame:
             }
         ],
         columns=DAILY_INGESTION_STATS_COLUMNS,
+    )
+
+
+def build_task(bucket: Any, raw_df: pd.DataFrame) -> TaskConfig:
+    return TaskConfig(
+        name="daily_ingestion_stats",
+        description="Daily ingestion summary — station and entity counts",
+        output_blob=DAILY_INGESTION_STATS_BLOB,
+        source=DataFrameSource(raw_df),
+        transformations=[compute_daily_ingestion_stats],
+        sink=IncrementalGCSParquetSink(bucket, DAILY_INGESTION_STATS_BLOB),
     )

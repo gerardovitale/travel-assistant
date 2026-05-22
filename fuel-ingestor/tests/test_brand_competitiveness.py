@@ -9,7 +9,7 @@ import pandas as pd
 from brand_competitiveness import BRAND_COMPETITIVENESS_BLOB
 from brand_competitiveness import BRAND_COMPETITIVENESS_MONTHLY_BLOB
 from brand_competitiveness import compute_brand_competitiveness
-from brand_competitiveness import run_brand_competitiveness
+from brand_competitiveness import run_brand_analytics
 from reports.brand_comparison import BRAND_COMPARISON_BLOB
 from reports.brand_win_rate import BRAND_WIN_RATE_BLOB
 
@@ -319,13 +319,13 @@ class TestComputeBrandCompetitiveness(TestCase):
             shutil.rmtree(empty_dir, ignore_errors=True)
 
 
-class TestRunBrandCompetitiveness(TestCase):
+class TestRunBrandAnalytics(TestCase):
 
     @patch("brand_competitiveness._download_parquets_to_dir")
     @patch("brand_competitiveness._upload_parquet_to_gcs")
     @patch("brand_competitiveness._list_raw_parquet_files")
     @patch("brand_competitiveness._latest_raw_file_per_day")
-    def test_uploads_both_aggregates(self, mock_dedup, mock_list, mock_upload, mock_download):
+    def test_uploads_both_legacy_aggregates(self, mock_dedup, mock_list, mock_upload, mock_download):
         tmp_dir = _make_test_parquet_dir()
         try:
             mock_list.return_value = ["spain_fuel_prices_2026-01-01T05:00:00.parquet"]
@@ -333,7 +333,7 @@ class TestRunBrandCompetitiveness(TestCase):
             mock_download.return_value = tmp_dir
 
             bucket = MagicMock()
-            run_brand_competitiveness(bucket=bucket)
+            run_brand_analytics(bucket=bucket)
 
             uploaded_blobs = [call.args[1] for call in mock_upload.call_args_list]
             self.assertIn(BRAND_COMPETITIVENESS_BLOB, uploaded_blobs)
@@ -353,11 +353,34 @@ class TestRunBrandCompetitiveness(TestCase):
             mock_download.return_value = tmp_dir
 
             bucket = MagicMock()
-            run_brand_competitiveness(bucket=bucket)
+            results = run_brand_analytics(bucket=bucket)
 
-            uploaded_blobs = [call.args[1] for call in mock_upload.call_args_list]
-            self.assertIn(BRAND_WIN_RATE_BLOB, uploaded_blobs)
-            self.assertIn(BRAND_COMPARISON_BLOB, uploaded_blobs)
+            output_blobs = {r.output_blob for r in results}
+            self.assertIn(BRAND_WIN_RATE_BLOB, output_blobs)
+            self.assertIn(BRAND_COMPARISON_BLOB, output_blobs)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    @patch("brand_competitiveness._download_parquets_to_dir")
+    @patch("brand_competitiveness._upload_parquet_to_gcs")
+    @patch("brand_competitiveness._list_raw_parquet_files")
+    @patch("brand_competitiveness._latest_raw_file_per_day")
+    def test_returns_pipeline_results_for_all_tasks(self, mock_dedup, mock_list, mock_upload, mock_download):
+        tmp_dir = _make_test_parquet_dir()
+        try:
+            mock_list.return_value = ["spain_fuel_prices_2026-01-01T05:00:00.parquet"]
+            mock_dedup.return_value = ["spain_fuel_prices_2026-01-01T05:00:00.parquet"]
+            mock_download.return_value = tmp_dir
+
+            bucket = MagicMock()
+            results = run_brand_analytics(bucket=bucket)
+
+            self.assertIsInstance(results, list)
+            result_names = {r.name for r in results}
+            self.assertIn("brand_competitiveness", result_names)
+            self.assertIn("brand_competitiveness_monthly", result_names)
+            self.assertIn("brand_win_rate", result_names)
+            self.assertIn("brand_price_comparison", result_names)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -365,5 +388,6 @@ class TestRunBrandCompetitiveness(TestCase):
     def test_skips_when_no_raw_files(self, mock_list):
         mock_list.return_value = []
         bucket = MagicMock()
-        run_brand_competitiveness(bucket=bucket)
+        results = run_brand_analytics(bucket=bucket)
+        self.assertEqual(results, [])
         bucket.blob.assert_not_called()

@@ -6,6 +6,7 @@ import tempfile
 import time
 from datetime import datetime
 from datetime import timezone
+from typing import List
 
 import duckdb
 import pandas as pd
@@ -13,17 +14,10 @@ from aggregator import _get_bucket
 from aggregator import _latest_raw_file_per_day
 from aggregator import _list_raw_parquet_files
 from aggregator import _upload_parquet_to_gcs
-from aggregator import AGGREGATES_PREFIX
 from pipeline.base import PipelineResult
-from pipeline.base import TaskConfig
-from pipeline.gcs import CallableSink
-from pipeline.gcs import CallableSource
 from pipeline.runner import TaskRunner
-from pipeline.runner import write_step_summary
-from reports.brand_comparison import BRAND_COMPARISON_BLOB
-from reports.brand_comparison import compute_brand_price_comparison
-from reports.brand_win_rate import BRAND_WIN_RATE_BLOB
-from reports.brand_win_rate import compute_brand_win_rate
+from reports.brand_comparison import build_task as brand_comparison_task
+from reports.brand_win_rate import build_task as brand_win_rate_task
 from shared import _log_event
 
 logger = logging.getLogger(__name__)
@@ -33,8 +27,8 @@ FUEL_COLS = ["gasoline_95_e5_price", "diesel_a_price"]
 GEO_COLS = ["zip_code", "locality", "municipality"]
 MIN_APPEARANCES = 30
 
-BRAND_COMPETITIVENESS_BLOB = f"{AGGREGATES_PREFIX}brand_competitiveness.parquet"
-BRAND_COMPETITIVENESS_MONTHLY_BLOB = f"{AGGREGATES_PREFIX}brand_competitiveness_monthly.parquet"
+BRAND_COMPETITIVENESS_BLOB = "aggregates/brand_competitiveness.parquet"
+BRAND_COMPETITIVENESS_MONTHLY_BLOB = "aggregates/brand_competitiveness_monthly.parquet"
 BRAND_COMPETITIVENESS_COLUMNS = [
     "brand",
     "geo_level",
@@ -228,18 +222,18 @@ def compute_brand_competitiveness(
         con.close()
 
 
-def run_brand_competitiveness(bucket=None):
-    _log_event(logger.info, "brand_competitiveness_run_start")
+def run_brand_analytics(bucket=None) -> List[PipelineResult]:
+    _log_event(logger.info, "brand_analytics_run_start")
     if bucket is None:
         bucket = _get_bucket()
 
     parquet_files = _list_raw_parquet_files(bucket)
     if not parquet_files:
-        _log_event(logger.warning, "brand_competitiveness_skipped_no_raw_files")
-        return
+        _log_event(logger.warning, "brand_analytics_skipped_no_raw_files")
+        return []
 
     parquet_files = _latest_raw_file_per_day(parquet_files)
-    _log_event(logger.info, "brand_competitiveness_raw_files_selected", count=len(parquet_files))
+    _log_event(logger.info, "brand_analytics_raw_files_selected", count=len(parquet_files))
 
     tmp_dir = _download_parquets_to_dir(bucket, parquet_files)
     try:
@@ -256,30 +250,14 @@ def run_brand_competitiveness(bucket=None):
             _upload_parquet_to_gcs(bucket, BRAND_COMPETITIVENESS_MONTHLY_BLOB, monthly_df)
             legacy_duration = round(time.monotonic() - legacy_start, 2)
 
-            # New reports; DuckDB table reused from same connection
-            tasks = [
-                TaskConfig(
-                    name="brand_win_rate",
-                    description="Probability of brand being cheapest or priciest by geo area",
-                    output_blob=BRAND_WIN_RATE_BLOB,
-                    source=CallableSource(lambda: compute_brand_win_rate(con, today=today)),
-                    sink=CallableSink(lambda df: _upload_parquet_to_gcs(bucket, BRAND_WIN_RATE_BLOB, df)),
-                ),
-                TaskConfig(
-                    name="brand_price_comparison",
-                    description="Brand average price vs market average by geo area",
-                    output_blob=BRAND_COMPARISON_BLOB,
-                    source=CallableSource(lambda: compute_brand_price_comparison(con, today=today)),
-                    sink=CallableSink(lambda df: _upload_parquet_to_gcs(bucket, BRAND_COMPARISON_BLOB, df)),
-                ),
-            ]
-            new_results = TaskRunner().run(tasks)
+            report_results = TaskRunner().run(
+                [
+                    brand_win_rate_task(bucket, con, today),
+                    brand_comparison_task(bucket, con, today),
+                ]
+            )
 
-            failed = [r.name for r in new_results if r.status == "failed"]
-            if failed:
-                raise RuntimeError(f"Pipelines failed: {failed}")
-
-            existing_results = [
+            legacy_results = [
                 PipelineResult(
                     name="brand_competitiveness",
                     description="Brand cheapest win rate by geo area (overall)",
@@ -295,12 +273,12 @@ def run_brand_competitiveness(bucket=None):
                     output_blob=BRAND_COMPETITIVENESS_MONTHLY_BLOB,
                     input_rows=fuel_row_count,
                     output_rows=len(monthly_df),
-                    duration_seconds=0.0,  # shared computation; duration tracked above
+                    duration_seconds=legacy_duration,  # computed together with brand_competitiveness
                     status="ok",
                 ),
             ]
-            write_step_summary(existing_results + new_results, title="Brand Competitiveness Pipeline Results")
-            _log_event(logger.info, "brand_competitiveness_run_complete")
+            _log_event(logger.info, "brand_analytics_run_complete")
+            return legacy_results + report_results
 
         finally:
             con.close()
@@ -308,11 +286,3 @@ def run_brand_competitiveness(bucket=None):
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         _log_event(logger.info, "tmp_dir_cleaned_up", tmp_dir=tmp_dir)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        format="%(name)s - [%(levelname)s] - %(message)s [%(filename)s:%(lineno)d]",
-        level=logging.INFO,
-    )
-    run_brand_competitiveness()

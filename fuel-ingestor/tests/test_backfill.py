@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
-from aggregator import BRAND_DAILY_STATS_BLOB
-from aggregator import ZIP_CODE_DAILY_STATS_BLOB
 from backfill import backfill
+from pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
+from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
 
 
 class TestBackfill(TestCase):
