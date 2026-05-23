@@ -7,11 +7,11 @@ from datetime import timezone
 
 import pandas as pd
 import pytz
-from entity import get_expected_columns
-from entity import get_float_columns
-from entity import get_renaming_map
 from google.api_core.exceptions import GoogleAPIError
 from google.cloud import storage
+from ingestor.entity import get_expected_columns
+from ingestor.entity import get_float_columns
+from ingestor.entity import get_renaming_map
 
 DATA_SOURCE_URL = (
     "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/"

@@ -1,5 +1,5 @@
 import pandas as pd
-from pipelines.brand_stats import compute_brand_daily_stats
+from aggregator.pipelines.brand_stats import compute_brand_daily_stats
 
 
 def _make_brand_raw_df(labels=None, n_per_brand=12):

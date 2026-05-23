@@ -3,16 +3,16 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
-from backfill import backfill
-from pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
-from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
+from aggregator.backfill import backfill
+from aggregator.pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
+from aggregator.pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
 
 
 class TestBackfill(TestCase):
 
-    @patch("backfill._upload_parquet_to_gcs")
-    @patch("backfill._build_aggregate_dataframes_from_raw_files")
-    @patch("backfill._get_bucket")
+    @patch("aggregator.backfill._upload_parquet_to_gcs")
+    @patch("aggregator.backfill._build_aggregate_dataframes_from_raw_files")
+    @patch("aggregator.backfill._get_bucket")
     def test_backfill_collapses_duplicate_raw_files_per_day(self, mock_get_bucket, mock_build_aggregates, mock_upload):
         bucket = MagicMock()
         mock_get_bucket.return_value = bucket
@@ -35,7 +35,7 @@ class TestBackfill(TestCase):
             pd.DataFrame({"date": ["2026-03-22", "2026-03-23"]}),
             pd.DataFrame({"brand": ["repsol", "shell"]}),
         )
-        with patch("backfill._build_zip_code_daily_stats_from_raw_files") as mock_build_zip:
+        with patch("aggregator.backfill._build_zip_code_daily_stats_from_raw_files") as mock_build_zip:
             mock_build_zip.return_value = pd.DataFrame({"zip_code": ["28001", "08001"]})
 
             backfill()

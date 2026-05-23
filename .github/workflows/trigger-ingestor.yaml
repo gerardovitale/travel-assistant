@@ -20,6 +20,6 @@ jobs:
     uses: ./.github/workflows/run-aggregation-reusable.yaml
     with:
       working_directory: fuel-ingestor
-      script_path: app/aggregator.py
+      script_path: app/aggregator/main.py
     secrets:
       gcp_credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}

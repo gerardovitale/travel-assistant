@@ -5,13 +5,13 @@ from typing import Any
 from typing import List
 
 import pandas as pd
-from pipeline.base import TaskConfig
-from pipeline.gcs import CallableSource
-from pipeline.gcs import GCSParquetSink
-from reports.config import REPORT_BRANDS
-from reports.config import REPORT_DIRECTIONS
-from reports.config import REPORT_FUEL_COLS
-from reports.config import REPORT_GEO_COLS
+from aggregator.pipeline.base import TaskConfig
+from aggregator.pipeline.gcs import CallableSource
+from aggregator.pipeline.gcs import GCSParquetSink
+from aggregator.reports.config import REPORT_BRANDS
+from aggregator.reports.config import REPORT_DIRECTIONS
+from aggregator.reports.config import REPORT_FUEL_COLS
+from aggregator.reports.config import REPORT_GEO_COLS
 
 logger = logging.getLogger(__name__)
 

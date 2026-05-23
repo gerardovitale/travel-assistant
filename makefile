@@ -76,7 +76,7 @@ fuel-dashboard.scan:
 		travass-fuel-dashboard:local
 
 
-# CLOUD RUN JOB
+# FUEL INGESTOR
 fuel-ingestor.test:
 	./scripts/run-docker-test.sh fuel-ingestor
 
@@ -87,6 +87,11 @@ fuel-ingestor.run:
 		-v $(PWD)/fuel-ingestor/output:/output \
 		--entrypoint python3 \
 		fuel-ingestor local_run.py
+
+fuel-aggregator.run:
+	cd fuel-ingestor && \
+	uv sync --frozen --no-dev --no-install-project && \
+	PYTHONPATH=app uv run --frozen --no-sync python app/aggregator/main.py
 
 
 # FUEL DASHBOARD

@@ -6,12 +6,12 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
-from brand_competitiveness import BRAND_COMPETITIVENESS_BLOB
-from brand_competitiveness import BRAND_COMPETITIVENESS_MONTHLY_BLOB
-from brand_competitiveness import compute_brand_competitiveness
-from brand_competitiveness import run_brand_analytics
-from reports.brand_comparison import BRAND_COMPARISON_BLOB
-from reports.brand_win_rate import BRAND_WIN_RATE_BLOB
+from aggregator.brand_competitiveness import BRAND_COMPETITIVENESS_BLOB
+from aggregator.brand_competitiveness import BRAND_COMPETITIVENESS_MONTHLY_BLOB
+from aggregator.brand_competitiveness import compute_brand_competitiveness
+from aggregator.brand_competitiveness import run_brand_analytics
+from aggregator.reports.brand_comparison import BRAND_COMPARISON_BLOB
+from aggregator.reports.brand_win_rate import BRAND_WIN_RATE_BLOB
 
 
 def _make_test_parquet_dir():
@@ -321,10 +321,10 @@ class TestComputeBrandCompetitiveness(TestCase):
 
 class TestRunBrandAnalytics(TestCase):
 
-    @patch("brand_competitiveness._download_parquets_to_dir")
-    @patch("brand_competitiveness._upload_parquet_to_gcs")
-    @patch("brand_competitiveness._list_raw_parquet_files")
-    @patch("brand_competitiveness._latest_raw_file_per_day")
+    @patch("aggregator.brand_competitiveness._download_parquets_to_dir")
+    @patch("aggregator.brand_competitiveness._upload_parquet_to_gcs")
+    @patch("aggregator.brand_competitiveness._list_raw_parquet_files")
+    @patch("aggregator.brand_competitiveness._latest_raw_file_per_day")
     def test_uploads_both_legacy_aggregates(self, mock_dedup, mock_list, mock_upload, mock_download):
         tmp_dir = _make_test_parquet_dir()
         try:
@@ -341,10 +341,10 @@ class TestRunBrandAnalytics(TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    @patch("brand_competitiveness._download_parquets_to_dir")
-    @patch("brand_competitiveness._upload_parquet_to_gcs")
-    @patch("brand_competitiveness._list_raw_parquet_files")
-    @patch("brand_competitiveness._latest_raw_file_per_day")
+    @patch("aggregator.brand_competitiveness._download_parquets_to_dir")
+    @patch("aggregator.brand_competitiveness._upload_parquet_to_gcs")
+    @patch("aggregator.brand_competitiveness._list_raw_parquet_files")
+    @patch("aggregator.brand_competitiveness._latest_raw_file_per_day")
     def test_uploads_new_report_blobs(self, mock_dedup, mock_list, mock_upload, mock_download):
         tmp_dir = _make_test_parquet_dir()
         try:
@@ -361,10 +361,10 @@ class TestRunBrandAnalytics(TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    @patch("brand_competitiveness._download_parquets_to_dir")
-    @patch("brand_competitiveness._upload_parquet_to_gcs")
-    @patch("brand_competitiveness._list_raw_parquet_files")
-    @patch("brand_competitiveness._latest_raw_file_per_day")
+    @patch("aggregator.brand_competitiveness._download_parquets_to_dir")
+    @patch("aggregator.brand_competitiveness._upload_parquet_to_gcs")
+    @patch("aggregator.brand_competitiveness._list_raw_parquet_files")
+    @patch("aggregator.brand_competitiveness._latest_raw_file_per_day")
     def test_returns_pipeline_results_for_all_tasks(self, mock_dedup, mock_list, mock_upload, mock_download):
         tmp_dir = _make_test_parquet_dir()
         try:
@@ -384,7 +384,7 @@ class TestRunBrandAnalytics(TestCase):
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    @patch("brand_competitiveness._list_raw_parquet_files")
+    @patch("aggregator.brand_competitiveness._list_raw_parquet_files")
     def test_skips_when_no_raw_files(self, mock_list):
         mock_list.return_value = []
         bucket = MagicMock()

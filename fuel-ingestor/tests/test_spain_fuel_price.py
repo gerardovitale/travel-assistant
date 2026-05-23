@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
-from entity import get_expected_columns
 from google.api_core.exceptions import ServiceUnavailable
-from spain_fuel_price import _validate_api_response
-from spain_fuel_price import create_spain_fuel_dataframe
-from spain_fuel_price import extract_fuel_prices_raw_data
-from spain_fuel_price import validate_dataframe
-from spain_fuel_price import write_spain_fuel_prices_data_as_parquet
+from ingestor.entity import get_expected_columns
+from ingestor.spain_fuel_price import _validate_api_response
+from ingestor.spain_fuel_price import create_spain_fuel_dataframe
+from ingestor.spain_fuel_price import extract_fuel_prices_raw_data
+from ingestor.spain_fuel_price import validate_dataframe
+from ingestor.spain_fuel_price import write_spain_fuel_prices_data_as_parquet
 from tests.fixture import get_response_raw_data
 
 
@@ -26,11 +26,11 @@ class TestCurlAvailability(TestCase):
 class TestFuelPrice(TestCase):
 
     def setUp(self):
-        logger_patch = patch("spain_fuel_price.logger")
+        logger_patch = patch("ingestor.spain_fuel_price.logger")
         self.addCleanup(logger_patch.stop)
         self.mock_logger = logger_patch.start()
 
-    @patch("spain_fuel_price.subprocess.run")
+    @patch("ingestor.spain_fuel_price.subprocess.run")
     def test_extract_fuel_prices_raw_data(self, mock_run):
         expected_data = get_response_raw_data()
         mock_run.return_value = MagicMock(stdout=json.dumps(expected_data))
@@ -38,8 +38,8 @@ class TestFuelPrice(TestCase):
         mock_run.assert_called_once()
         self.assertEqual(result, expected_data)
 
-    @patch("spain_fuel_price.time.sleep")
-    @patch("spain_fuel_price.subprocess.run")
+    @patch("ingestor.spain_fuel_price.time.sleep")
+    @patch("ingestor.spain_fuel_price.subprocess.run")
     def test_extract_fuel_prices_raw_data_retries_on_error(self, mock_run, mock_sleep):
         expected_data = get_response_raw_data()
         mock_run.side_effect = [
@@ -51,8 +51,8 @@ class TestFuelPrice(TestCase):
         mock_sleep.assert_called_once_with(10)
         self.assertEqual(result, expected_data)
 
-    @patch("spain_fuel_price.time.sleep")
-    @patch("spain_fuel_price.subprocess.run")
+    @patch("ingestor.spain_fuel_price.time.sleep")
+    @patch("ingestor.spain_fuel_price.subprocess.run")
     def test_extract_fuel_prices_raw_data_raises_after_all_retries_exhausted(self, mock_run, mock_sleep):
         mock_run.side_effect = subprocess.CalledProcessError(22, "curl")
         with self.assertRaises(subprocess.CalledProcessError):
@@ -172,12 +172,12 @@ class TestValidateApiResponse(TestCase):
 class TestWriteWithRetry(TestCase):
 
     def setUp(self):
-        logger_patch = patch("spain_fuel_price.logger")
+        logger_patch = patch("ingestor.spain_fuel_price.logger")
         self.addCleanup(logger_patch.stop)
         self.mock_logger = logger_patch.start()
 
-    @patch("spain_fuel_price.time.sleep")
-    @patch("spain_fuel_price.storage.Client")
+    @patch("ingestor.spain_fuel_price.time.sleep")
+    @patch("ingestor.spain_fuel_price.storage.Client")
     def test_upload_retries_on_gcs_error(self, mock_client, mock_sleep):
         mock_blob = MagicMock()
         mock_blob.upload_from_string.side_effect = [
@@ -192,8 +192,8 @@ class TestWriteWithRetry(TestCase):
         self.assertEqual(mock_blob.upload_from_string.call_count, 2)
         mock_sleep.assert_called_once_with(2)
 
-    @patch("spain_fuel_price.time.sleep")
-    @patch("spain_fuel_price.storage.Client")
+    @patch("ingestor.spain_fuel_price.time.sleep")
+    @patch("ingestor.spain_fuel_price.storage.Client")
     def test_upload_raises_after_all_retries_exhausted(self, mock_client, mock_sleep):
         mock_blob = MagicMock()
         mock_blob.upload_from_string.side_effect = ServiceUnavailable("unavailable")
@@ -210,12 +210,12 @@ class TestWriteWithRetry(TestCase):
 class TestValidateDataframe(TestCase):
 
     def setUp(self):
-        logger_patch = patch("spain_fuel_price.logger")
+        logger_patch = patch("ingestor.spain_fuel_price.logger")
         self.addCleanup(logger_patch.stop)
         self.mock_logger = logger_patch.start()
 
     def _make_valid_df(self, n_rows=100):
-        from entity import get_float_columns
+        from ingestor.entity import get_float_columns
 
         float_cols = set(get_float_columns())
         data = {}

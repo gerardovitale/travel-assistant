@@ -4,13 +4,13 @@ from typing import Any
 from typing import Optional
 
 import pandas as pd
-from pipeline.base import TaskConfig
-from pipeline.gcs import GCSParquetSink
-from pipeline.gcs import GCSParquetSource
-from pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
-from shared import _rows_with_positive_price
-from shared import _snapshot_date
-from shared import FUEL_PRICE_COLUMNS
+from aggregator.pipeline.base import TaskConfig
+from aggregator.pipeline.gcs import GCSParquetSink
+from aggregator.pipeline.gcs import GCSParquetSource
+from aggregator.pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
+from aggregator.shared import _rows_with_positive_price
+from aggregator.shared import _snapshot_date
+from aggregator.shared import FUEL_PRICE_COLUMNS
 
 DAY_OF_WEEK_STATS_BLOB = "aggregates/day_of_week_stats.parquet"
 

@@ -1,21 +1,21 @@
 # One-time backfill script to build aggregate parquet files from all historical raw data.
-# Usage: cd fuel-ingestor && python app/backfill.py
+# Usage: cd fuel-ingestor && PYTHONPATH=app python app/aggregator/backfill.py
 # Requires GCS credentials (GOOGLE_APPLICATION_CREDENTIALS env var or default credentials).
 import logging
 
-from aggregator import _build_aggregate_dataframes_from_raw_files
-from aggregator import _build_zip_code_daily_stats_from_raw_files
-from aggregator import _get_bucket
-from aggregator import _latest_raw_file_per_day
-from aggregator import _list_raw_parquet_files
-from aggregator import _most_recent_raw_files
-from aggregator import _upload_parquet_to_gcs
-from aggregator import BRAND_DAILY_STATS_BLOB
-from aggregator import DAILY_INGESTION_STATS_BLOB
-from aggregator import DAY_OF_WEEK_STATS_BLOB
-from aggregator import PROVINCE_DAILY_STATS_BLOB
-from aggregator import ZIP_CODE_DAILY_STATS_BLOB
-from aggregator import ZIP_CODE_DAILY_STATS_RETENTION_DAYS
+from aggregator.main import _build_aggregate_dataframes_from_raw_files
+from aggregator.main import _build_zip_code_daily_stats_from_raw_files
+from aggregator.main import _get_bucket
+from aggregator.main import _latest_raw_file_per_day
+from aggregator.main import _list_raw_parquet_files
+from aggregator.main import _most_recent_raw_files
+from aggregator.main import _upload_parquet_to_gcs
+from aggregator.main import BRAND_DAILY_STATS_BLOB
+from aggregator.main import DAILY_INGESTION_STATS_BLOB
+from aggregator.main import DAY_OF_WEEK_STATS_BLOB
+from aggregator.main import PROVINCE_DAILY_STATS_BLOB
+from aggregator.main import ZIP_CODE_DAILY_STATS_BLOB
+from aggregator.main import ZIP_CODE_DAILY_STATS_RETENTION_DAYS
 
 logging.basicConfig(
     format="%(name)s - [%(levelname)s] - %(message)s [%(filename)s:%(lineno)d]",

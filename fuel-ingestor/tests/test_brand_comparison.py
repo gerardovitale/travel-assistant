@@ -2,8 +2,8 @@ from unittest import TestCase
 
 import duckdb
 import pandas as pd
-from reports.brand_comparison import BRAND_COMPARISON_COLUMNS
-from reports.brand_comparison import compute_brand_price_comparison
+from aggregator.reports.brand_comparison import BRAND_COMPARISON_COLUMNS
+from aggregator.reports.brand_comparison import compute_brand_price_comparison
 
 
 def _make_duckdb_con_with_data(rows):

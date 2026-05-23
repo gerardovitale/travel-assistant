@@ -1,10 +1,10 @@
 import logging
 import time
 
-from spain_fuel_price import create_spain_fuel_dataframe
-from spain_fuel_price import extract_fuel_prices_raw_data
-from spain_fuel_price import validate_dataframe
-from spain_fuel_price import write_spain_fuel_prices_data_as_parquet
+from ingestor.spain_fuel_price import create_spain_fuel_dataframe
+from ingestor.spain_fuel_price import extract_fuel_prices_raw_data
+from ingestor.spain_fuel_price import validate_dataframe
+from ingestor.spain_fuel_price import write_spain_fuel_prices_data_as_parquet
 
 LOGGING_FORMAT = "%(name)s - [%(levelname)s] - %(message)s [%(filename)s:%(lineno)d]"
 logging.basicConfig(format=LOGGING_FORMAT, level=logging.INFO)

@@ -5,33 +5,33 @@ from datetime import datetime
 from datetime import timezone
 
 import pandas as pd
+from aggregator.pipeline.runner import TaskRunner
+from aggregator.pipeline.runner import write_step_summary
+from aggregator.pipelines import brand_stats
+from aggregator.pipelines import day_of_week_stats
+from aggregator.pipelines import ingestion_stats
+from aggregator.pipelines import province_stats
+from aggregator.pipelines import zip_code_stats
+from aggregator.pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
+from aggregator.pipelines.brand_stats import BRAND_DAILY_STATS_COLUMNS
+from aggregator.pipelines.brand_stats import compute_brand_daily_stats
+from aggregator.pipelines.day_of_week_stats import build_day_of_week_stats_from_province_daily_stats
+from aggregator.pipelines.day_of_week_stats import compute_day_of_week_stats  # noqa: F401
+from aggregator.pipelines.day_of_week_stats import DAY_OF_WEEK_STATS_BLOB
+from aggregator.pipelines.ingestion_stats import compute_daily_ingestion_stats
+from aggregator.pipelines.ingestion_stats import DAILY_INGESTION_STATS_BLOB
+from aggregator.pipelines.ingestion_stats import DAILY_INGESTION_STATS_COLUMNS
+from aggregator.pipelines.province_stats import compute_province_daily_stats
+from aggregator.pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
+from aggregator.pipelines.province_stats import PROVINCE_DAILY_STATS_COLUMNS
+from aggregator.pipelines.zip_code_stats import compute_zip_code_daily_stats
+from aggregator.pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
+from aggregator.pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_COLUMNS
+from aggregator.pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_RETENTION_DAYS
+from aggregator.shared import _log_event
+from aggregator.shared import _snapshot_date
+from aggregator.shared import FUEL_PRICE_COLUMNS
 from google.cloud import storage
-from pipeline.runner import TaskRunner
-from pipeline.runner import write_step_summary
-from pipelines import brand_stats
-from pipelines import day_of_week_stats
-from pipelines import ingestion_stats
-from pipelines import province_stats
-from pipelines import zip_code_stats
-from pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
-from pipelines.brand_stats import BRAND_DAILY_STATS_COLUMNS
-from pipelines.brand_stats import compute_brand_daily_stats
-from pipelines.day_of_week_stats import build_day_of_week_stats_from_province_daily_stats
-from pipelines.day_of_week_stats import compute_day_of_week_stats  # noqa: F401
-from pipelines.day_of_week_stats import DAY_OF_WEEK_STATS_BLOB
-from pipelines.ingestion_stats import compute_daily_ingestion_stats
-from pipelines.ingestion_stats import DAILY_INGESTION_STATS_BLOB
-from pipelines.ingestion_stats import DAILY_INGESTION_STATS_COLUMNS
-from pipelines.province_stats import compute_province_daily_stats
-from pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
-from pipelines.province_stats import PROVINCE_DAILY_STATS_COLUMNS
-from pipelines.zip_code_stats import compute_zip_code_daily_stats
-from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
-from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_COLUMNS
-from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_RETENTION_DAYS
-from shared import _log_event
-from shared import _snapshot_date
-from shared import FUEL_PRICE_COLUMNS
 
 logger = logging.getLogger(__name__)
 
@@ -392,7 +392,7 @@ def run_aggregation(bucket=None):
     ]
     daily_results = TaskRunner().run(daily_tasks)
 
-    from brand_competitiveness import run_brand_analytics  # local import to avoid circular dependency
+    from aggregator.brand_competitiveness import run_brand_analytics  # local import to avoid circular dependency
 
     brand_results = run_brand_analytics(bucket)
 

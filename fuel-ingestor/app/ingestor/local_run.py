@@ -2,8 +2,8 @@ import logging
 import time
 from datetime import datetime
 
-from spain_fuel_price import create_spain_fuel_dataframe
-from spain_fuel_price import extract_fuel_prices_raw_data
+from ingestor.spain_fuel_price import create_spain_fuel_dataframe
+from ingestor.spain_fuel_price import extract_fuel_prices_raw_data
 
 LOGGING_FORMAT = "%(name)s - [%(levelname)s] - %(message)s [%(filename)s:%(lineno)d]"
 logging.basicConfig(format=LOGGING_FORMAT, level=logging.INFO)

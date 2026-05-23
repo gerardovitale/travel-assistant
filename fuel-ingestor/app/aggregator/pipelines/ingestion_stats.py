@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
-from pipeline.base import TaskConfig
-from pipeline.gcs import DataFrameSource
-from pipeline.gcs import IncrementalGCSParquetSink
-from shared import _snapshot_date
-from shared import FUEL_PRICE_COLUMNS
+from aggregator.pipeline.base import TaskConfig
+from aggregator.pipeline.gcs import DataFrameSource
+from aggregator.pipeline.gcs import IncrementalGCSParquetSink
+from aggregator.shared import _snapshot_date
+from aggregator.shared import FUEL_PRICE_COLUMNS
 
 DAILY_INGESTION_STATS_BLOB = "aggregates/daily_ingestion_stats.parquet"
 

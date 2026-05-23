@@ -10,15 +10,15 @@ from typing import List
 
 import duckdb
 import pandas as pd
-from aggregator import _get_bucket
-from aggregator import _latest_raw_file_per_day
-from aggregator import _list_raw_parquet_files
-from aggregator import _upload_parquet_to_gcs
-from pipeline.base import PipelineResult
-from pipeline.runner import TaskRunner
-from reports.brand_comparison import build_task as brand_comparison_task
-from reports.brand_win_rate import build_task as brand_win_rate_task
-from shared import _log_event
+from aggregator.main import _get_bucket
+from aggregator.main import _latest_raw_file_per_day
+from aggregator.main import _list_raw_parquet_files
+from aggregator.main import _upload_parquet_to_gcs
+from aggregator.pipeline.base import PipelineResult
+from aggregator.pipeline.runner import TaskRunner
+from aggregator.reports.brand_comparison import build_task as brand_comparison_task
+from aggregator.reports.brand_win_rate import build_task as brand_win_rate_task
+from aggregator.shared import _log_event
 
 logger = logging.getLogger(__name__)
 

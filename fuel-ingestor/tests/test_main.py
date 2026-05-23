@@ -1,14 +1,14 @@
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from main import main
+from ingestor.main import main
 
 
-@patch("main.logging")
-@patch("main.extract_fuel_prices_raw_data")
-@patch("main.create_spain_fuel_dataframe")
-@patch("main.validate_dataframe")
-@patch("main.write_spain_fuel_prices_data_as_parquet")
+@patch("ingestor.main.logging")
+@patch("ingestor.main.extract_fuel_prices_raw_data")
+@patch("ingestor.main.create_spain_fuel_dataframe")
+@patch("ingestor.main.validate_dataframe")
+@patch("ingestor.main.write_spain_fuel_prices_data_as_parquet")
 def test_main(
     mock_write_spain_fuel_prices_data_as_parquet: Mock,
     mock_validate_dataframe: Mock,

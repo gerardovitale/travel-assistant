@@ -5,8 +5,8 @@ import os
 import time
 from typing import List
 
-from pipeline.base import PipelineResult
-from pipeline.base import TaskConfig
+from aggregator.pipeline.base import PipelineResult
+from aggregator.pipeline.base import TaskConfig
 
 logger = logging.getLogger(__name__)
 

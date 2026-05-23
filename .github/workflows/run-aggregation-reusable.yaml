@@ -40,4 +40,4 @@ jobs:
 
       - name: Run script
         working-directory: ${{ inputs.working_directory }}
-        run: uv run --frozen --no-sync python "${{ inputs.script_path }}"
+        run: PYTHONPATH=app uv run --frozen --no-sync python "${{ inputs.script_path }}"

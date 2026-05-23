@@ -4,16 +4,16 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pandas as pd
-from aggregator import run_aggregation
-from pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
-from pipelines.day_of_week_stats import build_day_of_week_stats_from_province_daily_stats
-from pipelines.day_of_week_stats import compute_day_of_week_stats
-from pipelines.ingestion_stats import compute_daily_ingestion_stats
-from pipelines.ingestion_stats import DAILY_INGESTION_STATS_BLOB
-from pipelines.province_stats import compute_province_daily_stats
-from pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
-from pipelines.zip_code_stats import compute_zip_code_daily_stats
-from pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
+from aggregator.main import run_aggregation
+from aggregator.pipelines.brand_stats import BRAND_DAILY_STATS_BLOB
+from aggregator.pipelines.day_of_week_stats import build_day_of_week_stats_from_province_daily_stats
+from aggregator.pipelines.day_of_week_stats import compute_day_of_week_stats
+from aggregator.pipelines.ingestion_stats import compute_daily_ingestion_stats
+from aggregator.pipelines.ingestion_stats import DAILY_INGESTION_STATS_BLOB
+from aggregator.pipelines.province_stats import compute_province_daily_stats
+from aggregator.pipelines.province_stats import PROVINCE_DAILY_STATS_BLOB
+from aggregator.pipelines.zip_code_stats import compute_zip_code_daily_stats
+from aggregator.pipelines.zip_code_stats import ZIP_CODE_DAILY_STATS_BLOB
 
 
 def _logged_messages(mock_calls):
@@ -320,10 +320,10 @@ class TestBuildDayOfWeekStatsFromProvinceDailyStats(TestCase):
 
 class TestRunAggregation(TestCase):
 
-    @patch("brand_competitiveness.run_brand_analytics")
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.brand_competitiveness.run_brand_analytics")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_creates_new_aggregates(
         self, mock_latest, mock_download, mock_blob_exists, mock_brand_analytics
     ):
@@ -334,7 +334,7 @@ class TestRunAggregation(TestCase):
         mock_brand_analytics.return_value = []
 
         bucket = _StatefulBucketMock()
-        with patch("aggregator.logger") as mock_logger:
+        with patch("aggregator.main.logger") as mock_logger:
             run_aggregation(bucket)
 
         self.assertIn(PROVINCE_DAILY_STATS_BLOB, bucket.uploaded)
@@ -352,23 +352,23 @@ class TestRunAggregation(TestCase):
         self.assertTrue(any("raw_snapshot_loaded" in message for message in info_messages))
         self.assertTrue(any("aggregation_complete" in message for message in info_messages))
 
-    @patch("aggregator._upload_parquet_to_gcs")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._upload_parquet_to_gcs")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_skips_when_no_raw_file(self, mock_latest, mock_download, mock_upload):
         mock_latest.return_value = None
 
         bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
+        with patch("aggregator.main.logger") as mock_logger:
             run_aggregation(bucket)
 
         mock_upload.assert_not_called()
         warning_messages = _logged_messages(mock_logger.warning.call_args_list)
         self.assertTrue(any("aggregation_skipped_no_raw_file" in message for message in warning_messages))
 
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_rebuilds_dow_from_deduplicated_daily_rows(
         self, mock_latest, mock_download, mock_blob_exists
     ):
@@ -403,11 +403,11 @@ class TestRunAggregation(TestCase):
         self.assertAlmostEqual(madrid_sunday["sum_price"], 1.4767, places=6)
         self.assertEqual(madrid_sunday["count_days"], 1)
 
-    @patch("aggregator._upload_parquet_to_gcs")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._list_raw_parquet_files")
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._upload_parquet_to_gcs")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._list_raw_parquet_files")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_bootstraps_missing_aggregates_from_historical_files(
         self,
         mock_latest,
@@ -439,7 +439,7 @@ class TestRunAggregation(TestCase):
         mock_download.side_effect = _bootstrap_download
 
         bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
+        with patch("aggregator.main.logger") as mock_logger:
             run_aggregation(bucket)
 
         mock_latest.assert_not_called()
@@ -468,11 +468,11 @@ class TestRunAggregation(TestCase):
         self.assertTrue(any("historical_aggregate_build_complete" in message for message in info_messages))
         self.assertTrue(any("bootstrap_aggregate_frames_ready" in message for message in info_messages))
 
-    @patch("aggregator._upload_parquet_to_gcs")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._list_raw_parquet_files")
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._upload_parquet_to_gcs")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._list_raw_parquet_files")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_bootstraps_when_any_aggregate_is_missing(
         self,
         mock_latest,
@@ -492,11 +492,11 @@ class TestRunAggregation(TestCase):
         mock_latest.assert_not_called()
         self.assertEqual(mock_upload.call_count, 5)
 
-    @patch("aggregator._upload_parquet_to_gcs")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._list_raw_parquet_files")
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._upload_parquet_to_gcs")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._list_raw_parquet_files")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_backfills_brand_blob_without_rebuilding_other_aggregates(
         self,
         mock_latest,
@@ -510,7 +510,7 @@ class TestRunAggregation(TestCase):
         mock_download.return_value = _make_brand_raw_df()
 
         bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
+        with patch("aggregator.main.logger") as mock_logger:
             run_aggregation(bucket)
 
         mock_latest.assert_not_called()
@@ -527,11 +527,11 @@ class TestRunAggregation(TestCase):
         )
         self.assertTrue(any("brand_backfill_frame_ready" in message for message in info_messages))
 
-    @patch("aggregator._upload_parquet_to_gcs")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._list_raw_parquet_files")
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._upload_parquet_to_gcs")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._list_raw_parquet_files")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_backfills_zip_code_blob_without_rebuilding_other_aggregates(
         self,
         mock_latest,
@@ -545,7 +545,7 @@ class TestRunAggregation(TestCase):
         mock_download.return_value = _make_raw_df()
 
         bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
+        with patch("aggregator.main.logger") as mock_logger:
             run_aggregation(bucket)
 
         mock_latest.assert_not_called()
@@ -562,9 +562,9 @@ class TestRunAggregation(TestCase):
         )
         self.assertTrue(any("zip_code_daily_backfill_frame_ready" in message for message in info_messages))
 
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_prunes_zip_code_stats_older_than_retention(
         self, mock_latest, mock_download, mock_blob_exists
     ):
@@ -597,10 +597,10 @@ class TestRunAggregation(TestCase):
         self.assertIn(pd.Timestamp("2025-04-01").date(), retained_dates)
         self.assertIn(pd.Timestamp("2026-03-31").date(), retained_dates)
 
-    @patch("aggregator._upload_parquet_to_gcs")
-    @patch("aggregator._list_raw_parquet_files")
-    @patch("aggregator._blob_exists")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._upload_parquet_to_gcs")
+    @patch("aggregator.main._list_raw_parquet_files")
+    @patch("aggregator.main._blob_exists")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_skips_bootstrap_when_no_raw_history_exists(
         self,
         mock_latest,
@@ -612,7 +612,7 @@ class TestRunAggregation(TestCase):
         mock_list_raw.return_value = []
 
         bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
+        with patch("aggregator.main.logger") as mock_logger:
             run_aggregation(bucket)
 
         mock_latest.assert_not_called()
@@ -627,15 +627,15 @@ class TestRunAggregation(TestCase):
         )
         self.assertTrue(any("bootstrap_skipped_no_raw_files" in message for message in warning_messages))
 
-    @patch("aggregator._upload_parquet_to_gcs")
-    @patch("aggregator._download_parquet_from_gcs")
-    @patch("aggregator._get_latest_raw_file")
+    @patch("aggregator.main._upload_parquet_to_gcs")
+    @patch("aggregator.main._download_parquet_from_gcs")
+    @patch("aggregator.main._get_latest_raw_file")
     def test_run_aggregation_skips_when_selected_raw_file_disappears(self, mock_latest, mock_download, mock_upload):
         mock_latest.return_value = "spain_fuel_prices_2026-03-22T05:48:06.parquet"
         mock_download.return_value = None
 
         bucket = MagicMock()
-        with patch("aggregator.logger") as mock_logger:
+        with patch("aggregator.main.logger") as mock_logger:
             run_aggregation(bucket)
 
         mock_upload.assert_not_called()

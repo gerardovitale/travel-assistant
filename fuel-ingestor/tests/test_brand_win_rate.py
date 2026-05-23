@@ -4,8 +4,8 @@ from unittest import TestCase
 
 import duckdb
 import pandas as pd
-from reports.brand_win_rate import BRAND_WIN_RATE_COLUMNS
-from reports.brand_win_rate import compute_brand_win_rate
+from aggregator.reports.brand_win_rate import BRAND_WIN_RATE_COLUMNS
+from aggregator.reports.brand_win_rate import compute_brand_win_rate
 
 
 def _make_duckdb_con():

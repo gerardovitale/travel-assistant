@@ -5,13 +5,13 @@ from unittest import TestCase
 from unittest.mock import MagicMock
 
 import pandas as pd
-from pipeline.base import PipelineResult
-from pipeline.base import TaskConfig
-from pipeline.gcs import CallableSink
-from pipeline.gcs import CallableSource
-from pipeline.gcs import IncrementalGCSParquetSink
-from pipeline.runner import TaskRunner
-from pipeline.runner import write_step_summary
+from aggregator.pipeline.base import PipelineResult
+from aggregator.pipeline.base import TaskConfig
+from aggregator.pipeline.gcs import CallableSink
+from aggregator.pipeline.gcs import CallableSource
+from aggregator.pipeline.gcs import IncrementalGCSParquetSink
+from aggregator.pipeline.runner import TaskRunner
+from aggregator.pipeline.runner import write_step_summary
 
 
 def _make_ok_task(name="test_pipeline", rows=5):

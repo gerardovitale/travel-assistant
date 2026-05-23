@@ -10,6 +10,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY ./app/ ./
 ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH=/app
 RUN useradd -r -u 1000 -s /usr/sbin/nologin appuser && chown -R appuser:appuser /app
 USER appuser
-ENTRYPOINT ["python3", "main.py"]
+ENTRYPOINT ["python3", "ingestor/main.py"]

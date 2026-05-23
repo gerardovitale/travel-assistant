@@ -11,7 +11,7 @@ on:
       script_path:
         description: "Python script path relative to the working directory"
         required: true
-        default: app/aggregator.py
+        default: app/aggregator/main.py
         type: string
 
 jobs:

@@ -4,12 +4,12 @@ from typing import Any
 from typing import List
 
 import pandas as pd
-from pipeline.base import TaskConfig
-from pipeline.gcs import DataFrameSource
-from pipeline.gcs import IncrementalGCSParquetSink
-from shared import _rows_with_positive_price
-from shared import _snapshot_date
-from shared import FUEL_PRICE_COLUMNS
+from aggregator.pipeline.base import TaskConfig
+from aggregator.pipeline.gcs import DataFrameSource
+from aggregator.pipeline.gcs import IncrementalGCSParquetSink
+from aggregator.shared import _rows_with_positive_price
+from aggregator.shared import _snapshot_date
+from aggregator.shared import FUEL_PRICE_COLUMNS
 
 ZIP_CODE_DAILY_STATS_BLOB = "aggregates/zip_code_daily_stats.parquet"
 ZIP_CODE_DAILY_STATS_RETENTION_DAYS = 365

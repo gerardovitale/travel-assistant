@@ -1,4 +1,4 @@
-from brand_utils import normalize_brand
+from aggregator.brand_utils import normalize_brand
 
 
 class TestNormalizeBrand:
