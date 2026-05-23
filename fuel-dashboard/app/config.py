@@ -1,5 +1,30 @@
+from typing import Any
+
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings
+from pydantic_settings import EnvSettingsSource
 from pydantic_settings import SettingsConfigDict
+
+# Fields where a plain comma-separated env var is accepted instead of JSON.
+# Add the Python field name here whenever a new list[str] field needs CSV support.
+_CSV_LIST_FIELDS = {"report_brands"}
+
+
+class _CsvListEnvSource(EnvSettingsSource):
+    """Custom env source that accepts CSV strings for designated list[str] fields.
+
+    pydantic-settings normally requires JSON arrays for list fields. This source
+    intercepts CSV values (anything that doesn't look like a JSON array) before the
+    JSON decoder sees them, so DASHBOARD_REPORT_BRANDS=ballenoil,repsol,costco works
+    without wrapping in brackets. JSON format still works too.
+    """
+
+    def prepare_field_value(self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool) -> Any:
+        if field_name in _CSV_LIST_FIELDS and isinstance(value, str):
+            stripped = value.strip()
+            if not stripped.startswith(("[", "{")):
+                return [s.strip() for s in stripped.split(",") if s.strip()]
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
 class Settings(BaseSettings):
@@ -46,10 +71,19 @@ class Settings(BaseSettings):
 
     insights_zones_enabled: bool = False
     insights_historical_enabled: bool = False
+    insights_reportes_enabled: bool = True
+    # Comma-separated list of brands shown in the Reportes tab.
+    # Override with DASHBOARD_REPORT_BRANDS=ballenoil,repsol,costco,cepsa
+    # Set to an empty string ("") to show all brands present in the parquet data.
+    report_brands: list[str] = ["ballenoil", "repsol", "costco"]
 
     public_url: str = ""
     analytics_enabled: bool = False
     analytics_domain: str = ""
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, **kwargs):
+        return (init_settings, _CsvListEnvSource(settings_cls), dotenv_settings) + tuple(kwargs.values())
 
 
 settings = Settings()

@@ -222,14 +222,15 @@ def page_insights(request: Request):
         return templates.TemplateResponse(
             request, "loading.html", _base_context("insights"), status_code=503, headers={"Retry-After": "5"}
         )
-    insights_zones_enabled, insights_historical_enabled = (
+    insights_zones_enabled, insights_historical_enabled, insights_reportes_enabled = (
         ui_test_insights_flags()
         if settings.ui_test_mode
-        else (settings.insights_zones_enabled, settings.insights_historical_enabled)
+        else (settings.insights_zones_enabled, settings.insights_historical_enabled, settings.insights_reportes_enabled)
     )
     ctx = _base_context("insights")
     ctx["insights_zones_enabled"] = insights_zones_enabled
     ctx["insights_historical_enabled"] = insights_historical_enabled
+    ctx["insights_reportes_enabled"] = insights_reportes_enabled
     return templates.TemplateResponse(request, "insights.html", ctx)
 
 

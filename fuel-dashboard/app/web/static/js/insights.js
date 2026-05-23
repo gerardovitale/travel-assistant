@@ -533,7 +533,7 @@ async function loadQuality() {
 
 // ------------------------------- TABS ----------------------------------------
 
-const loaders = { trends: null, zones: null, historical: null, quality: null };
+const loaders = { trends: null, zones: null, historical: null, reportes: null, quality: null };
 const loaded = new Set();
 
 function switchTab(name) {
@@ -598,9 +598,78 @@ async function initHistorical() {
 }
 async function initQuality() { loadQuality(); }
 
+async function loadWinRate() {
+  const el = document.getElementById("reportes-win-rate-chart");
+  if (!el) return;
+  const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
+  const direction = document.getElementById("reportes-direction-select").value;
+  el.innerHTML = emptyMsg("Cargando…");
+  try {
+    const url = `/reportes/win-rate?fuel_type=${encodeURIComponent(fuelType)}&direction=${encodeURIComponent(direction)}`;
+    const rows = await api(url);
+    horizontalBar(el, rows, { labelKey: "brand", valueKey: "win_rate_pct", color: "#0453cd" });
+  } catch (err) { el.innerHTML = emptyMsg(err.message); }
+}
+
+async function loadPriceComparison() {
+  const deltaEl = document.getElementById("reportes-price-delta-chart");
+  const daysEl = document.getElementById("reportes-days-below-chart");
+  if (!deltaEl || !daysEl) return;
+  const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
+  deltaEl.innerHTML = emptyMsg("Cargando…");
+  daysEl.innerHTML = emptyMsg("Cargando…");
+  try {
+    const rows = await api(`/reportes/price-comparison?fuel_type=${encodeURIComponent(fuelType)}`);
+    horizontalBar(deltaEl, rows, {
+      labelKey: "brand", valueKey: "price_delta_pct",
+      colorFn: (r) => r.price_delta_pct >= 0 ? "#a33d3d" : "#1b5e20",
+    });
+    const byDays = rows.slice().sort((a, b) => b.days_below_market_pct - a.days_below_market_pct);
+    horizontalBar(daysEl, byDays, { labelKey: "brand", valueKey: "days_below_market_pct", color: "#0453cd" });
+  } catch (err) { deltaEl.innerHTML = emptyMsg(err.message); daysEl.innerHTML = emptyMsg(err.message); }
+}
+
+async function loadCoverage() {
+  const el = document.getElementById("reportes-coverage-table");
+  if (!el) return;
+  const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
+  el.innerHTML = emptyMsg("Cargando…");
+  try {
+    const rows = await api(`/reportes/coverage?fuel_type=${encodeURIComponent(fuelType)}`);
+    if (!rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
+    el.innerHTML = `<table class="min-w-full text-sm">
+      <thead><tr class="text-left text-xs font-label font-bold text-on-surface-variant uppercase tracking-wide">
+        <th class="pb-2 pr-6 whitespace-nowrap">Marca</th>
+        <th class="pb-2 pr-6 text-right whitespace-nowrap">C.P.</th>
+        <th class="pb-2 pr-6 text-right whitespace-nowrap">Municipios</th>
+        <th class="pb-2 pr-6 text-right whitespace-nowrap">Localidades</th>
+        <th class="pb-2 text-right whitespace-nowrap">Observaciones</th>
+      </tr></thead>
+      <tbody class="divide-y divide-outline-variant/30">${rows.map((r) => `
+        <tr>
+          <td class="py-2 pr-6 font-medium capitalize whitespace-nowrap">${escapeHtml(r.brand)}</td>
+          <td class="py-2 pr-6 text-right whitespace-nowrap">${r.zip_codes.toLocaleString("es-ES")}</td>
+          <td class="py-2 pr-6 text-right whitespace-nowrap">${r.municipalities.toLocaleString("es-ES")}</td>
+          <td class="py-2 pr-6 text-right whitespace-nowrap">${r.localities.toLocaleString("es-ES")}</td>
+          <td class="py-2 text-right whitespace-nowrap text-on-surface-variant">${r.total_observations.toLocaleString("es-ES")}</td>
+        </tr>`).join("")}
+      </tbody></table>`;
+  } catch (err) { el.innerHTML = emptyMsg(err.message); }
+}
+
+async function initReportes() {
+  const reload = () => { loadWinRate(); loadPriceComparison(); loadCoverage(); };
+  document.querySelector('#reportes-filter select[name="fuel_type"]').addEventListener("change", reload);
+  document.getElementById("reportes-direction-select").addEventListener("change", loadWinRate);
+  loadWinRate();
+  loadPriceComparison();
+  loadCoverage();
+}
+
 loaders.trends = initTrends;
 loaders.zones = initZones;
 loaders.historical = initHistorical;
+loaders.reportes = initReportes;
 loaders.quality = initQuality;
 
 document.addEventListener("DOMContentLoaded", () => {

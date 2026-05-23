@@ -51,3 +51,25 @@ def test_ui_test_support_special_fixture_states():
         assert ui_test.is_data_ready() is False
     finally:
         ui_test.pop_fixture_set(token)
+
+
+def test_insights_flags_returns_three_booleans():
+    token = ui_test.push_fixture_set("happy_path")
+    try:
+        result = ui_test.insights_flags()
+        assert len(result) == 3
+        zones, historical, reportes = result
+        assert isinstance(zones, bool)
+        assert isinstance(historical, bool)
+        assert isinstance(reportes, bool)
+    finally:
+        ui_test.pop_fixture_set(token)
+
+
+def test_insights_flags_enables_reportes_for_insights_all_fixture():
+    token = ui_test.push_fixture_set("insights_all")
+    try:
+        _, _, reportes = ui_test.insights_flags()
+        assert reportes is True
+    finally:
+        ui_test.pop_fixture_set(token)

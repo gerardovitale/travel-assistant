@@ -645,6 +645,107 @@ def get_brand_price_trend(fuel_type: FuelType, days_back: int, brands: list) -> 
     return query_brand_price_trend(agg_df, fuel_type.value, days_back, brands)
 
 
+def get_brand_win_rate_report(fuel_type: str, direction: str) -> Optional[list[dict]]:
+    from config import settings
+    from data.gcs_client import download_aggregate
+
+    df = download_aggregate("reports/brand_win_rate.parquet")
+    if df is None:
+        return None
+    fuel_type_key = fuel_type.replace(
+        "_price", ""
+    )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
+    df = df[(df["fuel_type"] == fuel_type_key) & (df["direction"] == direction)]
+    if settings.report_brands:
+        df = df[df["brand"].isin(settings.report_brands)]
+    df = df.copy()
+    if df.empty:
+        return []
+    grouped = (
+        df.groupby("brand")
+        .apply(
+            lambda g: pd.Series(
+                {
+                    "win_rate_pct": (g["win_rate_pct"] * g["appearances"]).sum() / g["appearances"].sum(),
+                    "appearances": g["appearances"].sum(),
+                }
+            ),
+            include_groups=False,
+        )
+        .reset_index()
+    )
+    grouped["win_rate_pct"] = grouped["win_rate_pct"].round(2)
+    grouped["appearances"] = grouped["appearances"].astype(int)
+    return grouped.sort_values("win_rate_pct", ascending=False).to_dict(orient="records")
+
+
+def get_brand_price_comparison_report(fuel_type: str) -> Optional[list[dict]]:
+    from config import settings
+    from data.gcs_client import download_aggregate
+
+    df = download_aggregate("reports/brand_price_comparison.parquet")
+    if df is None:
+        return None
+    fuel_type_key = fuel_type.replace(
+        "_price", ""
+    )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
+    df = df[df["fuel_type"] == fuel_type_key]
+    if settings.report_brands:
+        df = df[df["brand"].isin(settings.report_brands)]
+    df = df.copy()
+    if df.empty:
+        return []
+    grouped = (
+        df.groupby("brand")
+        .apply(
+            lambda g: pd.Series(
+                {
+                    "price_delta_pct": (g["price_delta_pct"] * g["appearances"]).sum() / g["appearances"].sum(),
+                    "days_below_market_pct": (g["days_below_market_pct"] * g["appearances"]).sum()
+                    / g["appearances"].sum(),
+                    "appearances": g["appearances"].sum(),
+                }
+            ),
+            include_groups=False,
+        )
+        .reset_index()
+    )
+    grouped["price_delta_pct"] = grouped["price_delta_pct"].round(2)
+    grouped["days_below_market_pct"] = grouped["days_below_market_pct"].round(2)
+    grouped["appearances"] = grouped["appearances"].astype(int)
+    return grouped.sort_values("price_delta_pct").to_dict(orient="records")
+
+
+def get_brand_coverage_report(fuel_type: str) -> Optional[list[dict]]:
+    from config import settings
+    from data.gcs_client import download_aggregate
+
+    df = download_aggregate("reports/brand_price_comparison.parquet")
+    if df is None:
+        return None
+    fuel_type_key = fuel_type.replace(
+        "_price", ""
+    )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
+    df = df[df["fuel_type"] == fuel_type_key]
+    if settings.report_brands:
+        df = df[df["brand"].isin(settings.report_brands)]
+    df = df.copy()
+    if df.empty:
+        return []
+    result = []
+    for brand, g in df.groupby("brand"):
+        result.append(
+            {
+                "brand": brand,
+                "zip_codes": int(g[g["geo_level"] == "zip_code"]["geo_value"].nunique()),
+                "localities": int(g[g["geo_level"] == "locality"]["geo_value"].nunique()),
+                "municipalities": int(g[g["geo_level"] == "municipality"]["geo_value"].nunique()),
+                "total_observations": int(g["appearances"].sum()),
+            }
+        )
+    return sorted(result, key=lambda x: x["zip_codes"], reverse=True)
+
+
 def get_zone_volatility_ranking(fuel_type: FuelType, days_back: int, mainland_only: bool = True) -> pd.DataFrame:
     agg_df = download_aggregate("zip_code_daily_stats.parquet")
     if agg_df is None:

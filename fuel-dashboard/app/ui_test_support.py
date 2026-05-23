@@ -67,7 +67,7 @@ def is_data_ready() -> bool:
     return current_fixture_set() != "loading"
 
 
-def insights_flags() -> tuple[bool, bool]:
+def insights_flags() -> tuple[bool, bool, bool]:
     fixture = current_fixture_set()
     zones = settings.insights_zones_enabled or fixture in {"zones_enabled", "insights_all"}
     historical = settings.insights_historical_enabled or fixture in {
@@ -75,7 +75,8 @@ def insights_flags() -> tuple[bool, bool]:
         "historical_sparse",
         "insights_all",
     }
-    return zones, historical
+    reportes = settings.insights_reportes_enabled or fixture in {"insights_all"}
+    return zones, historical, reportes
 
 
 def health_data_response() -> tuple[int, dict[str, Any]]:

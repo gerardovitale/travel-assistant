@@ -3,7 +3,7 @@ import os
 from google.cloud import storage
 
 BUCKET_NAME = "travel-assistant-spain-fuel-prices"
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "daily")
 BLOB_PREFIX = "spain_fuel_prices_"
 
 

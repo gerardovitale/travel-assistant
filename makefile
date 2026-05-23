@@ -29,6 +29,12 @@ data.download-aggregates:
 		"gs://travel-assistant-spain-fuel-prices/aggregates/**/*.parquet" \
 		./data/aggregates
 
+data.download-reports:
+	mkdir -p ./data/reports
+	gsutil -m -o "GSUtil:parallel_process_count=1" cp \
+		"gs://travel-assistant-spain-fuel-prices/aggregates/reports/**/*.parquet" \
+		./data/reports
+
 notebook:
 	docker run -it --rm -p 8888:8888 \
 		-v "${PWD}":/home/jovyan/work \

@@ -334,3 +334,73 @@ def test_address_suggestions_graceful_empty(mock_service):
     response = client.get("/api/v1/address-suggestions?q=xyz")
     assert response.status_code == 200
     assert response.json()["suggestions"] == []
+
+
+# ---- /reportes endpoints ----------------------------------------------------
+
+
+@patch("api.router.get_brand_win_rate_report")
+def test_reportes_win_rate_returns_200_with_data(mock_service):
+    mock_service.return_value = [{"brand": "ballenoil", "win_rate_pct": 64.04, "appearances": 559359}]
+    client = _get_client()
+    response = client.get("/api/v1/reportes/win-rate?fuel_type=gasoline_95_e5_price&direction=cheapest")
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["brand"] == "ballenoil"
+    assert data[0]["win_rate_pct"] == 64.04
+
+
+@patch("api.router.get_brand_win_rate_report")
+def test_reportes_win_rate_returns_404_when_aggregate_missing(mock_service):
+    mock_service.return_value = None
+    client = _get_client()
+    response = client.get("/api/v1/reportes/win-rate?fuel_type=gasoline_95_e5_price&direction=cheapest")
+    assert response.status_code == 404
+
+
+def test_reportes_win_rate_rejects_invalid_direction():
+    response = _get_client().get("/api/v1/reportes/win-rate?fuel_type=gasoline_95_e5_price&direction=sideways")
+    assert response.status_code == 422
+
+
+def test_reportes_win_rate_rejects_invalid_fuel_type():
+    response = _get_client().get("/api/v1/reportes/win-rate?fuel_type=jet_fuel&direction=cheapest")
+    assert response.status_code == 422
+
+
+@patch("api.router.get_brand_price_comparison_report")
+def test_reportes_price_comparison_returns_200_with_data(mock_service):
+    mock_service.return_value = [
+        {"brand": "ballenoil", "price_delta_pct": -5.71, "days_below_market_pct": 92.96, "appearances": 559359}
+    ]
+    client = _get_client()
+    response = client.get("/api/v1/reportes/price-comparison?fuel_type=gasoline_95_e5_price")
+    assert response.status_code == 200
+    assert response.json()[0]["price_delta_pct"] == -5.71
+
+
+@patch("api.router.get_brand_price_comparison_report")
+def test_reportes_price_comparison_returns_404_when_aggregate_missing(mock_service):
+    mock_service.return_value = None
+    response = _get_client().get("/api/v1/reportes/price-comparison?fuel_type=gasoline_95_e5_price")
+    assert response.status_code == 404
+
+
+@patch("api.router.get_brand_coverage_report")
+def test_reportes_coverage_returns_200_with_data(mock_service):
+    mock_service.return_value = [
+        {"brand": "ballenoil", "zip_codes": 250, "localities": 180, "municipalities": 120, "total_observations": 559359}
+    ]
+    client = _get_client()
+    response = client.get("/api/v1/reportes/coverage?fuel_type=gasoline_95_e5_price")
+    assert response.status_code == 200
+    data = response.json()
+    assert data[0]["brand"] == "ballenoil"
+    assert data[0]["zip_codes"] == 250
+
+
+@patch("api.router.get_brand_coverage_report")
+def test_reportes_coverage_returns_404_when_aggregate_missing(mock_service):
+    mock_service.return_value = None
+    response = _get_client().get("/api/v1/reportes/coverage?fuel_type=gasoline_95_e5_price")
+    assert response.status_code == 404

@@ -355,5 +355,36 @@ class QualityResponse(BaseModel):
     realtime: RealtimeStatus
 
 
+class BrandReportFuelType(str, Enum):
+    gasoline_95_e5_price = "gasoline_95_e5_price"
+    diesel_a_price = "diesel_a_price"
+
+
+class Direction(str, Enum):
+    cheapest = "cheapest"
+    priciest = "priciest"
+
+
+class BrandWinRateRow(BaseModel):
+    brand: str
+    win_rate_pct: float
+    appearances: int
+
+
+class BrandPriceComparisonRow(BaseModel):
+    brand: str
+    price_delta_pct: float
+    days_below_market_pct: float
+    appearances: int
+
+
+class BrandCoverageRow(BaseModel):
+    brand: str
+    zip_codes: int
+    localities: int
+    municipalities: int
+    total_observations: int
+
+
 class RouteResponse(BaseModel):
     coordinates: List[List[float]]

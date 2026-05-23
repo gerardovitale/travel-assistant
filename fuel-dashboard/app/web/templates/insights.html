@@ -12,7 +12,7 @@
   <div class="relative z-10 max-w-6xl mx-auto">
     <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Dashboard de análisis</p>
     <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight">Insights y tendencias</h1>
-    {% set visible_tabs = 2 + (1 if insights_zones_enabled else 0) + (1 if insights_historical_enabled else 0) %}
+    {% set visible_tabs = 2 + (1 if insights_zones_enabled else 0) + (1 if insights_historical_enabled else 0) + (1 if insights_reportes_enabled else 0) %}
     <nav class="mt-8 grid grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" data-testid="insight-tabs" aria-label="Secciones">
       <button type="button" data-tab="trends" data-testid="insight-tab-trends" class="bg-white text-primary-container rounded-xl shadow-lg px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined filled-icon">trending_up</span>
@@ -28,6 +28,12 @@
       <button type="button" data-tab="historical" data-testid="insight-tab-historical" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined">analytics</span>
         <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Histórico</span>
+      </button>
+      {% endif %}
+      {% if insights_reportes_enabled %}
+      <button type="button" data-tab="reportes" data-testid="insight-tab-reportes" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
+        <span class="material-symbols-outlined">bar_chart_4_bars</span>
+        <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Reportes</span>
       </button>
       {% endif %}
       <button type="button" data-tab="quality" data-testid="insight-tab-quality" class="bg-white/10 text-white rounded-xl px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
@@ -184,6 +190,65 @@
         <div id="hist-volatility" class="h-96"></div>
       </div>
     </div>
+  </section>
+  {% endif %}
+
+  <!-- REPORTES -->
+  {% if insights_reportes_enabled %}
+  <section data-panel="reportes" class="hidden space-y-6">
+
+    <!-- Shared filter: fuel type (affects all charts below) -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <form id="reportes-filter" data-testid="reportes-filter">
+        <label class="block max-w-xs">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
+          <select name="fuel_type" data-testid="reportes-fuel-select" class="w-full rounded-lg border-outline-variant">
+            <option value="gasoline_95_e5_price">Gasolina 95 E5</option>
+            <option value="diesel_a_price">Diésel A</option>
+          </select>
+        </label>
+      </form>
+    </div>
+
+    <!-- Coverage (top — context for all charts below) -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-lg mb-1">Cobertura geográfica</h2>
+      <p class="text-sm text-on-surface-variant mb-4">Número de zonas distintas donde cada marca tiene presencia. Las marcas con menor cobertura tienen métricas más concentradas geográficamente.</p>
+      <div class="overflow-x-auto">
+        <div id="reportes-coverage-table" data-testid="reportes-coverage-table"></div>
+      </div>
+    </div>
+
+    <!-- Win Rate (direction filter only affects this chart) -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">Tasa de éxito por marca</h2>
+        <label class="flex items-center gap-2 flex-shrink-0">
+          <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Dirección</span>
+          <select id="reportes-direction-select" data-testid="reportes-direction-select" class="rounded-lg border-outline-variant text-sm">
+            <option value="cheapest">Más barata</option>
+            <option value="priciest">Más cara</option>
+          </select>
+        </label>
+      </div>
+      <p class="text-sm text-on-surface-variant mb-4">Probabilidad de que la marca sea la más barata o más cara cuando hay al menos una estación en la zona.</p>
+      <div id="reportes-win-rate-chart" data-testid="reportes-win-rate-chart" class="h-48"></div>
+    </div>
+
+    <!-- Price Delta -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-lg mb-1">Diferencial de precio vs. mercado</h2>
+      <p class="text-sm text-on-surface-variant mb-4">Cuánto más cara o barata es cada marca respecto al precio medio del mercado (% sobre el precio medio). Valores negativos = más barata que el mercado.</p>
+      <div id="reportes-price-delta-chart" data-testid="reportes-price-delta-chart" class="h-48"></div>
+    </div>
+
+    <!-- Days Below Market -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-lg mb-1">Días por debajo del precio de mercado</h2>
+      <p class="text-sm text-on-surface-variant mb-4">Porcentaje de días en que la marca mantuvo un precio inferior al promedio del mercado.</p>
+      <div id="reportes-days-below-chart" data-testid="reportes-days-below-chart" class="h-48"></div>
+    </div>
+
   </section>
   {% endif %}
 

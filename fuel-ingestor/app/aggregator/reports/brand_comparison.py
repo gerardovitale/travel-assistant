@@ -11,6 +11,7 @@ from aggregator.pipeline.gcs import GCSParquetSink
 from aggregator.reports.config import REPORT_BRANDS
 from aggregator.reports.config import REPORT_FUEL_COLS
 from aggregator.reports.config import REPORT_GEO_COLS
+from aggregator.reports.config import REPORT_MIN_APPEARANCES_COMPARISON
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,8 @@ BRAND_COMPARISON_BLOB = "aggregates/reports/brand_price_comparison.parquet"
 BRANDS = REPORT_BRANDS
 FUEL_COLS = REPORT_FUEL_COLS
 GEO_COLS = REPORT_GEO_COLS
-# Lower than brand_win_rate (30) — Costco operates only a handful of stations in Spain
-MIN_APPEARANCES = 10
+# Lower than REPORT_MIN_APPEARANCES_WIN_RATE — Costco operates only a handful of stations in Spain
+MIN_APPEARANCES = REPORT_MIN_APPEARANCES_COMPARISON
 
 BRAND_COMPARISON_COLUMNS = [
     "brand",

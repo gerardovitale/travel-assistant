@@ -8,9 +8,14 @@ from typing import Optional
 import ui_test_support as ui_test
 from api.schemas import AddressSuggestion
 from api.schemas import AddressSuggestionsResponse
+from api.schemas import BrandCoverageRow
 from api.schemas import BrandHistoricalResponse
+from api.schemas import BrandPriceComparisonRow
+from api.schemas import BrandReportFuelType
+from api.schemas import BrandWinRateRow
 from api.schemas import DataFrameResponse
 from api.schemas import DataInventory
+from api.schemas import Direction
 from api.schemas import DistrictMapResponse
 from api.schemas import FUEL_GROUP_MEMBERS
 from api.schemas import FUEL_GROUP_PRIMARY
@@ -55,8 +60,11 @@ from services.geocoding import geocode_address
 from services.geocoding import get_address_suggestions
 from services.routing import get_full_route
 from services.station_service import get_best_by_address
+from services.station_service import get_brand_coverage_report
+from services.station_service import get_brand_price_comparison_report
 from services.station_service import get_brand_price_trend
 from services.station_service import get_brand_ranking
+from services.station_service import get_brand_win_rate_report
 from services.station_service import get_cheapest_by_address
 from services.station_service import get_cheapest_by_zip
 from services.station_service import get_cheapest_zones
@@ -573,3 +581,40 @@ def quality_inventory(request: Request):
         missing_days=missing,
         realtime=RealtimeStatus(**get_realtime_status()),
     )
+
+
+@router.get("/reportes/win-rate", response_model=List[BrandWinRateRow])
+@limiter.limit(settings.rate_limit)
+def reportes_win_rate(
+    request: Request,
+    fuel_type: BrandReportFuelType = Query(...),
+    direction: Direction = Query(...),
+):
+    rows = get_brand_win_rate_report(fuel_type.value, direction.value)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return rows
+
+
+@router.get("/reportes/price-comparison", response_model=List[BrandPriceComparisonRow])
+@limiter.limit(settings.rate_limit)
+def reportes_price_comparison(
+    request: Request,
+    fuel_type: BrandReportFuelType = Query(...),
+):
+    rows = get_brand_price_comparison_report(fuel_type.value)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return rows
+
+
+@router.get("/reportes/coverage", response_model=List[BrandCoverageRow])
+@limiter.limit(settings.rate_limit)
+def reportes_coverage(
+    request: Request,
+    fuel_type: BrandReportFuelType = Query(...),
+):
+    rows = get_brand_coverage_report(fuel_type.value)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return rows

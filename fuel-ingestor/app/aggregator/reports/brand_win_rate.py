@@ -12,6 +12,7 @@ from aggregator.reports.config import REPORT_BRANDS
 from aggregator.reports.config import REPORT_DIRECTIONS
 from aggregator.reports.config import REPORT_FUEL_COLS
 from aggregator.reports.config import REPORT_GEO_COLS
+from aggregator.reports.config import REPORT_MIN_APPEARANCES_WIN_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ BRANDS = REPORT_BRANDS
 FUEL_COLS = REPORT_FUEL_COLS
 GEO_COLS = REPORT_GEO_COLS
 DIRECTIONS = REPORT_DIRECTIONS
-MIN_APPEARANCES = 30
+MIN_APPEARANCES = REPORT_MIN_APPEARANCES_WIN_RATE
 
 BRAND_WIN_RATE_COLUMNS = [
     "brand",

@@ -45,16 +45,22 @@ export function multiLine(el, seriesMap, { labels = {} } = {}) {
   Plotly.newPlot(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
 }
 
-export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15 } = {}) {
+export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15, colorFn = null } = {}) {
   if (!rows || !rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";
   const slice = rows.slice(0, maxRows);
   const y = slice.map((r) => r[labelKey]);
   const x = slice.map((r) => r[valueKey]);
+  const markerColor = colorFn ? slice.map(colorFn) : color;
   Plotly.newPlot(
     el,
-    [{ x, y, type: "bar", orientation: "h", marker: { color } }],
-    { ...COMMON_LAYOUT, margin: { l: 140, r: 16, t: 16, b: 32 }, yaxis: { ...COMMON_LAYOUT.yaxis, autorange: "reversed" } },
+    [{ x, y, type: "bar", orientation: "h", marker: { color: markerColor } }],
+    {
+      ...COMMON_LAYOUT,
+      margin: { l: 5, r: 16, t: 16, b: 32 },
+      xaxis: { ...COMMON_LAYOUT.xaxis, type: "linear" },
+      yaxis: { ...COMMON_LAYOUT.yaxis, type: "category", autorange: "reversed", automargin: true },
+    },
     CONFIG,
   );
 }

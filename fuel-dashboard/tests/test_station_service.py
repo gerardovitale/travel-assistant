@@ -6,6 +6,7 @@ import pytest
 from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import TrendPeriod
+from config import settings
 from tests.fixture import make_group_stations_df
 from tests.fixture import make_stations_df
 from tests.fixture import SAMPLE_FUEL_TYPE
@@ -673,3 +674,172 @@ def test_get_cheapest_by_address_passes_labels(mock_query, mock_road):
     results = get_cheapest_by_address(40.4168, -3.7038, FuelType.diesel_a_price, 5.0, 3, labels=["bp"])
     assert len(results) == 3
     mock_query.assert_called_once_with(40.4168, -3.7038, SAMPLE_FUEL_TYPE, 6.5, labels=["bp"])
+
+
+# ---- helpers -----------------------------------------------------------------
+
+
+def _make_win_rate_df():
+    """Two brands across two geo levels, fuel_type stored without _price suffix."""
+    return pd.DataFrame(
+        {
+            "brand": ["ballenoil", "repsol", "ballenoil", "repsol"],
+            "direction": ["cheapest", "cheapest", "cheapest", "cheapest"],
+            "geo_level": ["zip_code", "zip_code", "locality", "locality"],
+            "geo_value": ["28001", "28001", "Centro", "Centro"],
+            "fuel_type": ["gasoline_95_e5", "gasoline_95_e5", "gasoline_95_e5", "gasoline_95_e5"],
+            "appearances": [100, 200, 50, 100],
+            "win_rate_pct": [70.0, 20.0, 75.0, 18.0],
+            "last_updated": ["2026-05-23"] * 4,
+        }
+    )
+
+
+def _make_comparison_df():
+    """Two brands across three geo levels."""
+    rows = []
+    for brand, delta, days_below in [("ballenoil", -5.0, 90.0), ("repsol", 3.0, 10.0)]:
+        for geo_level, geo_values in [
+            ("zip_code", ["28001", "28002"]),
+            ("locality", ["Centro"]),
+            ("municipality", ["Madrid"]),
+        ]:
+            for geo_value in geo_values:
+                rows.append(
+                    {
+                        "brand": brand,
+                        "geo_level": geo_level,
+                        "geo_value": geo_value,
+                        "fuel_type": "gasoline_95_e5",
+                        "brand_avg_price": 1.50 + delta / 100,
+                        "market_avg_price": 1.50,
+                        "price_delta_pct": delta,
+                        "days_below_market_pct": days_below,
+                        "appearances": 50,
+                        "last_updated": "2026-05-23",
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+# ---- get_brand_win_rate_report -----------------------------------------------
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_returns_none_when_aggregate_missing(mock_agg):
+    from services.station_service import get_brand_win_rate_report
+
+    mock_agg.return_value = None
+    assert get_brand_win_rate_report("gasoline_95_e5_price", "cheapest") is None
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_returns_empty_when_no_rows_match(mock_agg):
+    from services.station_service import get_brand_win_rate_report
+
+    mock_agg.return_value = _make_win_rate_df()
+    assert get_brand_win_rate_report("diesel_a_price", "priciest") == []
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_computes_weighted_average(mock_agg):
+    from services.station_service import get_brand_win_rate_report
+
+    mock_agg.return_value = _make_win_rate_df()
+    rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
+
+    assert len(rows) == 2
+    ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
+    # weighted: (70.0*100 + 75.0*50) / 150 = 71.67
+    assert ballenoil["win_rate_pct"] == pytest.approx(71.67, abs=0.01)
+    assert ballenoil["appearances"] == 150
+    # sorted descending by win_rate_pct
+    assert rows[0]["win_rate_pct"] >= rows[-1]["win_rate_pct"]
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_respects_config_brands(mock_agg, monkeypatch):
+    from services.station_service import get_brand_win_rate_report
+
+    mock_agg.return_value = _make_win_rate_df()
+    monkeypatch.setattr(settings, "report_brands", ["ballenoil"])
+    rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
+
+    assert len(rows) == 1
+    assert rows[0]["brand"] == "ballenoil"
+
+
+# ---- get_brand_price_comparison_report --------------------------------------
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_returns_none_when_aggregate_missing(mock_agg):
+    from services.station_service import get_brand_price_comparison_report
+
+    mock_agg.return_value = None
+    assert get_brand_price_comparison_report("gasoline_95_e5_price") is None
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_computes_weighted_average(mock_agg):
+    from services.station_service import get_brand_price_comparison_report
+
+    mock_agg.return_value = _make_comparison_df()
+    rows = get_brand_price_comparison_report("gasoline_95_e5_price")
+
+    assert len(rows) == 2
+    ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
+    assert ballenoil["price_delta_pct"] == pytest.approx(-5.0, abs=0.01)
+    assert ballenoil["days_below_market_pct"] == pytest.approx(90.0, abs=0.01)
+    # sorted ascending by price_delta_pct (cheapest first)
+    assert rows[0]["price_delta_pct"] <= rows[-1]["price_delta_pct"]
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_respects_config_brands(mock_agg, monkeypatch):
+    from services.station_service import get_brand_price_comparison_report
+
+    mock_agg.return_value = _make_comparison_df()
+    monkeypatch.setattr(settings, "report_brands", ["repsol"])
+    rows = get_brand_price_comparison_report("gasoline_95_e5_price")
+
+    assert len(rows) == 1
+    assert rows[0]["brand"] == "repsol"
+
+
+# ---- get_brand_coverage_report ----------------------------------------------
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_coverage_report_returns_none_when_aggregate_missing(mock_agg):
+    from services.station_service import get_brand_coverage_report
+
+    mock_agg.return_value = None
+    assert get_brand_coverage_report("gasoline_95_e5_price") is None
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_coverage_report_counts_geo_values_per_level(mock_agg):
+    from services.station_service import get_brand_coverage_report
+
+    mock_agg.return_value = _make_comparison_df()
+    rows = get_brand_coverage_report("gasoline_95_e5_price")
+
+    assert len(rows) == 2
+    ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
+    assert ballenoil["zip_codes"] == 2  # 28001 + 28002
+    assert ballenoil["localities"] == 1  # Centro
+    assert ballenoil["municipalities"] == 1  # Madrid
+    assert ballenoil["total_observations"] == 50 * 4  # 4 rows × 50 appearances
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_coverage_report_respects_config_brands(mock_agg, monkeypatch):
+    from services.station_service import get_brand_coverage_report
+
+    mock_agg.return_value = _make_comparison_df()
+    monkeypatch.setattr(settings, "report_brands", ["ballenoil"])
+    rows = get_brand_coverage_report("gasoline_95_e5_price")
+
+    assert len(rows) == 1
+    assert rows[0]["brand"] == "ballenoil"
