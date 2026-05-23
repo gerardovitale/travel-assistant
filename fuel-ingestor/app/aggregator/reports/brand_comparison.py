@@ -1,6 +1,4 @@
 import logging
-from datetime import datetime
-from datetime import timezone
 from typing import Any
 from typing import List
 
@@ -33,24 +31,21 @@ BRAND_COMPARISON_COLUMNS = [
     "price_delta_pct",
     "days_below_market_pct",
     "appearances",
+    "confidence_level",
     "last_updated",
 ]
 
 
-def _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appearances, today):
+def _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appearances):
     fuel_type = fuel_col.replace("_price", "")
     brand_list = ", ".join(f"'{b}'" for b in brands)
 
     return con.execute(
         f"""
         with base as (
-            select
-                cast(timestamp as date) as dt,
-                {geo_col},
-                lower(cast(label as varchar)) as label,
-                {fuel_col}
-            from fuel_prices
-            where {fuel_col} is not null
+            select dt, {geo_col}, label, {fuel_col}
+            from _brand_comparison_work
+            where {fuel_col} is not null and {fuel_col} > 0
         ),
         brand_daily as (
             select dt, {geo_col}, label as brand, avg({fuel_col}) as brand_avg_price
@@ -79,15 +74,24 @@ def _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appe
             '{fuel_type}' as fuel_type,
             round(avg(brand_avg_price), 4) as brand_avg_price,
             round(avg(market_avg_price), 4) as market_avg_price,
+            -- avg of daily deltas: weights each day equally regardless of station count;
+            -- mathematically distinct from (avg_brand - avg_market) / avg_market (ratio of means)
             round(
-                (avg(brand_avg_price) - avg(market_avg_price)) / avg(market_avg_price) * 100,
+                avg((brand_avg_price - market_avg_price) / nullif(market_avg_price, 0) * 100),
                 2
             ) as price_delta_pct,
             round(avg(is_below_market) * 100.0, 2) as days_below_market_pct,
             count(*) as appearances,
-            '{today}' as last_updated
+            -- high >= 384 (+-5% margin at 95% CI); medium >= 100 (rough estimate); low otherwise
+            case
+                when count(*) >= 384 then 'high'
+                when count(*) >= 100 then 'medium'
+                else 'low'
+            end as confidence_level,
+            cast(max(dt) as varchar) as last_updated
         from joint
-        group by brand, geo_level, geo_value, fuel_type, last_updated
+        group by brand, geo_level, geo_value, fuel_type
+        -- Sparse brand-geo pairs suppressed below min_appearances; absent from output without a flag
         having count(*) >= {min_appearances}
         """
     ).df()
@@ -99,7 +103,6 @@ def compute_brand_price_comparison(
     fuel_cols: List[str] = None,
     geo_cols: List[str] = None,
     min_appearances: int = MIN_APPEARANCES,
-    today: str = None,
 ) -> pd.DataFrame:
     if brands is None:
         brands = BRANDS
@@ -107,18 +110,36 @@ def compute_brand_price_comparison(
         fuel_cols = FUEL_COLS
     if geo_cols is None:
         geo_cols = GEO_COLS
-    if today is None:
-        today = datetime.now(timezone.utc).date().isoformat()
 
-    all_frames = []
-    for geo_col in geo_cols:
-        for fuel_col in fuel_cols:
-            df = _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appearances, today)
-            if not df.empty:
-                all_frames.append(df)
-            logger.info(
-                f"brand_comparison_combination_computed geo_col={geo_col!r} fuel_col={fuel_col!r} rows={len(df)}"
-            )
+    price_cols_sql = ", ".join(fuel_cols)
+    geo_cols_sql = ", ".join(geo_cols)
+
+    # Materialize once to avoid one full fuel_prices scan per (geo_col x fuel_col) combination.
+    con.execute("DROP TABLE IF EXISTS _brand_comparison_work")
+    con.execute(
+        f"""
+        CREATE TEMP TABLE _brand_comparison_work AS
+        SELECT
+            cast(timestamp as date) as dt,
+            {geo_cols_sql},
+            lower(cast(label as varchar)) as label,
+            {price_cols_sql}
+        FROM fuel_prices
+        """
+    )
+
+    try:
+        all_frames = []
+        for geo_col in geo_cols:
+            for fuel_col in fuel_cols:
+                df = _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appearances)
+                if not df.empty:
+                    all_frames.append(df)
+                logger.info(
+                    f"brand_comparison_combination_computed geo_col={geo_col!r} fuel_col={fuel_col!r} rows={len(df)}"
+                )
+    finally:
+        con.execute("DROP TABLE IF EXISTS _brand_comparison_work")
 
     if not all_frames:
         return pd.DataFrame(columns=BRAND_COMPARISON_COLUMNS)
@@ -133,6 +154,6 @@ def build_task(bucket: Any, con: Any, today: str) -> TaskConfig:
         name="brand_price_comparison",
         description="Brand average price vs market average by geo area",
         output_blob=BRAND_COMPARISON_BLOB,
-        source=CallableSource(lambda: compute_brand_price_comparison(con, today=today)),
+        source=CallableSource(lambda: compute_brand_price_comparison(con)),
         sink=GCSParquetSink(bucket, BRAND_COMPARISON_BLOB),
     )
