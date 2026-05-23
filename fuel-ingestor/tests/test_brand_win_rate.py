@@ -85,7 +85,6 @@ class TestComputeBrandWinRate(TestCase):
 
     def setUp(self):
         self.con = _make_duckdb_con()
-        self.today = "2026-01-03"
 
     def tearDown(self):
         self.con.close()
@@ -98,7 +97,6 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest"],
             min_appearances=1,
-            today=self.today,
         )
         self.assertIsInstance(result, pd.DataFrame)
 
@@ -110,7 +108,6 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest"],
             min_appearances=1,
-            today=self.today,
         )
         for col in BRAND_WIN_RATE_COLUMNS:
             self.assertIn(col, result.columns)
@@ -124,7 +121,6 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest"],
             min_appearances=1,
-            today=self.today,
         )
         row = result[(result["brand"] == "ballenoil") & (result["direction"] == "cheapest")]
         self.assertEqual(len(row), 1)
@@ -139,7 +135,6 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["priciest"],
             min_appearances=1,
-            today=self.today,
         )
         row = result[(result["brand"] == "repsol") & (result["direction"] == "priciest")]
         self.assertEqual(len(row), 1)
@@ -153,7 +148,6 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest", "priciest"],
             min_appearances=1,
-            today=self.today,
         )
         self.assertIn("cheapest", result["direction"].values)
         self.assertIn("priciest", result["direction"].values)
@@ -167,7 +161,6 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest"],
             min_appearances=3,
-            today=self.today,
         )
         self.assertEqual(len(result), 0)
 
@@ -179,12 +172,12 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest"],
             min_appearances=1,
-            today=self.today,
         )
         self.assertIn("gasoline_95_e5", result["fuel_type"].values)
         self.assertIn("diesel_a", result["fuel_type"].values)
 
-    def test_last_updated_is_set(self):
+    def test_last_updated_equals_max_data_date(self):
+        # last_updated must reflect the latest date in the data (2026-01-02), not the run date
         result = compute_brand_win_rate(
             self.con,
             brands=["ballenoil"],
@@ -192,9 +185,8 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest"],
             min_appearances=1,
-            today=self.today,
         )
-        self.assertTrue((result["last_updated"] == self.today).all())
+        self.assertTrue((result["last_updated"] == "2026-01-02").all())
 
     def test_returns_empty_dataframe_when_no_brands_match(self):
         result = compute_brand_win_rate(
@@ -204,7 +196,6 @@ class TestComputeBrandWinRate(TestCase):
             geo_cols=["zip_code"],
             directions=["cheapest"],
             min_appearances=1,
-            today=self.today,
         )
         self.assertEqual(len(result), 0)
         for col in BRAND_WIN_RATE_COLUMNS:
@@ -245,10 +236,141 @@ class TestComputeBrandWinRate(TestCase):
                 geo_cols=["zip_code"],
                 directions=["priciest"],
                 min_appearances=30,
-                today=self.today,
             )
             row = result[(result["brand"] == "ballenoil") & (result["direction"] == "priciest")]
             self.assertEqual(len(row), 1)
             self.assertAlmostEqual(row["win_rate_pct"].iloc[0], 100.0)
         finally:
             con.close()
+
+    def test_tie_win_credit_split_equally(self):
+        # Both ballenoil and repsol have the same price every day → they always tie.
+        # Each brand should receive 50% win credit per day, not 100%.
+        # Sum of win_rate_pct across both brands must equal 100, not 200.
+        rows = [
+            {
+                "timestamp": f"2026-01-0{d}T05:00:00",
+                "zip_code": "11001",
+                "locality": "Tie",
+                "municipality": "Tie",
+                "label": brand,
+                "gasoline_95_e5_price": 1.40,
+            }
+            for d in range(1, 6)
+            for brand in ["ballenoil", "repsol"]
+        ]
+        con = duckdb.connect()
+        con.register("fuel_prices", pd.DataFrame(rows))
+        con.execute("create table fuel_prices as select * from fuel_prices")
+        try:
+            result = compute_brand_win_rate(
+                con,
+                brands=["ballenoil", "repsol"],
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                directions=["cheapest"],
+                min_appearances=1,
+            )
+            subset = result[result["direction"] == "cheapest"]
+            total_win_rate = subset["win_rate_pct"].sum()
+            # Each brand gets 50%; sum must be 100, not 200
+            self.assertAlmostEqual(total_win_rate, 100.0, places=1)
+            for _, row in subset.iterrows():
+                self.assertAlmostEqual(row["win_rate_pct"], 50.0, places=1)
+        finally:
+            con.close()
+
+    def test_zero_price_records_excluded_from_boundary(self):
+        # A station with price=0.0 must NOT drive boundary_price to 0 for cheapest direction.
+        # ballenoil at 1.40 should still win cheapest (boundary = 1.40 after filtering zeros).
+        rows = [
+            {
+                "timestamp": "2026-01-01T05:00:00",
+                "zip_code": "22001",
+                "locality": "ZeroTest",
+                "municipality": "ZeroTest",
+                "label": "ballenoil",
+                "gasoline_95_e5_price": 1.40,
+            },
+            {
+                "timestamp": "2026-01-01T05:00:00",
+                "zip_code": "22001",
+                "locality": "ZeroTest",
+                "municipality": "ZeroTest",
+                "label": "other",
+                "gasoline_95_e5_price": 1.60,
+            },
+            # zero-price record — should be excluded before boundary is computed
+            {
+                "timestamp": "2026-01-01T05:00:00",
+                "zip_code": "22001",
+                "locality": "ZeroTest",
+                "municipality": "ZeroTest",
+                "label": "ghost",
+                "gasoline_95_e5_price": 0.0,
+            },
+        ]
+        con = duckdb.connect()
+        con.register("fuel_prices", pd.DataFrame(rows))
+        con.execute("create table fuel_prices as select * from fuel_prices")
+        try:
+            result = compute_brand_win_rate(
+                con,
+                brands=["ballenoil"],
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                directions=["cheapest"],
+                min_appearances=1,
+            )
+            row = result[result["brand"] == "ballenoil"]
+            self.assertEqual(len(row), 1)
+            self.assertAlmostEqual(row["win_rate_pct"].iloc[0], 100.0)
+        finally:
+            con.close()
+
+    def test_multi_station_brand_appearances_counts_days_not_stations(self):
+        # ballenoil has 3 stations in the same zip on each of 5 days.
+        # appearances must be 5 (days), not 15 (station-days).
+        rows = [
+            {
+                "timestamp": f"2026-01-0{d}T05:00:00",
+                "zip_code": "33001",
+                "locality": "Multi",
+                "municipality": "Multi",
+                "label": "ballenoil",
+                "gasoline_95_e5_price": 1.40 + i * 0.01,  # slightly different prices per station
+            }
+            for d in range(1, 6)
+            for i in range(3)  # 3 stations
+        ]
+        con = duckdb.connect()
+        con.register("fuel_prices", pd.DataFrame(rows))
+        con.execute("create table fuel_prices as select * from fuel_prices")
+        try:
+            result = compute_brand_win_rate(
+                con,
+                brands=["ballenoil"],
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                directions=["cheapest"],
+                min_appearances=1,
+            )
+            row = result[result["brand"] == "ballenoil"]
+            self.assertEqual(len(row), 1)
+            self.assertEqual(row["appearances"].iloc[0], 5)
+        finally:
+            con.close()
+
+    def test_confidence_level_column_present_and_low_for_small_sample(self):
+        # With only 2 appearances, confidence_level must be 'low'
+        result = compute_brand_win_rate(
+            self.con,
+            brands=["ballenoil"],
+            fuel_cols=["gasoline_95_e5_price"],
+            geo_cols=["zip_code"],
+            directions=["cheapest"],
+            min_appearances=1,
+        )
+        self.assertIn("confidence_level", result.columns)
+        row = result[result["brand"] == "ballenoil"]
+        self.assertEqual(row["confidence_level"].iloc[0], "low")
