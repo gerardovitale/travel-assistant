@@ -45,7 +45,7 @@ export function multiLine(el, seriesMap, { labels = {} } = {}) {
   Plotly.newPlot(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
 }
 
-export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15, colorFn = null } = {}) {
+export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15, colorFn = null, tickSuffix = "" } = {}) {
   if (!rows || !rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";
   const slice = rows.slice(0, maxRows);
@@ -58,7 +58,7 @@ export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642",
     {
       ...COMMON_LAYOUT,
       margin: { l: 5, r: 16, t: 16, b: 32 },
-      xaxis: { ...COMMON_LAYOUT.xaxis, type: "linear" },
+      xaxis: { ...COMMON_LAYOUT.xaxis, type: "linear", ticksuffix: tickSuffix },
       yaxis: { ...COMMON_LAYOUT.yaxis, type: "category", autorange: "reversed", automargin: true },
     },
     CONFIG,

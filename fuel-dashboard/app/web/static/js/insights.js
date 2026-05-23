@@ -607,7 +607,7 @@ async function loadWinRate() {
   try {
     const url = `/reportes/win-rate?fuel_type=${encodeURIComponent(fuelType)}&direction=${encodeURIComponent(direction)}`;
     const rows = await api(url);
-    horizontalBar(el, rows, { labelKey: "brand", valueKey: "win_rate_pct", color: "#0453cd" });
+    horizontalBar(el, rows, { labelKey: "brand", valueKey: "win_rate_pct", color: "#0453cd", tickSuffix: " %" });
   } catch (err) { el.innerHTML = emptyMsg(err.message); }
 }
 
@@ -623,9 +623,10 @@ async function loadPriceComparison() {
     horizontalBar(deltaEl, rows, {
       labelKey: "brand", valueKey: "price_delta_pct",
       colorFn: (r) => r.price_delta_pct >= 0 ? "#a33d3d" : "#1b5e20",
+      tickSuffix: " %",
     });
     const byDays = rows.slice().sort((a, b) => b.days_below_market_pct - a.days_below_market_pct);
-    horizontalBar(daysEl, byDays, { labelKey: "brand", valueKey: "days_below_market_pct", color: "#0453cd" });
+    horizontalBar(daysEl, byDays, { labelKey: "brand", valueKey: "days_below_market_pct", color: "#0453cd", tickSuffix: " %" });
   } catch (err) { deltaEl.innerHTML = emptyMsg(err.message); daysEl.innerHTML = emptyMsg(err.message); }
 }
 
