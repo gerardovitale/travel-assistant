@@ -3,9 +3,9 @@
 ## CONTEXT
 
 - Stack: Python 3.13, FastAPI + Jinja2 (dashboard), pandas + DuckDB, GCP (Cloud Run + GCS), Terraform
-- Purpose: fetch Spain fuel station prices from government API, store as Parquet in GCS, serve via FastAPI dashboard
-- Key constraints: Docker tests are CI source of truth; pre-commit enforces black (120) + flake8 (120) + import order
-- `fuel-ingestor/` is active; `ingest-fuel-prices/` is legacy — don't extend it
+- Purpose: fetch Spain fuel station prices from gov API, store Parquet in GCS, serve via FastAPI dashboard
+- Key constraints: Docker tests CI source of truth; pre-commit enforces black (120) + flake8 (120) + import order
+- `fuel-ingestor/` active; `ingest-fuel-prices/` legacy — don't extend
 - GCP project: `travel-assistant-417315`, region: `europe-southwest1`, resource prefix: `travass`
 
 ## Architecture
@@ -44,17 +44,17 @@ cd <service> && uv add <pkg>    # add dependency
 - Data: `app/data/` — `duckdb_engine.py` (in-memory DuckDB queries), `gcs_client.py` (Parquet cache),
   `geojson_loader.py`, `cache.py` (background refresh threads), `realtime_client.py`
 - Config: `app/config.py` (pydantic-settings, env prefix `DASHBOARD_*`)
-- UI test mode: `app/ui_test_support.py` — fixture responses served when `DASHBOARD_UI_TEST_MODE=true`
+- UI test mode: `app/ui_test_support.py` — fixture responses when `DASHBOARD_UI_TEST_MODE=true`
 - Playwright E2E tests: `tests/ui/` — run via `make fuel-dashboard.ui-test`
 
 ### fuel-ingestor
 
-- Ingestor pipeline: `app/ingestor/spain_fuel_price.py` (fetch API) → `app/ingestor/entity.py` (transform/map columns) →
-  GCS upload
+- Pipeline: `app/ingestor/spain_fuel_price.py` (fetch API) → `app/ingestor/entity.py` (transform/map columns) → GCS
+  upload
 - Aggregation: `app/aggregator/` — pipelines in `pipelines/` (`zip_code_stats.py`, `province_stats.py`,
   `brand_stats.py`, `day_of_week_stats.py`, `ingestion_stats.py`), reports in `reports/` (`brand_win_rate.py`,
   `brand_comparison.py`)
-- Aggregation triggered separately via `run-aggregation.yaml` GitHub Actions workflow
+- Aggregation triggered via `run-aggregation.yaml` GitHub Actions workflow
 - Backfill: `app/aggregator/backfill.py`
 
 ## Adding Features
@@ -62,9 +62,9 @@ cd <service> && uv add <pkg>    # add dependency
 1. Add tests in `tests/` — use `tests/fixture.py` for shared unit test data
 2. Dashboard endpoints: route in `app/api/router.py`, logic in `app/services/`, test in `tests/`
 3. Dashboard UI: Jinja2 templates in `app/web/templates/`, static in `app/web/static/`
-4. Ingestor pipeline changes: extend at right stage (`ingestor/` for fetch/transform, `aggregator/pipelines/` for stats)
+4. Ingestor changes: extend at right stage (`ingestor/` for fetch/transform, `aggregator/pipelines/` for stats)
 5. Run `pre-commit run --all-files` before committing
-6. Docker-based tests (`make <service>.test`) are the CI source of truth
+6. Docker-based tests (`make <service>.test`) CI source of truth
 
 ## Troubleshooting
 
