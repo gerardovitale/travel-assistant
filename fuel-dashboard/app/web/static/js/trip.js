@@ -95,7 +95,7 @@ function hideAssumptions() {
   document.getElementById("trip-assumptions").classList.add("hidden");
 }
 
-function renderKpis(plan) {
+function renderKpis(plan, body) {
   const fuelPct = plan.fuel_at_destination_pct;
   const fuelClass = fuelPct == null ? "text-on-surface"
     : fuelPct < 15             ? "text-error"
@@ -110,6 +110,20 @@ function renderKpis(plan) {
     kpi("Combustible al llegar", `${fuelPct?.toFixed(0) ?? "—"}%`, "local_gas_station", 240, fuelClass),
   ].join("");
   el.classList.remove("hidden");
+  renderFloorWarning(plan, body);
+}
+
+function renderFloorWarning(plan, body) {
+  const warnEl = document.getElementById("trip-floor-warning");
+  if (plan.floor_unmet) {
+    const minPct = body?.min_fuel_at_destination_pct;
+    document.getElementById("trip-floor-warning-text").textContent =
+      `No se garantiza ${Number.isFinite(minPct) ? minPct.toFixed(0) : "el"}% al llegar; ` +
+      `estimado ${plan.fuel_at_destination_pct?.toFixed(0) ?? "—"}%.`;
+    warnEl.classList.remove("hidden");
+  } else {
+    warnEl.classList.add("hidden");
+  }
 }
 
 // Build the "Cómo llegar" anchor markup, or an empty string if coords are
@@ -264,6 +278,7 @@ function closeDialog(id) {
 function resetPlanView(message = "Introduce origen y destino para planificar.") {
   hideAssumptions();
   document.getElementById("trip-kpis").classList.add("hidden");
+  document.getElementById("trip-floor-warning").classList.add("hidden");
   document.getElementById("trip-stops").innerHTML = `
     <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">${escapeHtml(message)}</div>`;
   document.getElementById("alt-plans-wrap").classList.add("hidden");
@@ -410,7 +425,7 @@ async function runPlan(form) {
     hideBanner();
     const plan = resp.plan;
     renderAssumptions(body);
-    renderKpis(plan);
+    renderKpis(plan, body);
     renderStops(plan);
     renderAlternatives(plan);
     renderMap(plan);

@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 from services.trip_planner import _build_trip_stop
 from services.trip_planner import _find_stops_with_strategy
+from services.trip_planner import _floor_unmet
 from services.trip_planner import _fuel_at_destination_pct
 from services.trip_planner import find_min_detour
 from services.trip_planner import find_min_stops
@@ -298,6 +299,86 @@ def test_plan_trip_without_labels_defaults_to_none(mock_geocode, mock_route, moc
     assert kwargs.get("labels") is None
 
 
+# --- floor_unmet flag ---
+
+
+def test_floor_unmet_helper_boundaries():
+    # Tolerance absorbs 1-decimal rounding: 49.96 counts as meeting a 50% floor.
+    assert _floor_unmet(49.96, 50.0) is False
+    assert _floor_unmet(49.9, 50.0) is True
+    # Floor of 0 is never unmet (baseline parity).
+    assert _floor_unmet(0.0, 0.0) is False
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_empty_corridor_sets_floor_unmet(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
+    mock_route.return_value = {
+        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+        "distance_km": 650,
+        "duration_minutes": 360,
+    }
+    mock_corridor.return_value = pd.DataFrame()
+
+    # 650 km on 40 L tank at 7 L/100km from 50% fuel arrives empty -> floor of 50% cannot be met.
+    result = plan_trip("Madrid", "Cadiz", "diesel_a_price", 7.0, 40, 50, 5.0, 50)
+    assert result.stops == []
+    assert result.floor_unmet is True
+    assert result.fuel_at_destination_pct < 50
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_floor_met_sets_flag_false(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.4, -3.7), (40.5, -3.6)]
+    mock_route.return_value = {
+        "coordinates": [[-3.7, 40.4], [-3.6, 40.5]],
+        "distance_km": 50,
+        "duration_minutes": 40,
+    }
+    corridor_df = pd.DataFrame(
+        {
+            "label": ["S1"],
+            "address": ["addr1"],
+            "municipality": ["m1"],
+            "province": ["p1"],
+            "zip_code": ["28001"],
+            "latitude": [40.45],
+            "longitude": [-3.65],
+            "diesel_a_price": [1.45],
+            "min_distance_km": [2.0],
+            "closest_waypoint_idx": [0],
+        }
+    )
+    mock_corridor.return_value = corridor_df
+
+    # 50 km on a full 40 L tank arrives well above the 50% floor; no stop needed.
+    result = plan_trip("Madrid", "Pinto", "diesel_a_price", 7.0, 40, 100, 5.0, 50)
+    assert result.stops == []
+    assert result.floor_unmet is False
+    assert result.fuel_at_destination_pct >= 50
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_floor_zero_never_unmet(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
+    mock_route.return_value = {
+        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+        "distance_km": 650,
+        "duration_minutes": 360,
+    }
+    mock_corridor.return_value = pd.DataFrame()
+
+    # Same arrives-empty trip, but a 0% floor can never be unmet.
+    result = plan_trip("Madrid", "Cadiz", "diesel_a_price", 7.0, 40, 50, 5.0, 0)
+    assert result.floor_unmet is False
+
+
 @patch("services.trip_planner.get_full_route")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_no_route(mock_geocode, mock_route):
@@ -497,6 +578,9 @@ def test_plan_trip_generates_alternative_plans(mock_geocode, mock_route, mock_co
         assert isinstance(alt.stops, list)
         assert alt.total_fuel_cost >= 0
         assert alt.num_stops >= 0
+        # Each alternative carries its own floor flag derived from its own arrival fuel
+        # against the requested floor (default 50%).
+        assert alt.floor_unmet == _floor_unmet(alt.fuel_at_destination_pct, 50.0)
 
 
 # --- stop-pruning and soft-check behaviour ---

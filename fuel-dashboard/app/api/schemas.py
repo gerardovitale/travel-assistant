@@ -164,6 +164,7 @@ class AlternativePlan(BaseModel):
     total_fuel_liters: float
     total_detour_minutes: float
     fuel_at_destination_pct: float = 0.0
+    floor_unmet: bool = False
 
     @property
     def num_stops(self) -> int:
@@ -182,6 +183,7 @@ class TripPlan(BaseModel):
     origin_coords: list[float]
     destination_coords: list[float]
     fuel_at_destination_pct: float = 0.0
+    floor_unmet: bool = False
     alternative_plans: list[AlternativePlan] = []
 
 

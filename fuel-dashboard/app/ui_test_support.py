@@ -150,7 +150,11 @@ def trip_plan_response(body: TripPlanRequest) -> TripPlanResponse:
     if fixture == "trip_error":
         raise ValueError("Route unavailable for selected itinerary")
 
-    plan = _trip_plan(with_stops=fixture != "trip_no_stops", brand_filter=body.labels or [])
+    plan = _trip_plan(
+        with_stops=fixture != "trip_no_stops",
+        brand_filter=body.labels or [],
+        floor_unmet=fixture == "trip_floor_unmet",
+    )
     return TripPlanResponse(plan=plan)
 
 
@@ -465,7 +469,7 @@ def _search_stations(mode: str, labels: Optional[list[str]]) -> list[StationResu
     return [_station(row) for row in rows[:5]]
 
 
-def _trip_plan(*, with_stops: bool, brand_filter: list[str]) -> TripPlan:
+def _trip_plan(*, with_stops: bool, brand_filter: list[str], floor_unmet: bool = False) -> TripPlan:
     candidate_rows = [
         {
             "brand_slug": "plenoil",
@@ -542,6 +546,7 @@ def _trip_plan(*, with_stops: bool, brand_filter: list[str]) -> TripPlan:
                 total_fuel_liters=42.0,
                 total_detour_minutes=7.0,
                 fuel_at_destination_pct=16.0,
+                floor_unmet=floor_unmet,
             ),
             AlternativePlan(
                 strategy_name="Precio minimo",
@@ -551,6 +556,7 @@ def _trip_plan(*, with_stops: bool, brand_filter: list[str]) -> TripPlan:
                 total_fuel_liters=41.5,
                 total_detour_minutes=12.0,
                 fuel_at_destination_pct=18.0,
+                floor_unmet=floor_unmet,
             ),
         ]
         if stops
@@ -574,7 +580,8 @@ def _trip_plan(*, with_stops: bool, brand_filter: list[str]) -> TripPlan:
         candidate_stations=candidate_stations,
         origin_coords=[40.4168, -3.7038],
         destination_coords=[37.3891, -5.9845],
-        fuel_at_destination_pct=18.0 if stops else 34.0,
+        fuel_at_destination_pct=8.0 if floor_unmet else (18.0 if stops else 34.0),
+        floor_unmet=floor_unmet,
         alternative_plans=alternatives,
     )
 

@@ -438,6 +438,11 @@ def _fuel_at_destination_pct(
     return _predict_arrival_fuel_pct(stop_dicts, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
 
 
+def _floor_unmet(dest_fuel_pct: float, min_fuel_at_destination_pct: float) -> bool:
+    """True when arrival fuel falls below the requested floor (0.05 tolerance for rounding)."""
+    return dest_fuel_pct + 0.05 < min_fuel_at_destination_pct
+
+
 def _build_trip_stop(stop_dict: dict) -> TripStop:
     """Build a TripStop from a stop dict returned by the strategy functions."""
     return TripStop(
@@ -513,6 +518,7 @@ def plan_trip(
             origin_coords=list(origin_coords),
             destination_coords=list(dest_coords),
             fuel_at_destination_pct=dest_fuel,
+            floor_unmet=_floor_unmet(dest_fuel, min_fuel_at_destination_pct),
         )
 
     project_stations_onto_route(stations_df, waypoints)
@@ -610,6 +616,7 @@ def plan_trip(
                 total_fuel_liters=round(alt_liters, 1),
                 total_detour_minutes=round(alt_detour, 1),
                 fuel_at_destination_pct=alt_dest_fuel,
+                floor_unmet=_floor_unmet(alt_dest_fuel, min_fuel_at_destination_pct),
             )
         )
 
@@ -627,5 +634,6 @@ def plan_trip(
         origin_coords=list(origin_coords),
         destination_coords=list(dest_coords),
         fuel_at_destination_pct=dest_fuel,
+        floor_unmet=_floor_unmet(dest_fuel, min_fuel_at_destination_pct),
         alternative_plans=alternative_plans,
     )

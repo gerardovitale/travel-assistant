@@ -27,6 +27,7 @@ test("trip planner renders KPIs, stops, and alternatives from the happy path fix
   await expect(page.getByTestId("trip-stops").getByTestId("trip-stop-card")).toHaveCount(2);
   await expect(page.getByTestId("trip-alt-plans").getByTestId("trip-alt-plan-card")).toHaveCount(2);
   await expect(page.getByTestId("trip-map")).toBeVisible();
+  await expect(page.getByTestId("trip-floor-warning")).toBeHidden();
 
   const stopCard = page.getByTestId("trip-stop-card").first();
   const mapsLink = stopCard.locator('a[title="Cómo llegar"]');
@@ -98,6 +99,18 @@ test("no-stop journeys keep the success state but collapse alternatives", async 
 
   await expect(page.getByTestId("trip-stops")).toContainText("No hacen falta paradas");
   await expect(page.getByTestId("trip-alt-plans-wrap")).toBeHidden();
+});
+
+test("arrival-fuel floor that cannot be met surfaces a visible warning", async ({ page }) => {
+  await setFixture(page, "trip_floor_unmet");
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+
+  await tripPage.plan("Madrid", "Sevilla");
+
+  await expect(page.getByTestId("trip-kpis")).toBeVisible();
+  await expect(page.getByTestId("trip-floor-warning")).toBeVisible();
+  await expect(page.getByTestId("trip-floor-warning")).toContainText("No se garantiza");
 });
 
 test("trip planner errors reset the previous plan", async ({ page }) => {
