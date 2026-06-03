@@ -1,7 +1,8 @@
 .vscode
-.agents/
 .claude/
 .codex/
+.agents/
+skills-lock.json
 
 infass-compute-sa-cred-key.json
 cicd-service-account-cred-key.json
