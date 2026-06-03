@@ -30,9 +30,11 @@ test("trip planner renders KPIs, stops, and alternatives from the happy path fix
 
   const stopCard = page.getByTestId("trip-stop-card").first();
   const mapsLink = stopCard.locator('a[title="Cómo llegar"]');
+  // Href stays Google Maps (desktop / right-click affordance); the click is
+  // intercepted at runtime and routed through the platform-aware opener.
   await expect(mapsLink).toHaveAttribute("href", /google\.com\/maps.*destination=/);
-  await expect(mapsLink).toHaveAttribute("target", "_blank");
-  await expect(mapsLink).toHaveAttribute("rel", "noopener");
+  await expect(mapsLink).toHaveAttribute("data-nav-smart", "");
+  await expect(mapsLink).not.toHaveAttribute("target", /.+/);
 });
 
 test("swap button and fuel-level slider update the form state", async ({ page }) => {
@@ -108,7 +110,7 @@ test("share dialog exposes copy, WhatsApp, and Telegram tiles after a successful
   await expect(page.getByTestId("trip-actions")).toBeHidden();
 });
 
-test("nav dialog exposes Google Maps, Waze, and Apple Maps tiles after a successful plan", async ({ page }) => {
+test("Navegar opens picker with Google Maps, Waze, and Apple Maps tiles after a successful plan", async ({ page }) => {
   const tripPage = new TripPage(page);
   await tripPage.goto();
 
@@ -118,9 +120,57 @@ test("nav dialog exposes Google Maps, Waze, and Apple Maps tiles after a success
   await page.getByTestId("trip-nav-button").click();
   const navDialog = page.getByTestId("trip-nav-dialog");
   await expect(navDialog).toBeVisible();
-  await expect(navDialog.getByTestId("trip-nav-google")).toHaveAttribute("href", /google\.com\/maps/);
-  await expect(navDialog.getByTestId("trip-nav-waze")).toBeVisible();
-  await expect(navDialog.getByTestId("trip-nav-apple")).toContainText("solo ruta directa");
+  // Modern api=1 Google Maps URL (Universal-Link friendly, multi-waypoint).
+  await expect(navDialog.getByTestId("trip-nav-google")).toHaveAttribute("href", /google\.com\/maps\/dir\/\?api=1/);
+  await expect(navDialog.getByTestId("trip-nav-waze")).toHaveAttribute("href", /^https:\/\/waze\.com\/ul\?/);
+  await expect(navDialog.getByTestId("trip-nav-apple")).toHaveAttribute("href", /maps\.apple\.com.*daddr=/);
+  await expect(navDialog.getByTestId("trip-nav-apple")).toContainText("ruta completa");
+});
+
+test.describe("iOS emulation", () => {
+  test.use({
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+  });
+
+  test("picker reorders Apple Maps to the first tile and keeps all three visible", async ({ page }) => {
+    const tripPage = new TripPage(page);
+    await tripPage.goto();
+    await tripPage.plan("Madrid", "Sevilla");
+
+    await page.getByTestId("trip-nav-button").click();
+    // All three tiles visible on iOS, Apple-first order.
+    await expect(page.getByTestId("trip-nav-apple")).toBeVisible();
+    await expect(page.getByTestId("trip-nav-google")).toBeVisible();
+    await expect(page.getByTestId("trip-nav-waze")).toBeVisible();
+    const visibleTiles = page.locator("#trip-nav-dialog .trip-action-sheet__grid > a:not(.hidden)");
+    await expect(visibleTiles.nth(0)).toHaveAttribute("data-testid", "trip-nav-apple");
+    await expect(visibleTiles.nth(1)).toHaveAttribute("data-testid", "trip-nav-google");
+    await expect(visibleTiles.nth(2)).toHaveAttribute("data-testid", "trip-nav-waze");
+  });
+});
+
+test.describe("Android emulation", () => {
+  test.use({
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  });
+
+  test("picker hides Apple Maps on Android and surfaces Google + Waze only", async ({ page }) => {
+    const tripPage = new TripPage(page);
+    await tripPage.goto();
+    await tripPage.plan("Madrid", "Sevilla");
+
+    await page.getByTestId("trip-nav-button").click();
+    await expect(page.getByTestId("trip-nav-google")).toBeVisible();
+    await expect(page.getByTestId("trip-nav-waze")).toBeVisible();
+    // Apple Maps tile is hidden — the app isn't available on Android.
+    await expect(page.getByTestId("trip-nav-apple")).toBeHidden();
+    const visibleTiles = page.locator("#trip-nav-dialog .trip-action-sheet__grid > a:not(.hidden)");
+    await expect(visibleTiles).toHaveCount(2);
+    await expect(visibleTiles.nth(0)).toHaveAttribute("data-testid", "trip-nav-google");
+    await expect(visibleTiles.nth(1)).toHaveAttribute("data-testid", "trip-nav-waze");
+  });
 });
 
 test("action row hides after a plan error", async ({ page }) => {

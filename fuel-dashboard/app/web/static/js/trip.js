@@ -4,10 +4,17 @@ import { createMap, drawStations, drawRoute, clearLayer } from "./maps.js";
 import { formatPrice, formatKm, formatEur, formatMin, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels, updateBrandsLabel } from "./brands.js";
 import { attachAutocomplete } from "./addressAutocomplete.js";
+import {
+  buildNavUrls,
+  getProviderOrder,
+  openInMaps,
+  openSmartNav,
+} from "./openInMaps.js";
 
 let map, stationsLayer, routeLayer, markersLayer;
 let stopMarkerRefs = [];
 let activeStopIdx = -1;
+let currentNavUrls = null;  // Latest buildNavUrls() result; read by nav click handlers.
 const selectedLabels = new Set();
 const APP_CONFIG = window.__APP_CONFIG__ || {};
 
@@ -79,9 +86,21 @@ function renderKpis(plan) {
   el.classList.remove("hidden");
 }
 
+// Build the "Cómo llegar" anchor markup, or an empty string if coords are
+// non-finite. Renders inline inside the stop/station card templates and is
+// resilient to a bad row — one invalid station won't abort the whole list.
+function directionsAnchorHtml(lat, lon) {
+  try {
+    const { google } = buildNavUrls({ destination: [lat, lon] });
+    return `<a href="${google}" data-nav-smart data-lat="${lat}" data-lon="${lon}" rel="noopener noreferrer" class="p-2 rounded-lg hover:bg-surface-container-high text-primary-container" title="Cómo llegar"><span class="material-symbols-outlined">directions</span></a>`;
+  } catch (err) {
+    console.warn("trip stop: skipping directions link for invalid coords", { lat, lon, err: err.message });
+    return "";
+  }
+}
+
 function stopCard(s, i) {
   const st = s.station;
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${st.latitude},${st.longitude}`;
   return `
     <article data-testid="trip-stop-card" data-index="${i}" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 60, 360)}ms">
       <div class="h-10 w-10 rounded-full bg-primary-container text-white flex items-center justify-center font-headline font-bold">${i + 1}</div>
@@ -98,9 +117,7 @@ function stopCard(s, i) {
           <span class="font-semibold text-on-surface">${formatEur(s.cost_eur)}</span>
         </div>
       </div>
-      <a href="${mapsUrl}" target="_blank" rel="noopener" class="p-2 rounded-lg hover:bg-surface-container-high text-primary-container" title="Cómo llegar">
-        <span class="material-symbols-outlined">directions</span>
-      </a>
+      ${directionsAnchorHtml(st.latitude, st.longitude)}
     </article>`;
 }
 
@@ -138,47 +155,6 @@ function renderAlternatives(plan) {
   wrap.classList.remove("hidden");
 }
 
-function tryOpenNativeApp(appUrl, webFallbackUrl) {
-  let fallbackTimer;
-  const onVisibility = () => {
-    if (document.hidden) clearTimeout(fallbackTimer);
-    document.removeEventListener("visibilitychange", onVisibility);
-  };
-  document.addEventListener("visibilitychange", onVisibility);
-  fallbackTimer = setTimeout(() => {
-    document.removeEventListener("visibilitychange", onVisibility);
-    window.open(webFallbackUrl, "_blank");
-  }, 1500);
-  window.location.href = appUrl;
-}
-
-function buildNavUrls(plan) {
-  const [oLat, oLon] = plan.origin_coords;
-  const [dLat, dLon] = plan.destination_coords;
-
-  // Google Maps web URL works via Universal Links on iOS and Android's intent system.
-  const segments = [
-    `${oLat},${oLon}`,
-    ...plan.stops.map((s) => `${s.station.latitude},${s.station.longitude}`),
-    `${dLat},${dLon}`,
-  ];
-  const googleUrl = `https://www.google.com/maps/dir/${segments.join("/")}`;
-
-  // Waze URL scheme has no multi-waypoint support — navigate to first stop if available.
-  // waze:// custom scheme opens the native app; web URL is the fallback if not installed.
-  const wazeTarget = plan.stops.length
-    ? [plan.stops[0].station.latitude, plan.stops[0].station.longitude]
-    : [dLat, dLon];
-  const wazeAppUrl = `waze://ul?ll=${wazeTarget[0]},${wazeTarget[1]}&navigate=yes`;
-  const wazeWebUrl = `https://waze.com/ul?ll=${wazeTarget[0]},${wazeTarget[1]}&navigate=yes`;
-  const wazeLabel = plan.stops.length ? "solo 1.ª parada" : "destino";
-
-  // Apple Maps: https URL opens the native Maps app on iOS/macOS automatically.
-  const appleUrl = `https://maps.apple.com/?saddr=${oLat},${oLon}&daddr=${dLat},${dLon}`;
-
-  return { googleUrl, wazeAppUrl, wazeWebUrl, wazeLabel, appleUrl };
-}
-
 function showShare(formData, plan) {
   const publicUrl = window.__APP_CONFIG__?.public_url || "";
   const shareUrl = buildShareUrl(formData, publicUrl);
@@ -197,13 +173,16 @@ function showShare(formData, plan) {
   nativeBtn.dataset.url = shareUrl;
   nativeBtn.dataset.text = text;
 
-  const { googleUrl, wazeAppUrl, wazeWebUrl, wazeLabel, appleUrl } = buildNavUrls(plan);
-  document.getElementById("nav-google").href = googleUrl;
-  const wazeEl = document.getElementById("nav-waze");
-  wazeEl.href = wazeWebUrl;
-  wazeEl.dataset.appUrl = wazeAppUrl;
-  document.getElementById("nav-waze-label").textContent = `(${wazeLabel})`;
-  document.getElementById("nav-apple").href = appleUrl;
+  currentNavUrls = buildNavUrls({
+    origin: plan.origin_coords,
+    destination: plan.destination_coords,
+    waypoints: plan.stops.map((s) => [s.station.latitude, s.station.longitude]),
+  });
+  document.getElementById("nav-google").href = currentNavUrls.google;
+  document.getElementById("nav-waze").href = currentNavUrls.waze;
+  document.getElementById("nav-waze-label").textContent = `(${currentNavUrls.wazeLabel})`;
+  document.getElementById("nav-apple").href = currentNavUrls.apple;
+  reorderNavTiles();
 
   // Always push a relative URL — using the canonical publicUrl here would throw
   // a SecurityError when public_url differs from the current origin (e.g. staging).
@@ -215,6 +194,31 @@ function hideShare() {
   document.getElementById("trip-actions").classList.add("hidden");
   closeDialog("trip-share-dialog");
   closeDialog("trip-nav-dialog");
+  currentNavUrls = null;
+}
+
+// Reorder + filter the picker tiles per platform. Tiles whose provider isn't
+// in the platform's visible list (e.g., Apple Maps on Android) get hidden;
+// the rest are reordered so the most-likely-installed app sits first. The
+// Navegar dialog markup defines a static superset; this prunes/reorders at
+// runtime when URLs are assigned.
+function reorderNavTiles() {
+  const grid = document.querySelector("#trip-nav-dialog .trip-action-sheet__grid");
+  if (!grid) return;
+  const tiles = {
+    google: document.getElementById("nav-google"),
+    apple:  document.getElementById("nav-apple"),
+    waze:   document.getElementById("nav-waze"),
+  };
+  const visible = new Set(getProviderOrder());
+  Object.entries(tiles).forEach(([provider, tile]) => {
+    if (!tile) return;
+    tile.classList.toggle("hidden", !visible.has(provider));
+  });
+  visible.forEach((provider) => {
+    const tile = tiles[provider];
+    if (tile) grid.appendChild(tile);  // appendChild on existing node moves it
+  });
 }
 
 function openDialog(id) {
@@ -279,6 +283,21 @@ function attachStopInteraction() {
   container.addEventListener("mouseleave", () => resetStopHighlights());
 
   container.addEventListener("click", (e) => {
+    // Directions icon: intercept and route through the platform-aware opener
+    // instead of letting the bare <a href> open Google Maps everywhere.
+    // Modifier-clicks (Cmd/Ctrl/Shift/middle) bypass the interception so the
+    // browser's native "open in new tab" still works for desktop users.
+    const navLink = e.target.closest("a[data-nav-smart]");
+    if (navLink) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+      e.preventDefault();
+      const lat = parseFloat(navLink.dataset.lat);
+      const lon = parseFloat(navLink.dataset.lon);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        openSmartNav(buildNavUrls({ destination: [lat, lon] }));
+      }
+      return;
+    }
     if (e.target.closest("a")) return;
     const article = e.target.closest("article[data-index]");
     if (!article) return;
@@ -453,6 +472,9 @@ async function init() {
 
   // Dialog open/close wiring
   document.getElementById("trip-share-button")?.addEventListener("click", () => openDialog("trip-share-dialog"));
+  // Primary "Navegar" button opens the provider picker. Tiles inside are
+  // platform-aware (see reorderNavTiles): order changes per platform and
+  // Apple Maps is hidden on Android since the app isn't available there.
   document.getElementById("trip-nav-button")?.addEventListener("click", () => openDialog("trip-nav-dialog"));
   document.querySelectorAll("[data-close-dialog]").forEach((btn) => {
     btn.addEventListener("click", () => closeDialog(btn.dataset.closeDialog));
@@ -466,17 +488,19 @@ async function init() {
   document.querySelectorAll(
     "#trip-share-whatsapp, #trip-share-telegram, #trip-share-x",
   ).forEach((el) => el.addEventListener("click", () => closeDialog("trip-share-dialog")));
-  document.querySelectorAll(
-    "#nav-google, #nav-apple",
-  ).forEach((el) => el.addEventListener("click", () => closeDialog("trip-nav-dialog")));
 
-  // Waze: try native app, fall back to web — preserved behavior, just routed through dialog
-  document.getElementById("nav-waze")?.addEventListener("click", (e) => {
-    const appUrl = e.currentTarget.dataset.appUrl;
-    closeDialog("trip-nav-dialog");
-    if (!appUrl) return;
-    e.preventDefault();
-    tryOpenNativeApp(appUrl, e.currentTarget.href);
+  // Nav tiles: route through openInMaps so behavior is platform-correct
+  // (same-window on mobile to keep Universal Links smooth, new tab on desktop).
+  [
+    ["nav-google", "google"],
+    ["nav-apple",  "apple"],
+    ["nav-waze",   "waze"],
+  ].forEach(([id, provider]) => {
+    document.getElementById(id)?.addEventListener("click", (e) => {
+      e.preventDefault();
+      closeDialog("trip-nav-dialog");
+      if (currentNavUrls) openInMaps(provider, currentNavUrls);
+    });
   });
 
   // Native Web Share API — only surface the tile if supported

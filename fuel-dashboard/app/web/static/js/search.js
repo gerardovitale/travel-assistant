@@ -4,6 +4,7 @@ import { createMap, drawStationsTracked, drawSearchPin, drawZipBoundary, drawRou
 import { formatPrice, formatKm, formatEur, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels } from "./brands.js";
 import { attachAutocomplete } from "./addressAutocomplete.js";
+import { buildNavUrls, openSmartNav } from "./openInMaps.js";
 
 const APP_CONFIG = window.__APP_CONFIG__ || {};
 
@@ -98,7 +99,16 @@ function renderList(results) {
     const dist = s.distance_km != null ? formatKm(s.distance_km) : "";
     const cost = s.estimated_total_cost != null ? `· ${formatEur(s.estimated_total_cost)} total` : "";
     const pct = s.pct_vs_avg != null ? `<span class="${s.pct_vs_avg < 0 ? 'text-tertiary-container' : 'text-error'} text-[11px] font-bold">${s.pct_vs_avg > 0 ? '+' : ''}${s.pct_vs_avg.toFixed(1)}% vs media</span>` : "";
-    const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${s.latitude},${s.longitude}`;
+    // Render the directions affordance only when coords are valid. A
+    // non-finite lat/lon would make buildNavUrls throw and abort the whole
+    // results list; gracefully drop just the link instead.
+    let directionsLink = "";
+    try {
+      const { google: mapsUrl } = buildNavUrls({ destination: [s.latitude, s.longitude] });
+      directionsLink = `<a href="${mapsUrl}" data-nav-smart data-lat="${s.latitude}" data-lon="${s.longitude}" rel="noopener noreferrer" class="p-2 rounded-lg hover:bg-surface-container-high text-primary-container" title="Cómo llegar"><span class="material-symbols-outlined">directions</span></a>`;
+    } catch (err) {
+      console.warn("search result: skipping directions link for invalid coords", { lat: s.latitude, lon: s.longitude, err: err.message });
+    }
     return `
       <article data-index="${i}" data-testid="search-result-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 50, 350)}ms">
         <div class="h-10 w-10 rounded-lg bg-surface-container-high flex items-center justify-center text-primary-container shrink-0 font-headline font-bold">${i + 1}</div>
@@ -114,9 +124,7 @@ function renderList(results) {
             ${pct}
           </div>
         </div>
-        <a href="${mapsUrl}" target="_blank" rel="noopener" class="p-2 rounded-lg hover:bg-surface-container-high text-primary-container" title="Cómo llegar">
-          <span class="material-symbols-outlined">directions</span>
-        </a>
+        ${directionsLink}
       </article>`;
   }).join("");
   listEl.innerHTML = rows;
@@ -237,6 +245,21 @@ async function runSearch(form) {
 
 function attachHoverHandlers() {
   const list = document.getElementById("results-list");
+
+  // Directions icon: intercept and route through the platform-aware opener.
+  // Delegation lets us attach once instead of per-card re-render.
+  // Modifier-clicks (Cmd/Ctrl/Shift/middle) bypass the interception so the
+  // browser's native "open in new tab" still works for desktop users.
+  list.addEventListener("click", (e) => {
+    const link = e.target.closest("a[data-nav-smart]");
+    if (!link) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    const lat = parseFloat(link.dataset.lat);
+    const lon = parseFloat(link.dataset.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    openSmartNav(buildNavUrls({ destination: [lat, lon] }));
+  });
 
   list.addEventListener("mouseover", (e) => {
     const article = e.target.closest("article[data-index]");

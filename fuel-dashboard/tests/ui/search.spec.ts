@@ -24,6 +24,13 @@ test("best-option search renders KPIs, recommendation, and results", async ({ pa
   await expect(page.getByTestId("search-recommendation")).toContainText("Plenoil Atocha");
   await expect(searchPage.results).toHaveCount(4);
   await expect(page.getByTestId("search-map")).toBeVisible();
+
+  // Station-card "Cómo llegar" uses the shared openInMaps builder and is
+  // intercepted on click to hand off to the platform-best app.
+  const directionsLink = searchPage.results.first().locator('a[title="Cómo llegar"]');
+  await expect(directionsLink).toHaveAttribute("href", /google\.com\/maps\/dir\/\?api=1.*destination=/);
+  await expect(directionsLink).toHaveAttribute("data-nav-smart", "");
+  await expect(directionsLink).not.toHaveAttribute("target", /.+/);
 });
 
 test("mode switching updates advanced fields and nearest search hits the nearest endpoint", async ({ page }) => {
