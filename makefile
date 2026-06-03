@@ -59,8 +59,8 @@ fuel-dashboard.ui-test-local:
 
 
 # IMAGE SCANNING
-fuel-ingestor.scan:
-	docker buildx build -t travass-fuel-ingestor:local fuel-ingestor/ && \
+define scan-service
+	docker buildx build -t travass-$(1):local $(1)/ && \
 	docker run --rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(PWD)/.trivyignore:/root/.trivyignore \
@@ -68,18 +68,14 @@ fuel-ingestor.scan:
 		--exit-code 1 \
 		--severity CRITICAL,HIGH \
 		--ignorefile /root/.trivyignore \
-		travass-fuel-ingestor:local
+		travass-$(1):local
+endef
+
+fuel-ingestor.scan:
+	$(call scan-service,fuel-ingestor)
 
 fuel-dashboard.scan:
-	docker buildx build -t travass-fuel-dashboard:local fuel-dashboard/ && \
-	docker run --rm \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v $(PWD)/.trivyignore:/root/.trivyignore \
-		aquasec/trivy:$(TRIVY_VERSION) image \
-		--exit-code 1 \
-		--severity CRITICAL,HIGH \
-		--ignorefile /root/.trivyignore \
-		travass-fuel-dashboard:local
+	$(call scan-service,fuel-dashboard)
 
 
 # FUEL INGESTOR
