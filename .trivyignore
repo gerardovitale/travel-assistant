@@ -39,3 +39,14 @@ CVE-2026-7598
 # transitive OS-level dependencies of the python:3.13-slim base image.
 # Reviewed: 2026-05-21. Re-review by: 2026-08-31.
 CVE-2026-40356
+
+# perl-base — Archive::Tar symlink/hardlink path traversal, IO::Compress arbitrary code execution,
+# Perl heap buffer overflow, and memory exhaustion via crafted archives.
+# No Debian fix available. App is a Python-only data ingestion pipeline (JSON fetch → pandas → GCS).
+# perl-base is a transitive OS-level dependency of python:3.13-slim; Perl is never invoked at runtime.
+# Reviewed: 2026-06-03. Re-review by: 2026-09-30.
+CVE-2026-42496
+CVE-2026-8376
+CVE-2026-42497
+CVE-2026-48962
+CVE-2026-9538

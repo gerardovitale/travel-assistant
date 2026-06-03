@@ -69,6 +69,32 @@ function kpi(label, value, icon, delay = 0, valueClass = "text-on-surface") {
     </div>`;
 }
 
+// Render an inline disclosure card next to the results that lists every
+// parameter used in the estimate. Defaults render as plain chips; any value
+// the user changed from the APP_CONFIG default gets a "personalizado" suffix.
+function renderAssumptions(body) {
+  const entries = [
+    { label: `Consumo ${body.consumption_lper100km} L/100 km`, value: body.consumption_lper100km, def: APP_CONFIG.default_consumption_lper100km },
+    { label: `Depósito ${body.tank_liters} L`, value: body.tank_liters, def: APP_CONFIG.default_tank_liters },
+    { label: `Nivel inicial ${body.fuel_level_pct}%`, value: body.fuel_level_pct, def: APP_CONFIG.default_fuel_level_pct },
+    { label: `Desvío máx. ${body.max_detour_minutes} min`, value: body.max_detour_minutes, def: APP_CONFIG.default_max_detour_minutes },
+    { label: `Mín. al llegar ${body.min_fuel_at_destination_pct}%`, value: body.min_fuel_at_destination_pct, def: APP_CONFIG.default_min_fuel_at_destination_pct },
+  ];
+  const list = document.getElementById("trip-assumptions-list");
+  list.innerHTML = entries.map((e) => {
+    const customized = e.def == null || Number(e.value) !== Number(e.def);
+    const suffix = customized
+      ? ` <span class="text-[10px] uppercase tracking-wide text-primary-container font-label font-bold">· personalizado</span>`
+      : "";
+    return `<li class="inline-flex items-center gap-1 rounded-full bg-surface-container px-3 py-1 text-[12px] text-on-surface-variant">${escapeHtml(e.label)}${suffix}</li>`;
+  }).join("");
+  document.getElementById("trip-assumptions").classList.remove("hidden");
+}
+
+function hideAssumptions() {
+  document.getElementById("trip-assumptions").classList.add("hidden");
+}
+
 function renderKpis(plan) {
   const fuelPct = plan.fuel_at_destination_pct;
   const fuelClass = fuelPct == null ? "text-on-surface"
@@ -236,6 +262,7 @@ function closeDialog(id) {
 }
 
 function resetPlanView(message = "Introduce origen y destino para planificar.") {
+  hideAssumptions();
   document.getElementById("trip-kpis").classList.add("hidden");
   document.getElementById("trip-stops").innerHTML = `
     <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">${escapeHtml(message)}</div>`;
@@ -382,6 +409,7 @@ async function runPlan(form) {
     const resp = await api("/trip/plan", { method: "POST", body: JSON.stringify(body) });
     hideBanner();
     const plan = resp.plan;
+    renderAssumptions(body);
     renderKpis(plan);
     renderStops(plan);
     renderAlternatives(plan);
@@ -469,6 +497,14 @@ async function init() {
   });
 
   attachStopInteraction();
+
+  // "Ajustar parámetros" in the assumptions disclosure opens the form's
+  // Opciones avanzadas section so users can refine the inputs that shaped
+  // the estimate. The anchor href handles the scroll for free.
+  document.getElementById("trip-assumptions-edit")?.addEventListener("click", () => {
+    const advanced = document.getElementById("advanced-section");
+    if (advanced) advanced.open = true;
+  });
 
   // Dialog open/close wiring
   document.getElementById("trip-share-button")?.addEventListener("click", () => openDialog("trip-share-dialog"));

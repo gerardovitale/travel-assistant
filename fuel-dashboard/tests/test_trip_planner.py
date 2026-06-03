@@ -158,12 +158,10 @@ def test_find_stops_low_fuel():
     assert stops[0]["label"] == "Near"
 
 
-def test_min_fuel_at_destination_forces_extra_stop():
+def test_min_fuel_at_destination_soft_check_inserts_stop():
     """Car can reach destination unaided but would arrive with < 50% fuel.
-    min_fuel_at_destination_pct=50 must force at least one stop."""
-    # tank=40L, consumption=7L/100km → max_range=571km
-    # initial fuel 80% → initial_range=457km > 300km (destination reachable without stop)
-    # without reserve: fuel at destination ≈ 27.5%  (< 50%)
+    Soft check must add one stop close enough to destination that the post-refill
+    burn keeps arrival >= the floor."""
     station = {
         "label": "Mid",
         "route_km": 200,
@@ -185,8 +183,7 @@ def test_min_fuel_at_destination_forces_extra_stop():
         fuel_pct=80,
         min_fuel_at_destination_pct=50,
     )
-    assert len(stops_with) >= 1, "algorithm should add a stop to guarantee 50% arrival fuel"
-    # Verify the guaranteed arrival fuel is at least the requested floor (safety adds extra margin)
+    assert len(stops_with) >= 1, "soft check should add a stop to meet the 50% arrival floor"
     trip_stops = [_build_trip_stop(s) for s in stops_with]
     dest_fuel = _fuel_at_destination_pct(trip_stops, 300, 40, 7.0, 80)
     assert dest_fuel >= 50.0
@@ -500,3 +497,191 @@ def test_plan_trip_generates_alternative_plans(mock_geocode, mock_route, mock_co
         assert isinstance(alt.stops, list)
         assert alt.total_fuel_cost >= 0
         assert alt.num_stops >= 0
+
+
+# --- stop-pruning and soft-check behaviour ---
+
+
+def _make_station(label: str, route_km: float, price: float) -> dict:
+    return {
+        "label": label,
+        "route_km": route_km,
+        "price": price,
+        "address": f"addr {label}",
+        "municipality": "x",
+        "province": "y",
+        "zip_code": "00000",
+        "latitude": 40.0,
+        "longitude": -3.0,
+        "detour_minutes": 0,
+        "min_distance_km": 0,
+    }
+
+
+def test_full_tank_realistic_road_trip_produces_one_stop():
+    """Madrid→Chiclana stand-in: 470 km, 40 L, 7 L/100 km, full tank, floor 40%."""
+    stations = [_make_station(f"S{i}", k, 1.40 + i * 0.01) for i, k in enumerate([80, 180, 280, 380])]
+    stops = find_optimal_stops(
+        stations,
+        total_km=470,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=40,
+    )
+    assert len(stops) == 1
+    trip_stops = [_build_trip_stop(s) for s in stops]
+    assert _fuel_at_destination_pct(trip_stops, 470, 40, 7.0, 100) >= 40
+
+
+def test_prune_removes_redundant_first_stop():
+    """Tank covers the whole trip — greedy must not insert an early stop."""
+    stations = [
+        _make_station("Early", 100, 1.30),
+        _make_station("Mid", 400, 1.40),
+    ]
+    stops = find_optimal_stops(
+        stations,
+        total_km=500,
+        tank_liters=60,
+        consumption_lper100km=6.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=0,
+    )
+    assert stops == []
+
+
+def test_prune_removes_redundant_last_stop():
+    """Trip within range with floor=0 ⇒ no stops at all."""
+    stations = [
+        _make_station("S1", 200, 1.40),
+        _make_station("S2", 480, 1.50),
+    ]
+    stops = find_optimal_stops(
+        stations,
+        total_km=500,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=0,
+    )
+    assert stops == []
+
+
+def test_soft_check_inserts_only_when_below_threshold():
+    """Same trip: floor=40 forces one stop; floor=0 forces none."""
+    stations = [_make_station("Late", 300, 1.45)]
+    with_floor = find_optimal_stops(
+        stations,
+        total_km=470,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=40,
+    )
+    no_floor = find_optimal_stops(
+        stations,
+        total_km=470,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=0,
+    )
+    assert len(with_floor) == 1
+    assert with_floor[0]["label"] == "Late"
+    assert no_floor == []
+
+
+def test_post_refill_range_is_full_tank():
+    """Two stations 480 km apart on a 900 km trip. Under the old 85%-refill bug
+    the second station was unreachable; under the fix it must be selected."""
+    stations = [
+        _make_station("S1", 200, 1.40),
+        _make_station("S2", 680, 1.40),
+    ]
+    stops = find_optimal_stops(
+        stations,
+        total_km=900,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=0,
+    )
+    labels = [s["label"] for s in stops]
+    assert "S2" in labels
+
+
+def test_prune_single_pass_is_sufficient():
+    """Three candidate stations on a 500 km trip with full tank ⇒ all pruned."""
+    stations = [
+        _make_station("A", 150, 1.30),
+        _make_station("B", 300, 1.30),
+        _make_station("C", 450, 1.30),
+    ]
+    stops = find_optimal_stops(
+        stations,
+        total_km=500,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=0,
+    )
+    assert stops == []
+
+
+def test_soft_check_skips_when_no_station_near_destination():
+    """Only station is close to origin → soft check cannot meet the floor.
+    Stops list stays empty and predicted arrival reflects the shortfall."""
+    stations = [_make_station("Early", 50, 1.40)]
+    stops = find_optimal_stops(
+        stations,
+        total_km=470,
+        tank_liters=40,
+        consumption_lper100km=7.0,
+        fuel_pct=100,
+        min_fuel_at_destination_pct=40,
+    )
+    # max_range = 571 km. max_remaining_km for floor=40 = 571 * 0.6 = 342.6 km.
+    # Station at 50 km is 420 km from destination, well outside the reserve window.
+    assert stops == []
+    trip_stops = [_build_trip_stop(s) for s in stops]
+    arrival = _fuel_at_destination_pct(trip_stops, 470, 40, 7.0, 100)
+    assert arrival < 40, "with no insertable station, arrival must fall below the floor"
+
+
+def test_prune_recomputes_metrics_for_surviving_stops():
+    """Drop a redundant middle stop; surviving stops' metrics must reflect new prior leg.
+
+    Setup: tank=50, consumption=10 → max_range=500, safety_margin=75, usable_after_refill=425.
+    Stations A(150), B(400, cheapest), C(550). total_km=950, fuel_pct=50 (initial range 250).
+    Greedy: A → B (cheapest in window) → C. Three stops.
+    Prune: dropping B leaves A→C gap=400 ≤ 425 and C→dest=400 ≤ 425 → feasible.
+    Result [A, C]; C's metrics recomputed because its prior leg is now A→C (400 km), not B→C (150 km).
+    """
+    stations = [
+        _make_station("A", 150, 1.40),
+        _make_station("B", 400, 1.30),
+        _make_station("C", 550, 1.50),
+    ]
+    stops = find_optimal_stops(
+        stations,
+        total_km=950,
+        tank_liters=50,
+        consumption_lper100km=10.0,
+        fuel_pct=50,
+        min_fuel_at_destination_pct=0,
+    )
+    labels = [s["label"] for s in stops]
+    assert labels == ["A", "C"], f"prune should drop redundant B, got {labels}"
+
+    # C now refuels after a full 400 km leg from A (full tank → 40 L used → 10 L remaining = 20%).
+    c_stop = stops[1]
+    assert c_stop["fuel_at_arrival_pct"] == 20.0
+    assert c_stop["liters_to_fill"] == 40.0
+    assert c_stop["cost_eur"] == 60.0  # 40 L * 1.50
+
+    # A's metrics use the initial leg (150 km on 50% tank → 25 L start - 15 L used = 10 L = 20%).
+    a_stop = stops[0]
+    assert a_stop["fuel_at_arrival_pct"] == 20.0
+    assert a_stop["liters_to_fill"] == 40.0
+    assert a_stop["cost_eur"] == 56.0  # 40 L * 1.40

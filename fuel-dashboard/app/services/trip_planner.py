@@ -1,8 +1,11 @@
 import logging
 import math
+from typing import Any
 from typing import Callable
+from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Set
 from typing import Tuple
 
 from api.schemas import AlternativePlan
@@ -73,18 +76,211 @@ def project_stations_onto_route(
     )
 
 
-def _find_stops_with_strategy(
-    stations: List[dict],
+def _compute_stop_metrics(
+    price: float,
+    prev_km: float,
+    prev_range_km: float,
+    route_km: float,
+    max_range_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+) -> Tuple[float, float, float]:
+    """Return (fuel_at_arrival_pct, liters_to_fill, cost_eur) for a stop given the prior leg."""
+    km_driven = route_km - prev_km
+    fuel_used = km_driven * consumption_lper100km / 100
+    fuel_remaining = (prev_range_km / max_range_km) * tank_liters - fuel_used
+    fuel_at_arrival_pct = round(max(0.0, fuel_remaining / tank_liters * 100), 1)
+    liters_to_fill = round(max(0.0, tank_liters - fuel_remaining), 1)
+    cost_eur = round(liters_to_fill * price, 2)
+    return fuel_at_arrival_pct, liters_to_fill, cost_eur
+
+
+def _predict_arrival_fuel_pct(
+    stops: List[Dict[str, Any]],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
     fuel_pct: float,
-    pick_fn: Callable[[List[dict], float, float], dict],
+) -> float:
+    """Predicted fuel level (%) at destination assuming full refill at every stop."""
+    if stops:
+        last_km = stops[-1]["route_km"]
+        remaining_km = max(0.0, total_km - last_km)
+        fuel_used = remaining_km * consumption_lper100km / 100
+        fuel_remaining = tank_liters - fuel_used
+    else:
+        fuel_used = total_km * consumption_lper100km / 100
+        fuel_remaining = tank_liters * (fuel_pct / 100) - fuel_used
+    return round(max(0.0, fuel_remaining / tank_liters * 100), 1)
+
+
+def _segments_feasible(
+    stops: List[Dict[str, Any]],
+    total_km: float,
+    fuel_pct: float,
+    max_range_km: float,
+    safety_margin_km: float,
+) -> bool:
+    """Every leg must fit within (range - safety_margin). First leg uses initial fuel."""
+    initial_range_km = max_range_km * (fuel_pct / 100)
+    usable_after_refill = max_range_km - safety_margin_km
+    if not stops:
+        return total_km <= initial_range_km - safety_margin_km
+    if stops[0]["route_km"] > initial_range_km - safety_margin_km:
+        return False
+    for prev, nxt in zip(stops, stops[1:]):
+        if nxt["route_km"] - prev["route_km"] > usable_after_refill:
+            return False
+    if total_km - stops[-1]["route_km"] > usable_after_refill:
+        return False
+    return True
+
+
+def _recompute_stop_metrics(
+    stops: List[Dict[str, Any]],
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_pct: float,
+    max_range_km: float,
+) -> None:
+    """Refresh fuel_at_arrival_pct / liters_to_fill / cost_eur after the stop set changes.
+
+    Mutates stops in place — each dict's fuel_at_arrival_pct, liters_to_fill,
+    and cost_eur are overwritten based on the (possibly shorter) leg from the
+    new previous stop.
+    """
+    prev_km = 0.0
+    prev_range_km = max_range_km * (fuel_pct / 100)
+    for s in stops:
+        arrival, fill, cost = _compute_stop_metrics(
+            s["price"], prev_km, prev_range_km, s["route_km"], max_range_km, tank_liters, consumption_lper100km
+        )
+        s["fuel_at_arrival_pct"] = arrival
+        s["liters_to_fill"] = fill
+        s["cost_eur"] = cost
+        prev_km = s["route_km"]
+        prev_range_km = max_range_km
+
+
+def _prune_redundant_stops(
+    stops: List[Dict[str, Any]],
+    total_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_pct: float,
+    max_range_km: float,
+    safety_margin_km: float,
+    min_fuel_at_destination_pct: float,
+) -> List[Dict[str, Any]]:
+    """Drop any stop whose removal still leaves a feasible plan meeting the arrival floor."""
+    pruned = list(stops)
+    for i in range(len(pruned) - 1, -1, -1):
+        trial = [s for j, s in enumerate(pruned) if j != i]
+        if not _segments_feasible(trial, total_km, fuel_pct, max_range_km, safety_margin_km):
+            continue
+        if (
+            _predict_arrival_fuel_pct(trial, total_km, tank_liters, consumption_lper100km, fuel_pct)
+            < min_fuel_at_destination_pct
+        ):
+            continue
+        pruned = trial
+    if len(pruned) != len(stops):
+        _recompute_stop_metrics(pruned, tank_liters, consumption_lper100km, fuel_pct, max_range_km)
+    return pruned
+
+
+def _append_stop(
+    stops: List[Dict[str, Any]],
+    used_labels: Set[str],
+    best: Dict[str, Any],
+    prev_km: float,
+    prev_range_km: float,
+    max_range_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    reasoning: str,
+) -> None:
+    """Compute metrics, attach reasoning, and append the stop in place."""
+    arrival, fill, cost = _compute_stop_metrics(
+        best["price"], prev_km, prev_range_km, best["route_km"], max_range_km, tank_liters, consumption_lper100km
+    )
+    stop = dict(best)
+    stop["fuel_at_arrival_pct"] = arrival
+    stop["liters_to_fill"] = fill
+    stop["cost_eur"] = cost
+    stop["reasoning"] = reasoning
+    stops.append(stop)
+    used_labels.add(best["label"])
+
+
+def _insert_floor_safeguard_stop(
+    stops: List[Dict[str, Any]],
+    used_labels: Set[str],
+    sorted_stations: List[Dict[str, Any]],
+    total_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_pct: float,
+    max_range_km: float,
+    safety_margin_km: float,
+    min_fuel_at_destination_pct: float,
+) -> None:
+    """If predicted arrival is below the floor, insert one late stop close enough
+    to the destination that a full refill keeps arrival >= the floor.
+
+    Mutates `stops` and `used_labels` in place. No-op if the floor is already met
+    or if no station satisfies both the reachability and reserve-window constraints.
+    """
+    arrival_pct = _predict_arrival_fuel_pct(stops, total_km, tank_liters, consumption_lper100km, fuel_pct)
+    if arrival_pct >= min_fuel_at_destination_pct:
+        return
+
+    anchor_km = stops[-1]["route_km"] if stops else 0.0
+    anchor_range_km = max_range_km if stops else max_range_km * (fuel_pct / 100)
+    reach_upper = anchor_km + (anchor_range_km - safety_margin_km)
+    # Station qualifies only if a full tank from there still arrives at >= floor:
+    # `total_km - route_km` is the post-refill burn; cap it at the floor's km equivalent.
+    max_remaining_km = max_range_km * (1 - min_fuel_at_destination_pct / 100)
+    fix_candidates = [
+        s
+        for s in sorted_stations
+        if anchor_km < s["route_km"] <= min(reach_upper, total_km)
+        and total_km - s["route_km"] <= max_remaining_km
+        and s["label"] not in used_labels
+    ]
+    if not fix_candidates:
+        return
+
+    best = max(fix_candidates, key=lambda s: (s["route_km"], -s["price"]))
+    window_end_km = min(reach_upper, total_km)
+    _append_stop(
+        stops,
+        used_labels,
+        best,
+        anchor_km,
+        anchor_range_km,
+        max_range_km,
+        tank_liters,
+        consumption_lper100km,
+        (
+            f"Reserva de llegada >= {min_fuel_at_destination_pct:.0f}% "
+            f"en ventana km {anchor_km:.0f}-{window_end_km:.0f}"
+        ),
+    )
+
+
+def _find_stops_with_strategy(
+    stations: List[Dict[str, Any]],
+    total_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_pct: float,
+    pick_fn: Callable[[List[Dict[str, Any]], float, float], Dict[str, Any]],
     safety: float = 0.15,
     reason_template: str = "Mas barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
     min_fuel_at_destination_pct: float = 0.0,
-) -> List[dict]:
-    """Greedy stop selection with pluggable candidate picker.
+) -> List[Dict[str, Any]]:
+    """Stop selection with pluggable picker, soft arrival-fuel floor, and prune pass.
 
     Args:
         stations: list of dicts with 'route_km', 'price', 'label', etc.
@@ -94,7 +290,8 @@ def _find_stops_with_strategy(
         fuel_pct: initial fuel level as percentage (0-100).
         pick_fn: callable(candidates, window_start_km, window_end_km) -> best candidate dict.
         safety: safety margin fraction (default 15%).
-        min_fuel_at_destination_pct: minimum fuel level (%) to guarantee on arrival (0–80).
+        min_fuel_at_destination_pct: soft floor; a stop is added only if predicted arrival
+            would fall below this value and a station near enough to the destination exists.
 
     Returns:
         list of stop dicts with added 'fuel_at_arrival_pct', 'liters_to_fill', 'cost_eur', 'reasoning'.
@@ -103,21 +300,18 @@ def _find_stops_with_strategy(
         return []
 
     max_range_km = (tank_liters / consumption_lper100km) * 100
+    safety_margin_km = max_range_km * safety
     current_range_km = max_range_km * (fuel_pct / 100)
-    usable_range_km = max_range_km * (1 - safety)
     current_km = 0.0
-    stops = []
-    used_labels = set()
+    stops: List[Dict[str, Any]] = []
+    used_labels: Set[str] = set()
 
     sorted_stations = sorted(stations, key=lambda s: s["route_km"])
 
-    # Extend the effective target by the reserved fuel distance so the last stop is
-    # forced close enough to the destination to guarantee min_fuel_at_destination_pct.
-    reserve_km = max_range_km * (min_fuel_at_destination_pct / 100)
-    virtual_total_km = total_km + reserve_km
-
-    while current_km + current_range_km < virtual_total_km:
-        effective_range = current_range_km - max_range_km * safety
+    # Greedy: refill whenever the car cannot reach destination on the current fuel.
+    # Real refill = full tank (current_range_km = max_range_km after each stop).
+    while current_km + current_range_km < total_km:
+        effective_range = current_range_km - safety_margin_km
         if effective_range <= 0:
             effective_range = current_range_km * 0.9
 
@@ -137,24 +331,45 @@ def _find_stops_with_strategy(
             break
 
         best = pick_fn(candidates, window_start, window_end)
-
-        km_driven = best["route_km"] - current_km
-        fuel_used_liters = km_driven * consumption_lper100km / 100
-        fuel_remaining_liters = (current_range_km / max_range_km) * tank_liters - fuel_used_liters
-        fuel_at_arrival_pct = max(0, (fuel_remaining_liters / tank_liters) * 100)
-        liters_to_fill = tank_liters - fuel_remaining_liters
-        cost_eur = liters_to_fill * best["price"]
-
-        stop = dict(best)
-        stop["fuel_at_arrival_pct"] = round(fuel_at_arrival_pct, 1)
-        stop["liters_to_fill"] = round(max(0, liters_to_fill), 1)
-        stop["cost_eur"] = round(cost_eur, 2)
-        stop["reasoning"] = reason_template.format(n=len(candidates), a=window_start, b=window_end)
-        stops.append(stop)
-        used_labels.add(best["label"])
-
+        _append_stop(
+            stops,
+            used_labels,
+            best,
+            current_km,
+            current_range_km,
+            max_range_km,
+            tank_liters,
+            consumption_lper100km,
+            reason_template.format(n=len(candidates), a=window_start, b=window_end),
+        )
         current_km = best["route_km"]
-        current_range_km = usable_range_km
+        current_range_km = max_range_km
+
+    # Soft check: ensure the predicted arrival meets `min_fuel_at_destination_pct`.
+    _insert_floor_safeguard_stop(
+        stops,
+        used_labels,
+        sorted_stations,
+        total_km,
+        tank_liters,
+        consumption_lper100km,
+        fuel_pct,
+        max_range_km,
+        safety_margin_km,
+        min_fuel_at_destination_pct,
+    )
+
+    # Prune pass: drop any stop whose removal still meets feasibility and the arrival floor.
+    stops = _prune_redundant_stops(
+        stops,
+        total_km,
+        tank_liters,
+        consumption_lper100km,
+        fuel_pct,
+        max_range_km,
+        safety_margin_km,
+        min_fuel_at_destination_pct,
+    )
 
     return stops
 
@@ -252,16 +467,13 @@ def _fuel_at_destination_pct(
     consumption_lper100km: float,
     fuel_level_pct: float,
 ) -> float:
-    """Estimate the fuel level (%) when arriving at the destination."""
-    if stops:
-        last_km = stops[-1].route_km
-        remaining_km = total_km - last_km
-        fuel_used = remaining_km * consumption_lper100km / 100
-        fuel_remaining = tank_liters - fuel_used
-    else:
-        fuel_used = total_km * consumption_lper100km / 100
-        fuel_remaining = tank_liters * (fuel_level_pct / 100) - fuel_used
-    return round(max(0, fuel_remaining / tank_liters * 100), 1)
+    """Estimate the fuel level (%) when arriving at the destination.
+
+    Adapter over `_predict_arrival_fuel_pct` for the TripStop-based KPI path.
+    Kept as a thin wrapper so the underlying arithmetic lives in one place.
+    """
+    stop_dicts: List[Dict[str, Any]] = [{"route_km": s.route_km} for s in stops]
+    return _predict_arrival_fuel_pct(stop_dicts, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
 
 
 def _build_trip_stop(stop_dict: dict) -> TripStop:

@@ -111,6 +111,15 @@
 <section class="max-w-6xl mx-auto px-5 md:px-8 mt-10 space-y-6">
   <div id="trip-banner" data-testid="trip-banner" class="hidden rounded-xl px-4 py-3 text-sm"></div>
 
+  <div id="trip-assumptions" data-testid="trip-assumptions" class="hidden bg-primary-container/5 border border-outline-variant/40 rounded-xl px-4 py-3 text-sm">
+    <div class="flex items-center gap-2 text-on-surface-variant">
+      <span class="material-symbols-outlined text-[18px] text-primary-container">info</span>
+      <span>Resultado aproximado basado en:</span>
+    </div>
+    <ul id="trip-assumptions-list" data-testid="trip-assumptions-list" class="mt-2 flex flex-wrap gap-2"></ul>
+    <a id="trip-assumptions-edit" href="#advanced-section" data-testid="trip-assumptions-edit" class="inline-block mt-2 text-[12px] font-label font-bold text-primary-container">Ajustar parámetros →</a>
+  </div>
+
   <div id="trip-kpis" data-testid="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-5 gap-3"></div>
 
   <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">

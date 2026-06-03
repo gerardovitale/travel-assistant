@@ -56,6 +56,39 @@ test("swap button and fuel-level slider update the form state", async ({ page })
   await expect(page.locator("#fuel-level-val")).toHaveText("55%");
 });
 
+test("assumptions disclosure shows every parameter after a successful plan", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+  await tripPage.plan("Madrid", "Sevilla");
+
+  const card = page.getByTestId("trip-assumptions");
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Resultado aproximado basado en:");
+
+  const chips = page.getByTestId("trip-assumptions-list").locator("li");
+  await expect(chips).toHaveCount(5);
+  await expect(card).not.toContainText("personalizado");
+
+  await page.getByTestId("trip-assumptions-edit").click();
+  await expect(page.locator("#advanced-section")).toHaveAttribute("open", "");
+});
+
+test("customizing a parameter tags its chip as personalizado", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+
+  // Open Opciones avanzadas to expose the consumption input, then change it from 7 to 8.
+  await page.locator("#advanced-section").evaluate((d) => ((d as HTMLDetailsElement).open = true));
+  await page.locator('input[name="consumption_lper100km"]').fill("8");
+  await tripPage.plan("Madrid", "Sevilla");
+
+  const chips = page.getByTestId("trip-assumptions-list").locator("li");
+  const consumo = chips.filter({ hasText: "Consumo 8" });
+  await expect(consumo).toContainText("personalizado");
+  const deposito = chips.filter({ hasText: "Depósito" });
+  await expect(deposito).not.toContainText("personalizado");
+});
+
 test("no-stop journeys keep the success state but collapse alternatives", async ({ page }) => {
   await setFixture(page, "trip_no_stops");
   const tripPage = new TripPage(page);
