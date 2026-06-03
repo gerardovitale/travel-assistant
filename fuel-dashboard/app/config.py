@@ -72,9 +72,7 @@ class Settings(BaseSettings):
     insights_zones_enabled: bool = False
     insights_historical_enabled: bool = False
     insights_reportes_enabled: bool = True
-    # Comma-separated list of brands shown in the Reportes tab.
-    # Override with DASHBOARD_REPORT_BRANDS=ballenoil,repsol,costco,cepsa
-    # Set to an empty string ("") to show all brands present in the parquet data.
+    # Override: DASHBOARD_REPORT_BRANDS=ballenoil,repsol,costco,cepsa  (empty = all brands)
     report_brands: list[str] = ["ballenoil", "repsol", "costco"]
 
     public_url: str = ""

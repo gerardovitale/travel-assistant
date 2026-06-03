@@ -1,8 +1,5 @@
 import logging
 from datetime import date
-from typing import Dict
-from typing import List
-from typing import Set
 
 import pandas as pd
 
@@ -22,7 +19,7 @@ def get_ingestion_stats() -> pd.DataFrame:
     return df
 
 
-def get_data_inventory(ingestion_stats: pd.DataFrame) -> Dict:
+def get_data_inventory(ingestion_stats: pd.DataFrame) -> dict:
     """Compute data inventory metrics.
 
     Days/months/years are derived from the ingestion stats aggregate
@@ -30,7 +27,7 @@ def get_data_inventory(ingestion_stats: pd.DataFrame) -> Dict:
     in GCS are excluded.  The approximate storage size still comes from
     the GCS file listing.
     """
-    empty: Dict = {
+    empty: dict = {
         "num_days": 0,
         "num_months": 0,
         "num_years": 0,
@@ -70,9 +67,9 @@ def get_data_inventory(ingestion_stats: pd.DataFrame) -> Dict:
     }
 
 
-def get_latest_day_stats(ingestion_stats: pd.DataFrame, max_date: date) -> Dict:
+def get_latest_day_stats(ingestion_stats: pd.DataFrame, max_date: date) -> dict:
     """Extract key metrics from the latest available day in the ingestion stats."""
-    empty: Dict = {
+    empty: dict = {
         "max_date": None,
         "unique_stations": 0,
         "unique_provinces": 0,
@@ -99,7 +96,7 @@ def get_latest_day_stats(ingestion_stats: pd.DataFrame, max_date: date) -> Dict:
     }
 
 
-def get_missing_days(available_dates: Set[date], min_date: date, max_date: date) -> List[str]:
+def get_missing_days(available_dates: set[date], min_date: date, max_date: date) -> list[str]:
     """Find dates with no ingested data in the range."""
     all_dates = {d.date() for d in pd.date_range(min_date, max_date, freq="D")}
     return [d.isoformat() for d in sorted(all_dates - available_dates)]

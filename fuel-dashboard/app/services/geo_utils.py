@@ -1,5 +1,3 @@
-from typing import Dict
-from typing import List
 from typing import Sequence
 
 
@@ -35,13 +33,13 @@ def assign_districts(
     latitudes: Sequence[float],
     longitudes: Sequence[float],
     prices: Sequence[float],
-    geojson_features: List[dict],
-) -> Dict[str, Dict[str, float]]:
+    geojson_features: list[dict],
+) -> dict[str, dict[str, float]]:
     """Assign stations to districts via point-in-polygon and aggregate prices.
 
     Returns ``{district_name: {"total_price": float, "count": int}}``.
     """
-    result: Dict[str, Dict[str, float]] = {}
+    result: dict[str, dict[str, float]] = {}
     for lat, lon, price in zip(latitudes, longitudes, prices):
         for feature in geojson_features:
             name = feature["properties"]["nombre"]

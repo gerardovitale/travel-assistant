@@ -1,7 +1,6 @@
 import logging
 import threading
 import time
-from typing import Optional
 
 from config import settings
 
@@ -19,7 +18,7 @@ _trend_refresh_thread: threading.Thread = None
 _realtime_refresh_thread: threading.Thread = None
 _data_ready = threading.Event()
 
-_last_realtime_refresh: Optional[float] = None
+_last_realtime_refresh: float | None = None
 
 
 def _is_realtime_active() -> bool:

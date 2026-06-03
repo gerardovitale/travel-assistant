@@ -7,8 +7,6 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 from pathlib import Path
-from typing import List
-from typing import Optional
 
 import pandas as pd
 from config import settings
@@ -18,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 PARQUET_PATTERN = re.compile(r"spain_fuel_prices_(\d{4}-\d{2}-\d{2})T")
 
-_client: Optional[storage.Client] = None
+_client: storage.Client | None = None
 _bucket = None
 
 
@@ -91,10 +89,10 @@ def _cached_download(blob_name: str) -> pd.DataFrame:
 
 
 def list_parquet_files_with_metadata(
-    days_back: Optional[int] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-) -> List[dict]:
+    days_back: int | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[dict]:
     """List parquet files with name, date, and size metadata."""
     bucket = _get_bucket()
     blobs = bucket.list_blobs(prefix="spain_fuel_prices_")
@@ -127,15 +125,15 @@ def list_parquet_files_with_metadata(
 
 
 def list_parquet_files(
-    days_back: Optional[int] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
-) -> List[str]:
+    days_back: int | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[str]:
     """List parquet file names, optionally filtered by date range."""
     return [f["name"] for f in list_parquet_files_with_metadata(days_back, start_date, end_date)]
 
 
-def get_latest_parquet_file() -> Optional[str]:
+def get_latest_parquet_file() -> str | None:
     """Get the latest parquet file, checking today and yesterday first."""
     try:
         bucket = _get_bucket()
@@ -160,7 +158,7 @@ def download_parquet_as_df(blob_name: str) -> pd.DataFrame:
     return _cached_download(blob_name)
 
 
-def download_parquets_as_df(blob_names: List[str]) -> pd.DataFrame:
+def download_parquets_as_df(blob_names: list[str]) -> pd.DataFrame:
     if not blob_names:
         return pd.DataFrame()
 
@@ -171,11 +169,8 @@ def download_parquets_as_df(blob_names: List[str]) -> pd.DataFrame:
     return pd.concat(dfs, ignore_index=True)
 
 
-def download_aggregate(name: str) -> Optional[pd.DataFrame]:
-    """Download a pre-computed aggregate parquet file from GCS.
-
-    Cached locally with a TTL of parquet_cache_max_age_hours (same as today's files).
-    """
+def download_aggregate(name: str) -> pd.DataFrame | None:
+    """Download a pre-computed aggregate parquet from GCS; cached locally by parquet_cache_max_age_hours."""
     blob_name = f"aggregates/{name}"
     cached_path = _aggregate_cached_path(name)
 
@@ -213,7 +208,7 @@ def download_aggregate(name: str) -> Optional[pd.DataFrame]:
     return df
 
 
-def get_aggregate_cache_age_seconds(name: str) -> Optional[float]:
+def get_aggregate_cache_age_seconds(name: str) -> float | None:
     cached_path = _aggregate_cached_path(name)
     if not cached_path.exists():
         return None

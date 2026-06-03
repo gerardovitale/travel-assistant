@@ -2,10 +2,6 @@ import functools
 import logging
 import re
 from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
 
 import httpx
 from config import settings
@@ -15,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 _COORD_RE = re.compile(r"^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$")
 
-_geocoder: Optional[Nominatim] = None
+_geocoder: Nominatim | None = None
 
 
 def _get_geocoder() -> Nominatim:
@@ -25,7 +21,7 @@ def _get_geocoder() -> Nominatim:
     return _geocoder
 
 
-def parse_coordinates(text: str) -> Optional[Tuple[float, float]]:
+def parse_coordinates(text: str) -> tuple[float, float] | None:
     """Return (lat, lon) if *text* looks like a coordinate pair, else None."""
     match = _COORD_RE.match(text)
     if match is None:
@@ -39,7 +35,7 @@ def parse_coordinates(text: str) -> Optional[Tuple[float, float]]:
 _NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 
 
-def _short_display_name(result: Dict[str, Any]) -> str:
+def _short_display_name(result: dict[str, Any]) -> str:
     addr = result.get("address", {})
     road = addr.get("road") or addr.get("pedestrian") or addr.get("footway")
     city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("municipality")
@@ -54,7 +50,7 @@ def _short_display_name(result: Dict[str, Any]) -> str:
 
 
 @functools.lru_cache(maxsize=512)
-def _fetch_address_suggestions(query: str) -> List[Dict[str, Any]]:
+def _fetch_address_suggestions(query: str) -> list[dict[str, Any]]:
     resp = httpx.get(
         _NOMINATIM_SEARCH_URL,
         params={
@@ -77,7 +73,7 @@ def _fetch_address_suggestions(query: str) -> List[Dict[str, Any]]:
     ]
 
 
-def get_address_suggestions(query: str) -> List[Dict[str, Any]]:
+def get_address_suggestions(query: str) -> list[dict[str, Any]]:
     """Return up to 5 address suggestions for *query* via Nominatim search."""
     try:
         return _fetch_address_suggestions(query)
@@ -87,7 +83,7 @@ def get_address_suggestions(query: str) -> List[Dict[str, Any]]:
 
 
 @functools.lru_cache(maxsize=256)
-def geocode_address(address: str) -> Optional[Tuple[float, float]]:
+def geocode_address(address: str) -> tuple[float, float] | None:
     """Convert an address string to (latitude, longitude) coordinates."""
     coords = parse_coordinates(address)
     if coords is not None:

@@ -1,9 +1,6 @@
 import json
 from datetime import date
 from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
 
 import ui_test_support as ui_test
 from api.schemas import AddressSuggestion
@@ -105,7 +102,7 @@ limiter = Limiter(key_func=get_real_client_ip)
 router = APIRouter()
 
 
-def _rows(df) -> List[Dict[str, Any]]:
+def _rows(df) -> list[dict[str, Any]]:
     if df is None or df.empty:
         return []
     return json.loads(df.to_json(orient="records", date_format="iso"))
@@ -118,7 +115,7 @@ def cheapest_by_zip(
     zip_code: str = Query(..., pattern=r"^\d{5}$", description="Zip code to search"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
-    labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
+    labels: list[str] | None = Query(None, description="Filter by station brand labels"),
 ):
     if settings.ui_test_mode:
         return ui_test.station_list_response("cheapest_by_zip", location=zip_code, labels=labels)
@@ -133,7 +130,7 @@ def nearest_by_address(
     address: str = Query(..., description="Address to geocode"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
-    labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
+    labels: list[str] | None = Query(None, description="Filter by station brand labels"),
 ):
     if settings.ui_test_mode:
         return ui_test.station_list_response("nearest_by_address", location=address, labels=labels)
@@ -160,7 +157,7 @@ def cheapest_by_address(
     fuel_type: FuelType = Query(..., description="Fuel type"),
     radius_km: float = Query(settings.default_radius_km, ge=0.1, le=50.0, description="Search radius in km"),
     limit: int = Query(settings.default_limit, ge=1, le=20, description="Max results"),
-    labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
+    labels: list[str] | None = Query(None, description="Filter by station brand labels"),
 ):
     if settings.ui_test_mode:
         return ui_test.station_list_response("cheapest_by_address", location=address, labels=labels)
@@ -191,7 +188,7 @@ def best_by_address(
         settings.default_consumption_lper100km, ge=1.0, le=30.0, description="Fuel consumption in l/100km"
     ),
     tank_liters: float = Query(settings.default_refill_liters, ge=5.0, le=120.0, description="Liters to refill"),
-    labels: Optional[List[str]] = Query(None, description="Filter by station brand labels"),
+    labels: list[str] | None = Query(None, description="Filter by station brand labels"),
 ):
     if settings.ui_test_mode:
         return ui_test.station_list_response("best_by_address", location=address, labels=labels)
@@ -227,10 +224,10 @@ def cheapest_zones(
 @limiter.limit(settings.rate_limit)
 def price_trends(
     request: Request,
-    zip_code: Optional[str] = Query(None, pattern=r"^\d{5}$", description="Zip code (omit for national average)"),
+    zip_code: str | None = Query(None, pattern=r"^\d{5}$", description="Zip code (omit for national average)"),
     fuel_type: FuelType = Query(..., description="Fuel type"),
     period: TrendPeriod = Query(TrendPeriod.month, description="Trend period"),
-    province: Optional[str] = Query(None, description="Province name (omit for national average)"),
+    province: str | None = Query(None, description="Province name (omit for national average)"),
 ):
     if settings.ui_test_mode:
         return ui_test.trend_response(zip_code, fuel_type, period)
@@ -242,10 +239,10 @@ def price_trends(
 @limiter.limit(settings.rate_limit)
 def group_price_trends(
     request: Request,
-    zip_code: Optional[str] = Query(None, pattern=r"^\d{5}$", description="Zip code (omit for national average)"),
+    zip_code: str | None = Query(None, pattern=r"^\d{5}$", description="Zip code (omit for national average)"),
     fuel_group: FuelGroup = Query(...),
     period: TrendPeriod = Query(TrendPeriod.month),
-    province: Optional[str] = Query(None, description="Province name (omit for national average)"),
+    province: str | None = Query(None, description="Province name (omit for national average)"),
 ):
     if settings.ui_test_mode:
         return ui_test.group_trend_response(zip_code, fuel_group, period)
@@ -461,7 +458,7 @@ def zones_district_zips(
 
 @router.get("/zones/postal-geojson", response_model=GeoJSONResponse)
 @limiter.limit(settings.rate_limit)
-def zones_postal_geojson(request: Request, zip_codes: List[str] = Query(...)):
+def zones_postal_geojson(request: Request, zip_codes: list[str] = Query(...)):
     if settings.ui_test_mode:
         return ui_test.postal_geojson_response(zip_codes)
     geo = load_postal_codes_for_zip_list(zip_codes)
@@ -484,7 +481,7 @@ def zones_zip_boundary(request: Request, zip_code: str = Query(..., pattern=r"^\
 def historical_day_of_week(
     request: Request,
     fuel_type: FuelType = Query(...),
-    province: Optional[str] = Query(None),
+    province: str | None = Query(None),
 ):
     if settings.ui_test_mode:
         return ui_test.historical_day_of_week_response()
@@ -497,8 +494,8 @@ def historical_day_of_week(
 def historical_forecast(
     request: Request,
     fuel_type: FuelType = Query(...),
-    zip_code: Optional[str] = Query(None, pattern=r"^\d{5}$"),
-    province: Optional[str] = Query(None),
+    zip_code: str | None = Query(None, pattern=r"^\d{5}$"),
+    province: str | None = Query(None),
     window_days: int = Query(180, ge=60, le=365),
 ):
     if settings.ui_test_mode:
@@ -556,8 +553,8 @@ def quality_inventory(request: Request):
         return ui_test.quality_response()
     stats = get_ingestion_stats()
     inventory = get_data_inventory(stats)
-    max_date: Optional[date] = inventory.get("max_date")
-    min_date: Optional[date] = inventory.get("min_date")
+    max_date: date | None = inventory.get("max_date")
+    min_date: date | None = inventory.get("min_date")
     latest = get_latest_day_stats(stats, max_date) if max_date else {}
     available: set[date] = inventory.get("available_dates") or set()
     missing = get_missing_days(available, min_date, max_date) if (min_date and max_date) else []
@@ -583,7 +580,7 @@ def quality_inventory(request: Request):
     )
 
 
-@router.get("/reportes/win-rate", response_model=List[BrandWinRateRow])
+@router.get("/reportes/win-rate", response_model=list[BrandWinRateRow])
 @limiter.limit(settings.rate_limit)
 def reportes_win_rate(
     request: Request,
@@ -596,7 +593,7 @@ def reportes_win_rate(
     return rows
 
 
-@router.get("/reportes/price-comparison", response_model=List[BrandPriceComparisonRow])
+@router.get("/reportes/price-comparison", response_model=list[BrandPriceComparisonRow])
 @limiter.limit(settings.rate_limit)
 def reportes_price_comparison(
     request: Request,
@@ -608,7 +605,7 @@ def reportes_price_comparison(
     return rows
 
 
-@router.get("/reportes/coverage", response_model=List[BrandCoverageRow])
+@router.get("/reportes/coverage", response_model=list[BrandCoverageRow])
 @limiter.limit(settings.rate_limit)
 def reportes_coverage(
     request: Request,

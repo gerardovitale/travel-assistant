@@ -4,7 +4,6 @@ import subprocess
 import time
 from datetime import datetime
 from datetime import timezone
-from typing import Optional
 
 import pandas as pd
 import pytz
@@ -24,7 +23,7 @@ MIN_EXPECTED_STATIONS = 5000
 logger = logging.getLogger(__name__)
 
 
-def fetch_realtime_stations(curl_timeout: int = 120) -> Optional[pd.DataFrame]:
+def fetch_realtime_stations(curl_timeout: int = 120) -> pd.DataFrame | None:
     """Fetch fuel prices from the Spain government API and return a transformed DataFrame.
 
     Uses curl subprocess to bypass TLS fingerprinting issues with Python's OpenSSL 3.x.

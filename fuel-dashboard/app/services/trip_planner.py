@@ -2,11 +2,6 @@ import logging
 import math
 from typing import Any
 from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Set
-from typing import Tuple
 
 from api.schemas import AlternativePlan
 from api.schemas import StationResult
@@ -21,18 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 def sample_route_waypoints(
-    route_coords: List[List[float]],
+    route_coords: list[list[float]],
     interval_km: float = 10.0,
-) -> List[Tuple[float, float, float]]:
-    """Sample waypoints along a route at regular intervals.
-
-    Args:
-        route_coords: list of [lon, lat] pairs from OSRM.
-        interval_km: distance between sampled waypoints.
-
-    Returns:
-        list of (lat, lon, cumulative_km) tuples.
-    """
+) -> list[tuple[float, float, float]]:
+    """Sample route_coords (OSRM [lon,lat] pairs) at interval_km; return list of (lat, lon, cumulative_km)."""
     if not route_coords:
         return []
 
@@ -53,7 +40,6 @@ def sample_route_waypoints(
         if cumulative - waypoints[-1][2] >= interval_km:
             waypoints.append((route_coords[i][1], route_coords[i][0], round(cumulative, 2)))
 
-    # Always include the last point
     last = route_coords[-1]
     if waypoints[-1] != (last[1], last[0], round(cumulative, 2)):
         waypoints.append((last[1], last[0], round(cumulative, 2)))
@@ -63,12 +49,9 @@ def sample_route_waypoints(
 
 def project_stations_onto_route(
     stations_df,
-    waypoints: List[Tuple[float, float, float]],
+    waypoints: list[tuple[float, float, float]],
 ) -> None:
-    """Add route_km column to stations_df based on closest waypoint's cumulative km.
-
-    Modifies stations_df in place.
-    """
+    """Add route_km column to stations_df in place based on closest waypoint cumulative km."""
     if stations_df.empty or not waypoints:
         return
     stations_df["route_km"] = stations_df["closest_waypoint_idx"].apply(
@@ -84,7 +67,7 @@ def _compute_stop_metrics(
     max_range_km: float,
     tank_liters: float,
     consumption_lper100km: float,
-) -> Tuple[float, float, float]:
+) -> tuple[float, float, float]:
     """Return (fuel_at_arrival_pct, liters_to_fill, cost_eur) for a stop given the prior leg."""
     km_driven = route_km - prev_km
     fuel_used = km_driven * consumption_lper100km / 100
@@ -96,7 +79,7 @@ def _compute_stop_metrics(
 
 
 def _predict_arrival_fuel_pct(
-    stops: List[Dict[str, Any]],
+    stops: list[dict[str, Any]],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
@@ -115,7 +98,7 @@ def _predict_arrival_fuel_pct(
 
 
 def _segments_feasible(
-    stops: List[Dict[str, Any]],
+    stops: list[dict[str, Any]],
     total_km: float,
     fuel_pct: float,
     max_range_km: float,
@@ -137,7 +120,7 @@ def _segments_feasible(
 
 
 def _recompute_stop_metrics(
-    stops: List[Dict[str, Any]],
+    stops: list[dict[str, Any]],
     tank_liters: float,
     consumption_lper100km: float,
     fuel_pct: float,
@@ -163,7 +146,7 @@ def _recompute_stop_metrics(
 
 
 def _prune_redundant_stops(
-    stops: List[Dict[str, Any]],
+    stops: list[dict[str, Any]],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
@@ -171,7 +154,7 @@ def _prune_redundant_stops(
     max_range_km: float,
     safety_margin_km: float,
     min_fuel_at_destination_pct: float,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Drop any stop whose removal still leaves a feasible plan meeting the arrival floor."""
     pruned = list(stops)
     for i in range(len(pruned) - 1, -1, -1):
@@ -190,9 +173,9 @@ def _prune_redundant_stops(
 
 
 def _append_stop(
-    stops: List[Dict[str, Any]],
-    used_labels: Set[str],
-    best: Dict[str, Any],
+    stops: list[dict[str, Any]],
+    used_labels: set[str],
+    best: dict[str, Any],
     prev_km: float,
     prev_range_km: float,
     max_range_km: float,
@@ -214,9 +197,9 @@ def _append_stop(
 
 
 def _insert_floor_safeguard_stop(
-    stops: List[Dict[str, Any]],
-    used_labels: Set[str],
-    sorted_stations: List[Dict[str, Any]],
+    stops: list[dict[str, Any]],
+    used_labels: set[str],
+    sorted_stations: list[dict[str, Any]],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
@@ -270,32 +253,17 @@ def _insert_floor_safeguard_stop(
 
 
 def _find_stops_with_strategy(
-    stations: List[Dict[str, Any]],
+    stations: list[dict[str, Any]],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
     fuel_pct: float,
-    pick_fn: Callable[[List[Dict[str, Any]], float, float], Dict[str, Any]],
+    pick_fn: Callable[[list[dict[str, Any]], float, float], dict[str, Any]],
     safety: float = 0.15,
     reason_template: str = "Mas barata de {n} candidatas en ventana km {a:.0f}-{b:.0f}",
     min_fuel_at_destination_pct: float = 0.0,
-) -> List[Dict[str, Any]]:
-    """Stop selection with pluggable picker, soft arrival-fuel floor, and prune pass.
-
-    Args:
-        stations: list of dicts with 'route_km', 'price', 'label', etc.
-        total_km: total route distance in km.
-        tank_liters: full tank capacity in liters.
-        consumption_lper100km: fuel consumption in L/100km.
-        fuel_pct: initial fuel level as percentage (0-100).
-        pick_fn: callable(candidates, window_start_km, window_end_km) -> best candidate dict.
-        safety: safety margin fraction (default 15%).
-        min_fuel_at_destination_pct: soft floor; a stop is added only if predicted arrival
-            would fall below this value and a station near enough to the destination exists.
-
-    Returns:
-        list of stop dicts with added 'fuel_at_arrival_pct', 'liters_to_fill', 'cost_eur', 'reasoning'.
-    """
+) -> list[dict[str, Any]]:
+    """Greedy stop selection with pluggable picker, soft arrival-floor, and prune pass."""
     if not stations:
         return []
 
@@ -303,8 +271,8 @@ def _find_stops_with_strategy(
     safety_margin_km = max_range_km * safety
     current_range_km = max_range_km * (fuel_pct / 100)
     current_km = 0.0
-    stops: List[Dict[str, Any]] = []
-    used_labels: Set[str] = set()
+    stops: list[dict[str, Any]] = []
+    used_labels: set[str] = set()
 
     sorted_stations = sorted(stations, key=lambda s: s["route_km"])
 
@@ -345,7 +313,6 @@ def _find_stops_with_strategy(
         current_km = best["route_km"]
         current_range_km = max_range_km
 
-    # Soft check: ensure the predicted arrival meets `min_fuel_at_destination_pct`.
     _insert_floor_safeguard_stop(
         stops,
         used_labels,
@@ -359,7 +326,6 @@ def _find_stops_with_strategy(
         min_fuel_at_destination_pct,
     )
 
-    # Prune pass: drop any stop whose removal still meets feasibility and the arrival floor.
     stops = _prune_redundant_stops(
         stops,
         total_km,
@@ -374,11 +340,11 @@ def _find_stops_with_strategy(
     return stops
 
 
-def _pick_cheapest(candidates: List[dict], window_start: float, window_end: float) -> dict:
+def _pick_cheapest(candidates: list[dict], window_start: float, window_end: float) -> dict:
     return min(candidates, key=lambda s: s["price"])
 
 
-def _pick_min_stops(candidates: List[dict], window_start: float, window_end: float) -> dict:
+def _pick_min_stops(candidates: list[dict], window_start: float, window_end: float) -> dict:
     """Pick cheapest in the last third of the window to push stops farther apart."""
     far_threshold = window_start + (window_end - window_start) * 2 / 3
     far_candidates = [s for s in candidates if s["route_km"] >= far_threshold]
@@ -386,20 +352,20 @@ def _pick_min_stops(candidates: List[dict], window_start: float, window_end: flo
     return min(pool, key=lambda s: s["price"])
 
 
-def _pick_min_detour(candidates: List[dict], window_start: float, window_end: float) -> dict:
+def _pick_min_detour(candidates: list[dict], window_start: float, window_end: float) -> dict:
     """Pick by minimum detour first, then by price as tiebreaker."""
     return min(candidates, key=lambda s: (s.get("detour_minutes", 0), s["price"]))
 
 
 def find_optimal_stops(
-    stations: List[dict],
+    stations: list[dict],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
     fuel_pct: float,
     safety: float = 0.15,
     min_fuel_at_destination_pct: float = 0.0,
-) -> List[dict]:
+) -> list[dict]:
     """Greedy cheapest-in-reachable-window stop selection."""
     return _find_stops_with_strategy(
         stations,
@@ -415,14 +381,14 @@ def find_optimal_stops(
 
 
 def find_min_stops(
-    stations: List[dict],
+    stations: list[dict],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
     fuel_pct: float,
     safety: float = 0.15,
     min_fuel_at_destination_pct: float = 0.0,
-) -> List[dict]:
+) -> list[dict]:
     """Fewer stops by picking stations in the far zone of each window."""
     return _find_stops_with_strategy(
         stations,
@@ -438,14 +404,14 @@ def find_min_stops(
 
 
 def find_min_detour(
-    stations: List[dict],
+    stations: list[dict],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
     fuel_pct: float,
     safety: float = 0.15,
     min_fuel_at_destination_pct: float = 0.0,
-) -> List[dict]:
+) -> list[dict]:
     """Prefer on-route stations with minimal detour."""
     return _find_stops_with_strategy(
         stations,
@@ -461,18 +427,14 @@ def find_min_detour(
 
 
 def _fuel_at_destination_pct(
-    stops: List[TripStop],
+    stops: list[TripStop],
     total_km: float,
     tank_liters: float,
     consumption_lper100km: float,
     fuel_level_pct: float,
 ) -> float:
-    """Estimate the fuel level (%) when arriving at the destination.
-
-    Adapter over `_predict_arrival_fuel_pct` for the TripStop-based KPI path.
-    Kept as a thin wrapper so the underlying arithmetic lives in one place.
-    """
-    stop_dicts: List[Dict[str, Any]] = [{"route_km": s.route_km} for s in stops]
+    """Thin adapter over _predict_arrival_fuel_pct for TripStop input."""
+    stop_dicts: list[dict[str, Any]] = [{"route_km": s.route_km} for s in stops]
     return _predict_arrival_fuel_pct(stop_dicts, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
 
 
@@ -508,13 +470,12 @@ def plan_trip(
     fuel_level_pct: float,
     max_detour_minutes: float,
     min_fuel_at_destination_pct: float = 50.0,
-    labels: Optional[List[str]] = None,
+    labels: list[str] | None = None,
 ) -> TripPlan:
     """Main trip planning orchestrator.
 
     Raises ValueError for invalid inputs or geocoding failures.
     """
-    # 1. Geocode
     origin_coords = geocode_address(origin_address)
     if origin_coords is None:
         raise ValueError(f"No se pudo geocodificar el origen: {origin_address}")
@@ -523,7 +484,6 @@ def plan_trip(
     if dest_coords is None:
         raise ValueError(f"No se pudo geocodificar el destino: {destination_address}")
 
-    # 2. Get full route
     route = get_full_route(origin_coords, dest_coords)
     if route is None:
         raise ValueError("No se pudo obtener la ruta entre origen y destino.")
@@ -532,10 +492,8 @@ def plan_trip(
     total_km = route["distance_km"]
     duration_min = route["duration_minutes"]
 
-    # 3. Sample waypoints
     waypoints = sample_route_waypoints(route_coords, interval_km=10)
 
-    # 4. Query stations along corridor
     corridor_km = max_detour_minutes * 1.5
     stations_df = query_stations_along_corridor(waypoints, fuel_type, corridor_km, labels=labels)
 
@@ -557,15 +515,12 @@ def plan_trip(
             fuel_at_destination_pct=dest_fuel,
         )
 
-    # 5. Project stations onto route
     project_stations_onto_route(stations_df, waypoints)
 
-    # 6. Estimate detour time from Haversine distance to route
     # Round-trip off-route at ~60 km/h average urban speed → min per km ≈ 2 min/km
     avg_detour_min_per_km = 2.0
     stations_df["detour_minutes"] = (stations_df["min_distance_km"] * avg_detour_min_per_km).round(1)
 
-    # Filter by max detour
     filtered = stations_df[stations_df["detour_minutes"] <= max_detour_minutes].copy()
 
     # Build candidate list and station dicts in a single pass
@@ -603,7 +558,6 @@ def plan_trip(
             }
         )
 
-    # 7. Greedy stop selection
     optimal_stops = find_optimal_stops(
         station_dicts,
         total_km,
@@ -613,13 +567,12 @@ def plan_trip(
         min_fuel_at_destination_pct=min_fuel_at_destination_pct,
     )
 
-    # 8. Build TripStop list
     trip_stops = [_build_trip_stop(stop) for stop in optimal_stops]
 
     total_fuel_cost = sum(s.cost_eur for s in trip_stops)
     total_fuel_liters = sum(s.liters_to_fill for s in trip_stops)
 
-    # Baseline savings estimate: compare with median price
+    # Baseline savings: compare with median price across candidates
     if candidate_stations:
         prices = sorted(c.price for c in candidate_stations)
         median_price = prices[len(prices) // 2]
@@ -628,7 +581,6 @@ def plan_trip(
     else:
         savings = 0
 
-    # 9. Generate alternative plans
     recommended_labels = {s.station.label for s in trip_stops}
     stop_args = (station_dicts, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
     alternative_strategies = [

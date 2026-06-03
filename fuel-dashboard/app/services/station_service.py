@@ -2,9 +2,6 @@ import logging
 import re
 import time
 from copy import deepcopy
-from typing import Dict
-from typing import List
-from typing import Optional
 
 import pandas as pd
 from api.schemas import DistrictPriceResult
@@ -66,7 +63,7 @@ def _validate_zip_code(zip_code: str) -> str:
     return zip_code
 
 
-def _trend_points_from_df(df: pd.DataFrame) -> List[TrendPoint]:
+def _trend_points_from_df(df: pd.DataFrame) -> list[TrendPoint]:
     return [
         TrendPoint(
             date=str(row["date"]),
@@ -78,9 +75,7 @@ def _trend_points_from_df(df: pd.DataFrame) -> List[TrendPoint]:
     ]
 
 
-def _df_to_station_results(
-    df: pd.DataFrame, fuel_type: str, national_avg: Optional[float] = None
-) -> List[StationResult]:
+def _df_to_station_results(df: pd.DataFrame, fuel_type: str, national_avg: float | None = None) -> list[StationResult]:
     results = []
     for _, row in df.iterrows():
         pct_vs_avg = None
@@ -112,8 +107,8 @@ def _resolve_fuel_group(fuel_group: FuelGroup):
 
 
 def _df_to_station_results_group(
-    df: pd.DataFrame, primary_fuel: str, all_fuels: List[str], national_avg: Optional[float] = None
-) -> List[StationResult]:
+    df: pd.DataFrame, primary_fuel: str, all_fuels: list[str], national_avg: float | None = None
+) -> list[StationResult]:
     results = []
     for _, row in df.iterrows():
         primary_price = float(row[primary_fuel])
@@ -160,8 +155,8 @@ def _enrich_with_road_distances(lat: float, lon: float, df: pd.DataFrame) -> pd.
 
 
 async def get_route_geometries_for_stations(
-    lat: float, lon: float, stations: List[StationResult]
-) -> Dict[str, Optional[List[List[float]]]]:
+    lat: float, lon: float, stations: list[StationResult]
+) -> dict[str, list[list[float]] | None]:
     if not settings.osrm_enabled or not stations:
         return {}
     destinations = [(s.latitude, s.longitude) for s in stations]
@@ -171,14 +166,14 @@ async def get_route_geometries_for_stations(
     return {s.label: geom for s, geom in zip(stations, geometries)}
 
 
-def get_zip_code_boundary(zip_code: str) -> Optional[dict]:
+def get_zip_code_boundary(zip_code: str) -> dict | None:
     _validate_zip_code(zip_code)
     return load_postal_code_boundary(zip_code)
 
 
 def get_cheapest_by_zip(
-    zip_code: str, fuel_type: FuelType, limit: int = 5, labels: Optional[List[str]] = None
-) -> List[StationResult]:
+    zip_code: str, fuel_type: FuelType, limit: int = 5, labels: list[str] | None = None
+) -> list[StationResult]:
     _validate_zip_code(zip_code)
     df = query_cheapest_by_zip(zip_code, fuel_type.value, limit, labels=labels)
     national_avg = query_national_avg_price(fuel_type.value)
@@ -186,8 +181,8 @@ def get_cheapest_by_zip(
 
 
 def get_nearest_by_address(
-    lat: float, lon: float, fuel_type: FuelType, limit: int = 5, labels: Optional[List[str]] = None
-) -> List[StationResult]:
+    lat: float, lon: float, fuel_type: FuelType, limit: int = 5, labels: list[str] | None = None
+) -> list[StationResult]:
     oversample = limit * 3 if settings.osrm_enabled else limit
     df = query_nearest_stations(lat, lon, fuel_type.value, oversample, labels=labels)
     df = _enrich_with_road_distances(lat, lon, df)
@@ -202,8 +197,8 @@ def get_cheapest_by_address(
     fuel_type: FuelType,
     radius_km: float = None,
     limit: int = 5,
-    labels: Optional[List[str]] = None,
-) -> List[StationResult]:
+    labels: list[str] | None = None,
+) -> list[StationResult]:
     if radius_km is None:
         radius_km = settings.default_radius_km
     fetch_radius = radius_km * 1.3 if settings.osrm_enabled else radius_km
@@ -223,12 +218,12 @@ def get_best_by_address(
     lat: float,
     lon: float,
     fuel_type: FuelType,
-    radius_km: Optional[float] = None,
+    radius_km: float | None = None,
     limit: int = 5,
-    consumption_lper100km: Optional[float] = None,
-    tank_liters: Optional[float] = None,
-    labels: Optional[List[str]] = None,
-) -> List[StationResult]:
+    consumption_lper100km: float | None = None,
+    tank_liters: float | None = None,
+    labels: list[str] | None = None,
+) -> list[StationResult]:
     """Rank stations by estimated total cost on a 0-10 scale (10 = cheapest).
 
     Total cost model
@@ -291,14 +286,14 @@ def get_station_labels(top_n: int = 0) -> dict[str, str]:
     return get_distinct_labels(top_n=top_n)
 
 
-def get_national_avg_stats(fuel_type: str) -> tuple[Optional[float], int]:
+def get_national_avg_stats(fuel_type: str) -> tuple[float | None, int]:
     """Return (avg_price, station_count) for the national average."""
     return query_national_avg_stats(fuel_type)
 
 
 def get_cheapest_by_zip_group(
-    zip_code: str, fuel_group: FuelGroup, limit: int = 5, labels: Optional[List[str]] = None
-) -> List[StationResult]:
+    zip_code: str, fuel_group: FuelGroup, limit: int = 5, labels: list[str] | None = None
+) -> list[StationResult]:
     _validate_zip_code(zip_code)
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     df = query_cheapest_by_zip_group(zip_code, primary, all_fuels, limit, labels=labels)
@@ -307,8 +302,8 @@ def get_cheapest_by_zip_group(
 
 
 def get_nearest_by_address_group(
-    lat: float, lon: float, fuel_group: FuelGroup, limit: int = 5, labels: Optional[List[str]] = None
-) -> List[StationResult]:
+    lat: float, lon: float, fuel_group: FuelGroup, limit: int = 5, labels: list[str] | None = None
+) -> list[StationResult]:
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     oversample = limit * 3 if settings.osrm_enabled else limit
     df = query_nearest_stations_group(lat, lon, primary, all_fuels, oversample, labels=labels)
@@ -324,8 +319,8 @@ def get_cheapest_by_address_group(
     fuel_group: FuelGroup,
     radius_km: float = None,
     limit: int = 5,
-    labels: Optional[List[str]] = None,
-) -> List[StationResult]:
+    labels: list[str] | None = None,
+) -> list[StationResult]:
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     if radius_km is None:
         radius_km = settings.default_radius_km
@@ -346,12 +341,12 @@ def get_best_by_address_group(
     lat: float,
     lon: float,
     fuel_group: FuelGroup,
-    radius_km: Optional[float] = None,
+    radius_km: float | None = None,
     limit: int = 5,
-    consumption_lper100km: Optional[float] = None,
-    tank_liters: Optional[float] = None,
-    labels: Optional[List[str]] = None,
-) -> List[StationResult]:
+    consumption_lper100km: float | None = None,
+    tank_liters: float | None = None,
+    labels: list[str] | None = None,
+) -> list[StationResult]:
     primary, all_fuels = _resolve_fuel_group(fuel_group)
     if radius_km is None:
         radius_km = settings.default_radius_km
@@ -379,7 +374,7 @@ def get_best_by_address_group(
     return _df_to_station_results_group(df, primary, all_fuels, national_avg)
 
 
-def get_cheapest_zones(province: str, fuel_type: FuelType) -> List[ZoneResult]:
+def get_cheapest_zones(province: str, fuel_type: FuelType) -> list[ZoneResult]:
     df = query_cheapest_zones(province, fuel_type.value)
     return [
         ZoneResult(
@@ -392,7 +387,7 @@ def get_cheapest_zones(province: str, fuel_type: FuelType) -> List[ZoneResult]:
     ]
 
 
-def get_province_price_map(fuel_type: FuelType) -> List[ProvincePriceResult]:
+def get_province_price_map(fuel_type: FuelType) -> list[ProvincePriceResult]:
     df = query_avg_price_by_province(fuel_type.value)
     return [
         ProvincePriceResult(
@@ -404,7 +399,7 @@ def get_province_price_map(fuel_type: FuelType) -> List[ProvincePriceResult]:
     ]
 
 
-def get_province_price_map_filtered(fuel_type: FuelType, mainland_only: bool = False) -> List[ProvincePriceResult]:
+def get_province_price_map_filtered(fuel_type: FuelType, mainland_only: bool = False) -> list[ProvincePriceResult]:
     results = get_province_price_map(fuel_type)
     if not mainland_only:
         return results
@@ -434,7 +429,7 @@ def get_province_price_geojson(fuel_type: FuelType, mainland_only: bool = False)
     return geojson
 
 
-def get_district_price_map(province: str, fuel_type: FuelType) -> List[DistrictPriceResult]:
+def get_district_price_map(province: str, fuel_type: FuelType) -> list[DistrictPriceResult]:
     if normalize_data_province_name(province) != "madrid":
         return []
     geojson = load_madrid_districts()
@@ -476,11 +471,11 @@ def get_district_price_geojson(province: str, fuel_type: FuelType) -> dict:
     return geojson
 
 
-def get_municipalities(province: str) -> List[str]:
+def get_municipalities(province: str) -> list[str]:
     return query_municipalities_by_province(province)
 
 
-def get_zip_code_price_map_by_municipality(province: str, fuel_type: FuelType, municipality: str) -> List[ZoneResult]:
+def get_zip_code_price_map_by_municipality(province: str, fuel_type: FuelType, municipality: str) -> list[ZoneResult]:
     df = query_cheapest_zones_by_municipality(province, fuel_type.value, municipality)
     return [
         ZoneResult(
@@ -493,7 +488,7 @@ def get_zip_code_price_map_by_municipality(province: str, fuel_type: FuelType, m
     ]
 
 
-def get_zip_codes_for_district(province: str, fuel_type: FuelType, district_name: str) -> List[str]:
+def get_zip_codes_for_district(province: str, fuel_type: FuelType, district_name: str) -> list[str]:
     """Get zip codes that fall within a Madrid district by assigning stations to districts."""
     if normalize_data_province_name(province) != "madrid":
         return []
@@ -520,20 +515,20 @@ def get_zip_codes_for_district(province: str, fuel_type: FuelType, district_name
     return sorted(target_zips)
 
 
-def get_zip_code_price_map_for_zips(province: str, fuel_type: FuelType, zip_codes: List[str]) -> List[ZoneResult]:
+def get_zip_code_price_map_for_zips(province: str, fuel_type: FuelType, zip_codes: list[str]) -> list[ZoneResult]:
     """Get per-zip-code prices filtered to a specific set of zip codes."""
     all_zones = get_cheapest_zones(province, fuel_type)
     zip_set = set(zip_codes)
     return [z for z in all_zones if z.zip_code in zip_set]
 
 
-def get_postal_code_geojson(zip_codes: List[str]) -> dict:
+def get_postal_code_geojson(zip_codes: list[str]) -> dict:
     return load_postal_codes_for_zip_list(zip_codes)
 
 
 def get_price_trends(
-    zip_code: Optional[str], fuel_type: FuelType, period: TrendPeriod, province: Optional[str] = None
-) -> List[TrendPoint]:
+    zip_code: str | None, fuel_type: FuelType, period: TrendPeriod, province: str | None = None
+) -> list[TrendPoint]:
     days_back = TREND_PERIOD_DAYS[period]
     started = time.perf_counter()
 
@@ -563,12 +558,12 @@ def get_price_trends(
 
 
 def get_group_price_trends(
-    zip_code: Optional[str], fuel_group: FuelGroup, period: TrendPeriod, province: Optional[str] = None
-) -> Dict[str, List[TrendPoint]]:
+    zip_code: str | None, fuel_group: FuelGroup, period: TrendPeriod, province: str | None = None
+) -> dict[str, list[TrendPoint]]:
     days_back = TREND_PERIOD_DAYS[period]
     fuel_types = [ft.value for ft in FUEL_GROUP_MEMBERS[fuel_group]]
     started = time.perf_counter()
-    result: Dict[str, List[TrendPoint]] = {}
+    result: dict[str, list[TrendPoint]] = {}
 
     if not zip_code:
         source = "national_aggregate"
@@ -614,7 +609,7 @@ def get_province_ranking(fuel_type: FuelType, days_back: int) -> pd.DataFrame:
 
 
 def get_day_of_week_pattern(
-    fuel_type: FuelType, province: Optional[str] = None, exclude_provinces: Optional[set] = None
+    fuel_type: FuelType, province: str | None = None, exclude_provinces: set | None = None
 ) -> pd.DataFrame:
     from data.duckdb_engine import query_day_of_week_pattern
     from data.gcs_client import download_aggregate
@@ -645,7 +640,7 @@ def get_brand_price_trend(fuel_type: FuelType, days_back: int, brands: list) -> 
     return query_brand_price_trend(agg_df, fuel_type.value, days_back, brands)
 
 
-def get_brand_win_rate_report(fuel_type: str, direction: str) -> Optional[list[dict]]:
+def get_brand_win_rate_report(fuel_type: str, direction: str) -> list[dict] | None:
     from config import settings
     from data.gcs_client import download_aggregate
 
@@ -679,7 +674,7 @@ def get_brand_win_rate_report(fuel_type: str, direction: str) -> Optional[list[d
     return grouped.sort_values("win_rate_pct", ascending=False).to_dict(orient="records")
 
 
-def get_brand_price_comparison_report(fuel_type: str) -> Optional[list[dict]]:
+def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
     from config import settings
     from data.gcs_client import download_aggregate
 
@@ -716,7 +711,7 @@ def get_brand_price_comparison_report(fuel_type: str) -> Optional[list[dict]]:
     return grouped.sort_values("price_delta_pct").to_dict(orient="records")
 
 
-def get_brand_coverage_report(fuel_type: str) -> Optional[list[dict]]:
+def get_brand_coverage_report(fuel_type: str) -> list[dict] | None:
     from config import settings
     from data.gcs_client import download_aggregate
 

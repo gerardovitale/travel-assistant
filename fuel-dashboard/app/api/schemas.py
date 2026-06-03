@@ -1,8 +1,5 @@
 from enum import Enum
 from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
 
 from config import settings
 from pydantic import BaseModel
@@ -34,7 +31,7 @@ class FuelGroup(str, Enum):
     natural_gas = "natural_gas"
 
 
-FUEL_GROUP_MEMBERS: Dict[FuelGroup, List[FuelType]] = {
+FUEL_GROUP_MEMBERS: dict[FuelGroup, list[FuelType]] = {
     FuelGroup.diesel: [
         FuelType.diesel_a_price,
         FuelType.diesel_b_price,
@@ -60,7 +57,7 @@ FUEL_GROUP_MEMBERS: Dict[FuelGroup, List[FuelType]] = {
 }
 
 
-FUEL_GROUP_PRIMARY: Dict[FuelGroup, FuelType] = {
+FUEL_GROUP_PRIMARY: dict[FuelGroup, FuelType] = {
     FuelGroup.diesel: FuelType.diesel_a_price,
     FuelGroup.gasoline_95: FuelType.gasoline_95_e5_price,
     FuelGroup.gasoline_98: FuelType.gasoline_98_e5_price,
@@ -69,7 +66,7 @@ FUEL_GROUP_PRIMARY: Dict[FuelGroup, FuelType] = {
 }
 
 # Fuel types that don't belong to any group (shown as standalone in search)
-FUEL_SINGLETONS: List[FuelType] = [
+FUEL_SINGLETONS: list[FuelType] = [
     FuelType.liquefied_petroleum_gases_price,
     FuelType.hydrogen_price,
 ]
@@ -114,13 +111,13 @@ class StationResult(BaseModel):
     latitude: float
     longitude: float
     price: float
-    distance_km: Optional[float] = None
-    score: Optional[float] = None
-    estimated_total_cost: Optional[float] = None
-    route_km: Optional[float] = None
-    detour_minutes: Optional[float] = None
-    pct_vs_avg: Optional[float] = None
-    variant_prices: Optional[Dict[str, float]] = None
+    distance_km: float | None = None
+    score: float | None = None
+    estimated_total_cost: float | None = None
+    route_km: float | None = None
+    detour_minutes: float | None = None
+    pct_vs_avg: float | None = None
+    variant_prices: dict[str, float] | None = None
 
 
 class ZoneResult(BaseModel):
@@ -156,13 +153,13 @@ class TripStop(BaseModel):
     fuel_at_arrival_pct: float
     liters_to_fill: float
     cost_eur: float
-    reasoning: Optional[str] = None
+    reasoning: str | None = None
 
 
 class AlternativePlan(BaseModel):
     strategy_name: str
     strategy_description: str
-    stops: List[TripStop]
+    stops: list[TripStop]
     total_fuel_cost: float
     total_fuel_liters: float
     total_detour_minutes: float
@@ -174,18 +171,18 @@ class AlternativePlan(BaseModel):
 
 
 class TripPlan(BaseModel):
-    stops: List[TripStop]
+    stops: list[TripStop]
     total_fuel_cost: float
     total_distance_km: float
     duration_minutes: float
     total_fuel_liters: float
     savings_eur: float
-    route_coordinates: List[List[float]]
-    candidate_stations: List[StationResult]
-    origin_coords: List[float]
-    destination_coords: List[float]
+    route_coordinates: list[list[float]]
+    candidate_stations: list[StationResult]
+    origin_coords: list[float]
+    destination_coords: list[float]
     fuel_at_destination_pct: float = 0.0
-    alternative_plans: List[AlternativePlan] = []
+    alternative_plans: list[AlternativePlan] = []
 
 
 class SearchLocation(BaseModel):
@@ -194,28 +191,28 @@ class SearchLocation(BaseModel):
 
 
 class StationListResponse(BaseModel):
-    stations: List[StationResult]
+    stations: list[StationResult]
     fuel_type: str
     query_type: str
-    search_location: Optional[SearchLocation] = None
+    search_location: SearchLocation | None = None
 
 
 class ZoneListResponse(BaseModel):
-    zones: List[ZoneResult]
+    zones: list[ZoneResult]
     province: str
     fuel_type: str
 
 
 class TrendResponse(BaseModel):
-    trend: List[TrendPoint]
-    zip_code: Optional[str] = None
+    trend: list[TrendPoint]
+    zip_code: str | None = None
     fuel_type: str
     period: str
 
 
 class GroupTrendResponse(BaseModel):
-    series: Dict[str, List[TrendPoint]]
-    zip_code: Optional[str] = None
+    series: dict[str, list[TrendPoint]]
+    zip_code: str | None = None
     fuel_group: str
     period: str
 
@@ -226,18 +223,18 @@ class HistoricalForecastResponse(BaseModel):
     source: str
     coverage_days: int = 0
     transition_observations: int = 0
-    current_date: Optional[str] = None
-    current_avg_price: Optional[float] = None
-    current_regime: Optional[str] = None
-    next_day_probabilities: Dict[str, float] = Field(default_factory=dict)
-    cheaper_within_3d: Optional[float] = None
-    cheaper_within_7d: Optional[float] = None
-    expected_days_in_current_regime: Optional[float] = None
+    current_date: str | None = None
+    current_avg_price: float | None = None
+    current_regime: str | None = None
+    next_day_probabilities: dict[str, float] = Field(default_factory=dict)
+    cheaper_within_3d: float | None = None
+    cheaper_within_7d: float | None = None
+    expected_days_in_current_regime: float | None = None
     confidence: float = 0.0
     recommendation: str
     explanation: str
     insufficient_data: bool = False
-    transition_matrix: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    transition_matrix: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 
 class TripPlanRequest(BaseModel):
@@ -253,45 +250,45 @@ class TripPlanRequest(BaseModel):
     min_fuel_at_destination_pct: float = Field(
         default_factory=lambda: settings.default_min_fuel_at_destination_pct, ge=0.0, le=80.0
     )
-    labels: Optional[List[str]] = None
+    labels: list[str] | None = None
 
 
 class NationalAvgResponse(BaseModel):
     fuel_type: str
-    avg_price: Optional[float]
+    avg_price: float | None
     station_count: int
 
 
 class LabelsResponse(BaseModel):
-    labels: Dict[str, str]
+    labels: dict[str, str]
 
 
 class ProvincesResponse(BaseModel):
-    provinces: Dict[str, str]
+    provinces: dict[str, str]
 
 
 class MunicipalitiesResponse(BaseModel):
     province: str
-    municipalities: List[str]
+    municipalities: list[str]
 
 
 class FuelCatalogResponse(BaseModel):
-    groups: Dict[str, List[str]]
-    primary: Dict[str, str]
-    singletons: List[str]
+    groups: dict[str, list[str]]
+    primary: dict[str, str]
+    singletons: list[str]
 
 
 class DataFrameResponse(BaseModel):
-    rows: List[Dict[str, Any]]
+    rows: list[dict[str, Any]]
 
 
 class ProvinceMapResponse(BaseModel):
-    items: List[ProvincePriceResult]
+    items: list[ProvincePriceResult]
     fuel_type: str
 
 
 class DistrictMapResponse(BaseModel):
-    items: List[DistrictPriceResult]
+    items: list[DistrictPriceResult]
     province: str
     fuel_type: str
 
@@ -303,7 +300,7 @@ class AddressSuggestion(BaseModel):
 
 
 class AddressSuggestionsResponse(BaseModel):
-    suggestions: List[AddressSuggestion]
+    suggestions: list[AddressSuggestion]
 
 
 class GeocodeResponse(BaseModel):
@@ -312,7 +309,7 @@ class GeocodeResponse(BaseModel):
 
 
 class GeoJSONResponse(BaseModel):
-    geojson: Dict[str, Any]
+    geojson: dict[str, Any]
 
 
 class TripPlanResponse(BaseModel):
@@ -320,8 +317,8 @@ class TripPlanResponse(BaseModel):
 
 
 class BrandHistoricalResponse(BaseModel):
-    ranking: List[Dict[str, Any]]
-    trend: List[Dict[str, Any]]
+    ranking: list[dict[str, Any]]
+    trend: list[dict[str, Any]]
 
 
 class DataInventory(BaseModel):
@@ -329,12 +326,12 @@ class DataInventory(BaseModel):
     num_months: int
     num_years: int
     total_size_bytes: int
-    min_date: Optional[str]
-    max_date: Optional[str]
+    min_date: str | None
+    max_date: str | None
 
 
 class LatestDayStats(BaseModel):
-    max_date: Optional[str]
+    max_date: str | None
     unique_stations: int = 0
     unique_provinces: int = 0
     unique_communities: int = 0
@@ -345,13 +342,13 @@ class LatestDayStats(BaseModel):
 class RealtimeStatus(BaseModel):
     realtime_enabled: bool
     realtime_active: bool
-    last_realtime_refresh: Optional[float]
+    last_realtime_refresh: float | None
 
 
 class QualityResponse(BaseModel):
     inventory: DataInventory
     latest_day: LatestDayStats
-    missing_days: List[str]
+    missing_days: list[str]
     realtime: RealtimeStatus
 
 
@@ -387,4 +384,4 @@ class BrandCoverageRow(BaseModel):
 
 
 class RouteResponse(BaseModel):
-    coordinates: List[List[float]]
+    coordinates: list[list[float]]

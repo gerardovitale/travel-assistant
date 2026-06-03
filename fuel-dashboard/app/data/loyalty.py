@@ -1,5 +1,4 @@
 from typing import NamedTuple
-from typing import Optional
 
 
 class LoyaltyProgram(NamedTuple):
@@ -26,7 +25,7 @@ LOYALTY_LABEL_ALIASES: dict[str, str] = {
 }
 
 
-def normalize_loyalty_label(label: str) -> Optional[str]:
+def normalize_loyalty_label(label: str) -> str | None:
     """Normalize raw API labels to the supported loyalty brand keys."""
     if not label:
         return None
@@ -36,19 +35,19 @@ def normalize_loyalty_label(label: str) -> Optional[str]:
     return LOYALTY_LABEL_ALIASES.get(cleaned, cleaned)
 
 
-def get_loyalty_program(label: str) -> Optional[LoyaltyProgram]:
+def get_loyalty_program(label: str) -> LoyaltyProgram | None:
     """Return the loyalty program for a brand label, or None."""
     normalized_label = normalize_loyalty_label(label)
     return LOYALTY_DISCOUNTS.get(normalized_label) if normalized_label else None
 
 
-def get_loyalty_discount(label: str) -> Optional[float]:
+def get_loyalty_discount(label: str) -> float | None:
     """Return the loyalty discount in EUR/L for a brand, or None."""
     program = get_loyalty_program(label)
     return program.discount_eur_per_liter if program else None
 
 
-def get_loyalty_price(label: str, price: float) -> Optional[float]:
+def get_loyalty_price(label: str, price: float) -> float | None:
     """Return the loyalty-adjusted price (price - discount), or None if no program exists."""
     discount = get_loyalty_discount(label)
     if discount is None:

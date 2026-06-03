@@ -1,8 +1,4 @@
-from typing import Dict
-from typing import List
-
-
-def get_renaming_map() -> Dict[str, str]:
+def get_renaming_map() -> dict[str, str]:
     return {
         "C.P.": "zip_code",
         "IDEESS": "eess_id",
@@ -34,7 +30,7 @@ def get_renaming_map() -> Dict[str, str]:
     }
 
 
-def get_float_columns() -> List[str]:
+def get_float_columns() -> list[str]:
     return [
         "latitude",
         "longitude",
@@ -55,7 +51,7 @@ def get_float_columns() -> List[str]:
     ]
 
 
-def get_expected_columns() -> List[str]:
+def get_expected_columns() -> list[str]:
     return [
         "timestamp",
         "zip_code",

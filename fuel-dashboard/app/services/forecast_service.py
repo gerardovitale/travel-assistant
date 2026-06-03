@@ -1,6 +1,3 @@
-from typing import Dict
-from typing import Optional
-
 import pandas as pd
 from api.schemas import FuelType
 from api.schemas import HistoricalForecastResponse
@@ -18,7 +15,7 @@ MIN_OBSERVATION_DAYS = 60
 DEFAULT_WINDOW_DAYS = 180
 
 
-def _prepare_history(df: Optional[pd.DataFrame], value_column: str = "avg_price") -> pd.DataFrame:
+def _prepare_history(df: pd.DataFrame | None, value_column: str = "avg_price") -> pd.DataFrame:
     if df is None or df.empty:
         return pd.DataFrame(columns=["date", value_column])
 
@@ -79,7 +76,7 @@ def _assign_regimes(history: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def _build_transition_counts(history: pd.DataFrame) -> Dict[str, Dict[str, int]]:
+def _build_transition_counts(history: pd.DataFrame) -> dict[str, dict[str, int]]:
     counts = {src: {dst: 0 for dst in REGIMES} for src in REGIMES}
     if history.empty:
         return counts
@@ -95,7 +92,7 @@ def _build_transition_counts(history: pd.DataFrame) -> Dict[str, Dict[str, int]]
     return counts
 
 
-def _transition_matrix(counts: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str, float]]:
+def _transition_matrix(counts: dict[str, dict[str, int]]) -> dict[str, dict[str, float]]:
     matrix = {src: {dst: 0.0 for dst in REGIMES} for src in REGIMES}
     for src in REGIMES:
         total = sum(counts[src].values())
@@ -108,7 +105,7 @@ def _transition_matrix(counts: Dict[str, Dict[str, int]]) -> Dict[str, Dict[str,
 
 
 def _probability_of_cheaper_regime_within_days(
-    matrix: Dict[str, Dict[str, float]], current_regime: str, days: int
+    matrix: dict[str, dict[str, float]], current_regime: str, days: int
 ) -> float:
     current_idx = REGIME_INDEX[current_regime]
     target_states = [regime for regime in REGIMES if REGIME_INDEX[regime] < current_idx]
@@ -130,14 +127,14 @@ def _probability_of_cheaper_regime_within_days(
     return round(max(0.0, min(1.0, 1.0 - avoid_probability)), 4)
 
 
-def _expected_days_in_regime(matrix: Dict[str, Dict[str, float]], current_regime: str) -> Optional[float]:
+def _expected_days_in_regime(matrix: dict[str, dict[str, float]], current_regime: str) -> float | None:
     stay_probability = matrix[current_regime][current_regime]
     if stay_probability >= 0.9999:
         return None
     return round(1.0 / max(1e-6, 1.0 - stay_probability), 1)
 
 
-def _confidence_score(counts: Dict[str, Dict[str, int]]) -> float:
+def _confidence_score(counts: dict[str, dict[str, int]]) -> float:
     transition_total = sum(sum(destinations.values()) for destinations in counts.values())
     if transition_total <= 0:
         return 0.0
@@ -252,8 +249,8 @@ def _build_response(
 def get_historical_forecast(
     fuel_type: FuelType,
     *,
-    zip_code: Optional[str] = None,
-    province: Optional[str] = None,
+    zip_code: str | None = None,
+    province: str | None = None,
     window_days: int = DEFAULT_WINDOW_DAYS,
 ) -> HistoricalForecastResponse:
     if zip_code:

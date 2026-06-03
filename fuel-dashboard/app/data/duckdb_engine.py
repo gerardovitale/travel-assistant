@@ -3,8 +3,6 @@ import logging
 import math
 import threading
 import time
-from typing import List
-from typing import Optional
 
 import duckdb
 import pandas as pd
@@ -27,7 +25,7 @@ def _validate_fuel_column(fuel_type: str) -> str:
     return fuel_type
 
 
-def _label_filter_clause(labels: Optional[List[str]], next_param_idx: int) -> tuple[str, list]:
+def _label_filter_clause(labels: list[str] | None, next_param_idx: int) -> tuple[str, list]:
     if not labels:
         return "", []
     return f"AND label = ANY(${next_param_idx}::VARCHAR[])", [labels]
@@ -40,10 +38,10 @@ def filter_public_stations(df: pd.DataFrame) -> pd.DataFrame:
     return df[df["sale_type"] == "p"]
 
 
-_connection: Optional[duckdb.DuckDBPyConnection] = None
+_connection: duckdb.DuckDBPyConnection | None = None
 _lock = threading.Lock()
 _zip_code_trend_ready = threading.Event()
-_last_successful_trend_refresh: Optional[float] = None
+_last_successful_trend_refresh: float | None = None
 
 ZIP_CODE_TREND_TABLE = "zip_code_daily_stats"
 ZIP_CODE_TREND_COLUMNS = (
@@ -58,7 +56,7 @@ ZIP_CODE_TREND_COLUMNS = (
 )
 
 
-def _normalize_zip_code_trend_aggregate(aggregate_df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+def _normalize_zip_code_trend_aggregate(aggregate_df: pd.DataFrame | None) -> pd.DataFrame | None:
     if aggregate_df is None:
         return None
 
@@ -90,10 +88,7 @@ def get_connection() -> duckdb.DuckDBPyConnection:
 
 
 def replace_latest_stations(df: pd.DataFrame) -> int:
-    """Atomically replace the latest_stations table with the given DataFrame.
-
-    Returns the number of rows loaded.
-    """
+    """Atomically replace the latest_stations table; return row count."""
     with _lock:
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS latest_stations")
@@ -115,7 +110,7 @@ def refresh_latest_snapshot() -> None:
     logger.info(f"Loaded {count} stations into latest_stations table")
 
 
-def get_latest_data_timestamp() -> Optional[str]:
+def get_latest_data_timestamp() -> str | None:
     """Return the MAX(timestamp) from the loaded stations snapshot, or None if unavailable."""
     try:
         with _lock:
@@ -180,7 +175,7 @@ def refresh_zip_code_trend_snapshot() -> bool:
 
 
 def query_cheapest_by_zip(
-    zip_code: str, fuel_type: str, limit: int = 5, labels: Optional[List[str]] = None
+    zip_code: str, fuel_type: str, limit: int = 5, labels: list[str] | None = None
 ) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     label_clause, label_params = _label_filter_clause(labels, 3)
@@ -200,7 +195,7 @@ def query_cheapest_by_zip(
 
 
 def query_stations_within_radius(
-    lat: float, lon: float, fuel_type: str, radius_km: float, labels: Optional[List[str]] = None
+    lat: float, lon: float, fuel_type: str, radius_km: float, labels: list[str] | None = None
 ) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     label_clause, label_params = _label_filter_clause(labels, 4)
@@ -227,7 +222,7 @@ def query_stations_within_radius(
 
 
 def query_nearest_stations(
-    lat: float, lon: float, fuel_type: str, limit: int = 5, labels: Optional[List[str]] = None
+    lat: float, lon: float, fuel_type: str, limit: int = 5, labels: list[str] | None = None
 ) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     label_clause, label_params = _label_filter_clause(labels, 4)
@@ -252,7 +247,7 @@ def query_nearest_stations(
         ).fetchdf()
 
 
-def _validate_fuel_columns(fuel_types: List[str]) -> List[str]:
+def _validate_fuel_columns(fuel_types: list[str]) -> list[str]:
     if not fuel_types:
         raise ValueError("At least one fuel column is required")
     for ft in fuel_types:
@@ -265,7 +260,7 @@ def _primary_availability_predicate(primary_fuel: str) -> str:
 
 
 def query_cheapest_by_zip_group(
-    zip_code: str, primary_fuel: str, all_fuels: List[str], limit: int = 5, labels: Optional[List[str]] = None
+    zip_code: str, primary_fuel: str, all_fuels: list[str], limit: int = 5, labels: list[str] | None = None
 ) -> pd.DataFrame:
     primary_fuel = _validate_fuel_column(primary_fuel)
     fuel_types = _validate_fuel_columns(all_fuels)
@@ -288,7 +283,7 @@ def query_cheapest_by_zip_group(
 
 
 def query_nearest_stations_group(
-    lat: float, lon: float, primary_fuel: str, all_fuels: List[str], limit: int = 5, labels: Optional[List[str]] = None
+    lat: float, lon: float, primary_fuel: str, all_fuels: list[str], limit: int = 5, labels: list[str] | None = None
 ) -> pd.DataFrame:
     primary_fuel = _validate_fuel_column(primary_fuel)
     fuel_types = _validate_fuel_columns(all_fuels)
@@ -320,9 +315,9 @@ def query_stations_within_radius_group(
     lat: float,
     lon: float,
     primary_fuel: str,
-    all_fuels: List[str],
+    all_fuels: list[str],
     radius_km: float,
-    labels: Optional[List[str]] = None,
+    labels: list[str] | None = None,
 ) -> pd.DataFrame:
     primary_fuel = _validate_fuel_column(primary_fuel)
     fuel_types = _validate_fuel_columns(all_fuels)
@@ -370,7 +365,7 @@ def query_cheapest_zones(province: str, fuel_type: str) -> pd.DataFrame:
         ).fetchdf()
 
 
-def query_price_trends(blob_names: List[str], zip_code: str, fuel_type: str) -> pd.DataFrame:
+def query_price_trends(blob_names: list[str], zip_code: str, fuel_type: str) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     if not blob_names:
         return pd.DataFrame()
@@ -460,7 +455,7 @@ def query_cached_zip_code_price_trend(zip_code: str, fuel_type: str, days_back: 
     return result
 
 
-def query_national_price_trend(fuel_type: str, days_back: int, province: Optional[str] = None) -> pd.DataFrame:
+def query_national_price_trend(fuel_type: str, days_back: int, province: str | None = None) -> pd.DataFrame:
     """Query national daily price trend by aggregating all zip codes in the trend cache."""
     fuel_type = _validate_fuel_column(fuel_type)
     if not _zip_code_trend_ready.is_set():
@@ -487,7 +482,7 @@ def query_national_price_trend(fuel_type: str, days_back: int, province: Optiona
 
 
 def query_national_group_price_trend(
-    fuel_types: List[str], days_back: int, province: Optional[str] = None
+    fuel_types: list[str], days_back: int, province: str | None = None
 ) -> pd.DataFrame:
     """Query national daily price trend for multiple fuel types from the trend cache."""
     _validate_fuel_columns(fuel_types)
@@ -515,7 +510,7 @@ def query_national_group_price_trend(
         ).fetchdf()
 
 
-def query_cached_group_price_trend(zip_code: str, fuel_types: List[str], days_back: int) -> pd.DataFrame:
+def query_cached_group_price_trend(zip_code: str, fuel_types: list[str], days_back: int) -> pd.DataFrame:
     """Query daily price trend for multiple fuel types in a zip code from the DuckDB trend cache."""
     for ft in fuel_types:
         _validate_fuel_column(ft)
@@ -601,7 +596,7 @@ def query_cheapest_zones_by_municipality(province: str, municipality: str, fuel_
         ).fetchdf()
 
 
-def query_municipalities_by_province(province: str) -> List[str]:
+def query_municipalities_by_province(province: str) -> list[str]:
     with _lock:
         conn = get_connection()
         result = conn.execute(
@@ -629,23 +624,14 @@ def query_zip_codes_by_district(province: str, fuel_type: str) -> pd.DataFrame:
 
 
 def query_stations_along_corridor(
-    waypoints: List[tuple],
+    waypoints: list[tuple],
     fuel_type: str,
     corridor_km: float,
-    labels: Optional[List[str]] = None,
+    labels: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Query stations within a corridor around route waypoints.
+    """Return stations within corridor_km of any waypoint via cross-join Haversine.
 
-    Uses DuckDB cross join + Haversine to efficiently find the closest waypoint
-    per station and filter by corridor distance.
-
-    Args:
-        waypoints: list of (lat, lon, cumulative_km) tuples.
-        fuel_type: validated fuel column name.
-        corridor_km: max distance from any waypoint to include a station.
-
-    Returns:
-        DataFrame with station data + min_distance_km + closest_waypoint_idx.
+    Adds min_distance_km + closest_waypoint_idx columns to result.
     """
     fuel_type = _validate_fuel_column(fuel_type)
     label_clause, label_params = _label_filter_clause(labels, 6)
@@ -708,7 +694,7 @@ def query_stations_along_corridor(
 
 
 @functools.lru_cache(maxsize=16)
-def query_national_avg_stats(fuel_type: str) -> tuple[Optional[float], int]:
+def query_national_avg_stats(fuel_type: str) -> tuple[float | None, int]:
     """Return (avg_price, station_count) for a fuel type nationally.
 
     Cached per fuel type; cache is cleared on ``replace_latest_stations()``.
@@ -728,11 +714,8 @@ def query_national_avg_stats(fuel_type: str) -> tuple[Optional[float], int]:
     return None, 0
 
 
-def query_national_avg_price(fuel_type: str) -> Optional[float]:
-    """Return the national average price for a fuel type, or None if unavailable.
-
-    Delegates to :func:`query_national_avg_stats` (which is cached).
-    """
+def query_national_avg_price(fuel_type: str) -> float | None:
+    """Return national average price for a fuel type; delegates to query_national_avg_stats (cached)."""
     avg, _ = query_national_avg_stats(fuel_type)
     return avg
 
@@ -746,10 +729,7 @@ def get_distinct_provinces() -> dict[str, str]:
 
 
 def get_distinct_labels(top_n: int = 0) -> dict[str, str]:
-    """Return distinct station labels as {raw: Title Case} ordered by station count (most popular first).
-
-    If top_n > 0, only return the top N most popular labels.
-    """
+    """Return {raw: Title Case} label dict ordered by station count; top_n > 0 limits results."""
     limit_clause = f"LIMIT {int(top_n)}" if top_n > 0 else ""
     with _lock:
         conn = get_connection()
@@ -799,8 +779,8 @@ def query_province_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back
 def query_day_of_week_pattern(
     aggregate_df: pd.DataFrame,
     fuel_type: str,
-    province: Optional[str] = None,
-    exclude_provinces: Optional[set] = None,
+    province: str | None = None,
+    exclude_provinces: set | None = None,
 ) -> pd.DataFrame:
     """Query day-of-week price patterns from pre-computed day_of_week_stats aggregate."""
     fuel_type = _validate_fuel_column(fuel_type)

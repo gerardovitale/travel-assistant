@@ -1,22 +1,19 @@
 import gzip
 import json
 from pathlib import Path
-from typing import Dict
-from typing import List
-from typing import Optional
 
 _GEOJSON_DIR = Path(__file__).resolve().parent / "geojson"
 _POSTAL_CODES_GEOJSON = "spain-postal-codes.geojson"
 _POSTAL_CODES_GEOJSON_GZ = "spain-postal-codes.geojson.gz"
 
-_provinces_geojson: Optional[dict] = None
-_provinces_name_lookup: Optional[Dict[str, str]] = None
-_districts_geojson: Optional[dict] = None
-_postal_code_index: Optional[Dict[str, dict]] = None
+_provinces_geojson: dict | None = None
+_provinces_name_lookup: dict[str, str] | None = None
+_districts_geojson: dict | None = None
+_postal_code_index: dict[str, dict] | None = None
 
 ZIP_CODE_PROPERTY = "COD_POSTAL"
 
-_DATA_TO_GEOJSON_OVERRIDES: Dict[str, str] = {
+_DATA_TO_GEOJSON_OVERRIDES: dict[str, str] = {
     "coruña (a)": "A Coruña",
     "rioja (la)": "La Rioja",
     "palmas (las)": "Las Palmas",
@@ -38,11 +35,11 @@ _NON_MAINLAND_PROVINCES = {
 }
 
 # Reverse map: GeoJSON name → data name (lowercased, as stored in aggregates)
-_GEOJSON_TO_DATA: Dict[str, str] = {v: k for k, v in _DATA_TO_GEOJSON_OVERRIDES.items()}
+_GEOJSON_TO_DATA: dict[str, str] = {v: k for k, v in _DATA_TO_GEOJSON_OVERRIDES.items()}
 
 # Province names as they appear in the raw/aggregate data (lowercase)
 _NON_MAINLAND_DATA_NAMES = {_GEOJSON_TO_DATA.get(p, p).lower() for p in _NON_MAINLAND_PROVINCES}
-_LOWERCASE_GEOJSON_TO_DATA: Dict[str, str] = {
+_LOWERCASE_GEOJSON_TO_DATA: dict[str, str] = {
     geojson_name.lower(): data_name for geojson_name, data_name in _GEOJSON_TO_DATA.items()
 }
 
@@ -66,12 +63,12 @@ def load_provinces_geojson() -> dict:
     return _provinces_geojson
 
 
-def get_geojson_province_name(data_province: str) -> Optional[str]:
+def get_geojson_province_name(data_province: str) -> str | None:
     load_provinces_geojson()
     return _provinces_name_lookup.get(data_province.lower())
 
 
-def normalize_data_province_name(province_name: Optional[str]) -> Optional[str]:
+def normalize_data_province_name(province_name: str | None) -> str | None:
     if province_name is None:
         return None
     normalized = province_name.strip().lower()
@@ -80,7 +77,7 @@ def normalize_data_province_name(province_name: Optional[str]) -> Optional[str]:
     return _LOWERCASE_GEOJSON_TO_DATA.get(normalized, normalized)
 
 
-def _ensure_postal_index() -> Dict[str, dict]:
+def _ensure_postal_index() -> dict[str, dict]:
     global _postal_code_index
     if _postal_code_index is None:
         path = _get_postal_code_geojson_path()
@@ -118,12 +115,12 @@ def _load_json(path: Path) -> dict:
         return json.load(f)
 
 
-def load_postal_code_boundary(zip_code: str) -> Optional[dict]:
+def load_postal_code_boundary(zip_code: str) -> dict | None:
     index = _ensure_postal_index()
     return index.get(zip_code)
 
 
-def load_postal_codes_for_zip_list(zip_codes: List[str]) -> dict:
+def load_postal_codes_for_zip_list(zip_codes: list[str]) -> dict:
     """Return a GeoJSON FeatureCollection containing only features matching the given zip codes."""
     index = _ensure_postal_index()
     features = []

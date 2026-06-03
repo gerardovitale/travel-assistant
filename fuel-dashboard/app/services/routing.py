@@ -2,9 +2,6 @@ import asyncio
 import functools
 import logging
 import time
-from typing import List
-from typing import Optional
-from typing import Tuple
 
 import httpx
 from config import settings
@@ -14,7 +11,7 @@ logger = logging.getLogger(__name__)
 _OSRM_RETRIES = 3
 _OSRM_RETRY_DELAY = 1.0
 
-_sync_client: Optional[httpx.Client] = None
+_sync_client: httpx.Client | None = None
 
 
 def _get_sync_client() -> httpx.Client:
@@ -25,12 +22,9 @@ def _get_sync_client() -> httpx.Client:
 
 
 def _osrm_get(url: str, timeout: float = 30.0) -> httpx.Response:
-    """GET with retries for transient connection errors.
-
-    Raises httpx.ConnectError after all retries are exhausted.
-    """
+    """GET with retries; raises httpx.ConnectError after _OSRM_RETRIES exhausted."""
     client = _get_sync_client()
-    last_err: Optional[Exception] = None
+    last_err: Exception | None = None
     for attempt in range(_OSRM_RETRIES):
         try:
             return client.get(url)
@@ -46,14 +40,10 @@ def _osrm_get(url: str, timeout: float = 30.0) -> httpx.Response:
 
 @functools.lru_cache(maxsize=128)
 def get_full_route(
-    origin: Tuple[float, float],
-    destination: Tuple[float, float],
-) -> Optional[dict]:
-    """Fetch full route from OSRM with coordinates, distance, and duration.
-
-    Returns dict with 'coordinates' (list of [lon, lat]), 'distance_km', 'duration_minutes',
-    or None on failure.
-    """
+    origin: tuple[float, float],
+    destination: tuple[float, float],
+) -> dict | None:
+    """Fetch full OSRM route; return dict with 'coordinates', 'distance_km', 'duration_minutes', or None."""
     origin_str = f"{origin[1]},{origin[0]}"
     dest_str = f"{destination[1]},{destination[0]}"
     url = f"{settings.osrm_base_url}/route/v1/driving/{origin_str};{dest_str}?overview=full&geometries=geojson"
@@ -85,7 +75,7 @@ async def _fetch_single_route(
     origin_str: str,
     lat: float,
     lon: float,
-) -> Optional[List[List[float]]]:
+) -> list[list[float]] | None:
     dest_str = f"{lon},{lat}"
     url = f"{settings.osrm_base_url}/route/v1/driving/{origin_str};{dest_str}" "?overview=full&geometries=geojson"
     try:
@@ -104,19 +94,10 @@ async def _fetch_single_route(
 
 
 async def get_route_geometries(
-    origin: Tuple[float, float],
-    destinations: List[Tuple[float, float]],
-) -> List[Optional[List[List[float]]]]:
-    """Fetch route geometries from OSRM Route API in parallel.
-
-    Args:
-        origin: (lat, lon) of the starting point.
-        destinations: list of (lat, lon) for each station.
-
-    Returns:
-        List of coordinate lists (each a list of [lon, lat] pairs),
-        or None per destination on failure.
-    """
+    origin: tuple[float, float],
+    destinations: list[tuple[float, float]],
+) -> list[list[list[float]] | None]:
+    """Fetch OSRM route geometries in parallel for each destination; None per failed destination."""
     if not destinations:
         return []
 
@@ -128,19 +109,10 @@ async def get_route_geometries(
 
 
 def get_road_distances(
-    origin: Tuple[float, float],
-    destinations: List[Tuple[float, float]],
-) -> Optional[List[Optional[float]]]:
-    """Fetch road distances from OSRM Table API.
-
-    Args:
-        origin: (lat, lon) of the starting point.
-        destinations: list of (lat, lon) for each station.
-
-    Returns:
-        List of distances in km (None for unreachable destinations),
-        or None if the request fails entirely.
-    """
+    origin: tuple[float, float],
+    destinations: list[tuple[float, float]],
+) -> list[float | None] | None:
+    """Fetch road distances via OSRM Table API; return list of km (None per unreachable), or None on failure."""
     if not destinations:
         return []
 
