@@ -4,9 +4,11 @@ from unittest.mock import patch
 import pandas as pd
 from api.schemas import FuelType
 from services.forecast_service import _assign_regimes
+from services.forecast_service import _build_response
 from services.forecast_service import _build_transition_counts
 from services.forecast_service import _confidence_score
 from services.forecast_service import _expected_days_in_regime
+from services.forecast_service import _normalize_zip
 from services.forecast_service import _probability_of_cheaper_regime_within_days
 from services.forecast_service import _recommendation
 from services.forecast_service import _transition_matrix
@@ -207,3 +209,74 @@ def test_recommendation_normal_waits_when_cheaper_likely_within_3d():
 
 def test_recommendation_normal_refuels_when_cheaper_unlikely():
     assert _recommendation("normal", 0.5, 0.9) == "Reposta hoy"
+
+
+def test_transition_matrix_rows_sum_to_one_without_rounding_drift():
+    # 1/3 + 1/3 + 1/3 must stay 1.0; per-entry round(.,4) would give 0.9999 and leak mass.
+    counts = {regime: {"cheap": 1, "normal": 1, "expensive": 1} for regime in ("cheap", "normal", "expensive")}
+
+    matrix = _transition_matrix(counts)
+
+    for src in ("cheap", "normal", "expensive"):
+        assert abs(sum(matrix[src].values()) - 1.0) < 1e-9
+
+
+def test_normalize_zip_strips_float_suffix_and_pads_leading_zero():
+    assert _normalize_zip("28001.0") == "28001"
+    assert _normalize_zip(28001.0) == "28001"
+    assert _normalize_zip(1001) == "01001"
+    assert _normalize_zip("01001") == "01001"
+
+
+@patch("services.forecast_service.download_aggregate")
+def test_get_historical_forecast_matches_float_typed_zip_column(mock_download):
+    history = _make_zip_history(90)
+    history["zip_code"] = 28001.0  # float64 column stringifies to "28001.0"
+
+    mock_download.side_effect = lambda name: history if name == "zip_code_daily_stats.parquet" else None
+
+    result = get_historical_forecast(FuelType.diesel_a_price, zip_code="28001")
+
+    assert result.insufficient_data is False
+    assert result.geography_value == "28001"
+    assert result.coverage_days == 90
+
+
+@patch("services.forecast_service.download_aggregate")
+def test_get_historical_forecast_matches_leading_zero_zip(mock_download):
+    history = _make_zip_history(90)
+    history["zip_code"] = 1001  # stored without leading zero (e.g. int column)
+
+    mock_download.side_effect = lambda name: history if name == "zip_code_daily_stats.parquet" else None
+
+    result = get_historical_forecast(FuelType.diesel_a_price, zip_code="01001")
+
+    assert result.insufficient_data is False
+    assert result.coverage_days == 90
+
+
+@patch("services.forecast_service.download_aggregate")
+def test_get_historical_forecast_rounds_output_to_four_decimals(mock_download):
+    mock_download.side_effect = lambda name: _make_zip_history(90) if name == "zip_code_daily_stats.parquet" else None
+
+    result = get_historical_forecast(FuelType.diesel_a_price, zip_code="28001")
+
+    for row in result.transition_matrix.values():
+        for prob in row.values():
+            assert prob == round(prob, 4)
+    for prob in result.next_day_probabilities.values():
+        assert prob == round(prob, 4)
+    assert result.cheaper_within_3d == round(result.cheaper_within_3d, 4)
+    assert result.cheaper_within_7d == round(result.cheaper_within_7d, 4)
+
+
+def test_build_response_rejects_when_transitions_below_floor():
+    # 66 observation days but only 20 consecutive-day transitions (< MIN_TRANSITIONS); the rest are gapped.
+    dates = list(pd.date_range("2026-01-01", periods=21, freq="D"))
+    dates += list(pd.date_range("2026-03-01", periods=45, freq="3D"))
+    prices = [1.40 + (i % 9) * 0.02 for i in range(len(dates))]
+    history = pd.DataFrame({"date": pd.to_datetime(dates), "avg_price": prices})
+
+    response = _build_response(history, "province", "madrid", "province")
+
+    assert response.insufficient_data is True

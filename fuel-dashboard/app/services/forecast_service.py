@@ -12,7 +12,16 @@ GEOGRAPHY_LABELS = {"zip_code": "Código postal", "province": "Provincia"}
 ZIP_CODE_AGGREGATE = "zip_code_daily_stats.parquet"
 PROVINCE_AGGREGATE = "province_daily_stats.parquet"
 MIN_OBSERVATION_DAYS = 60
+# Minimum consecutive-day transitions before a chain is served. A 3-state row estimated from
+# one observation is a point estimate (matrix entry 1.0); ~10 per row is the pragmatic floor.
+# `confidence` remains the soft signal above this hard floor.
+MIN_TRANSITIONS = 30
 DEFAULT_WINDOW_DAYS = 180
+
+
+def _normalize_zip(value: object) -> str:
+    """Canonical Spanish postal code: strip float suffix (``28001.0``) and zero-pad to 5 digits."""
+    return str(value).split(".", 1)[0].strip().zfill(5)
 
 
 def _prepare_history(df: pd.DataFrame | None, value_column: str = "avg_price") -> pd.DataFrame:
@@ -40,9 +49,10 @@ def _load_zip_history(zip_code: str, fuel_type: FuelType, window_days: int) -> p
     aggregate = download_aggregate(ZIP_CODE_AGGREGATE)
     if aggregate is None or aggregate.empty:
         return pd.DataFrame()
-    filtered = aggregate[
-        (aggregate["zip_code"].astype(str) == str(zip_code)) & (aggregate["fuel_type"] == fuel_type.value)
-    ][["date", "zip_code", "province", "avg_price"]]
+    agg_zip = aggregate["zip_code"].astype(str).str.split(".", n=1).str[0].str.strip().str.zfill(5)
+    filtered = aggregate[(agg_zip == _normalize_zip(zip_code)) & (aggregate["fuel_type"] == fuel_type.value)][
+        ["date", "zip_code", "province", "avg_price"]
+    ]
     return _limit_recent_window(_prepare_history(filtered), window_days)
 
 
@@ -93,6 +103,9 @@ def _build_transition_counts(history: pd.DataFrame) -> dict[str, dict[str, int]]
 
 
 def _transition_matrix(counts: dict[str, dict[str, int]]) -> dict[str, dict[str, float]]:
+    # Keep full precision so row sums stay exactly 1.0; per-entry rounding (e.g. 0.3333 x 3 = 0.9999)
+    # leaks probability mass across the multi-step matrix multiply in the reachability calc. Round
+    # only at the response boundary via _round_matrix.
     matrix = {src: {dst: 0.0 for dst in REGIMES} for src in REGIMES}
     for src in REGIMES:
         total = sum(counts[src].values())
@@ -100,8 +113,13 @@ def _transition_matrix(counts: dict[str, dict[str, int]]) -> dict[str, dict[str,
             matrix[src][src] = 1.0
             continue
         for dst in REGIMES:
-            matrix[src][dst] = round(counts[src][dst] / total, 4)
+            matrix[src][dst] = counts[src][dst] / total
+    assert all(abs(sum(matrix[src].values()) - 1.0) < 1e-9 for src in REGIMES)
     return matrix
+
+
+def _round_matrix(matrix: dict[str, dict[str, float]]) -> dict[str, dict[str, float]]:
+    return {src: {dst: round(prob, 4) for dst, prob in row.items()} for src, row in matrix.items()}
 
 
 def _probability_of_cheaper_regime_within_days(
@@ -124,7 +142,8 @@ def _probability_of_cheaper_regime_within_days(
         state_probs = next_probs
 
     avoid_probability = sum(state_probs.values())
-    return round(max(0.0, min(1.0, 1.0 - avoid_probability)), 4)
+    # Full precision; rounding happens at the response boundary in _build_response.
+    return max(0.0, min(1.0, 1.0 - avoid_probability))
 
 
 def _expected_days_in_regime(matrix: dict[str, dict[str, float]], current_regime: str) -> float | None:
@@ -203,7 +222,7 @@ def _build_response(
     counts = _build_transition_counts(history)
     transition_total = sum(sum(destinations.values()) for destinations in counts.values())
 
-    if len(history) < MIN_OBSERVATION_DAYS or distinct_states < 2 or transition_total <= 0:
+    if len(history) < MIN_OBSERVATION_DAYS or distinct_states < 2 or transition_total < MIN_TRANSITIONS:
         return _insufficient_response(
             geography_type,
             geography_value,
@@ -212,9 +231,11 @@ def _build_response(
         )
 
     matrix = _transition_matrix(counts)
+    rounded_matrix = _round_matrix(matrix)
     current_row = history.iloc[-1]
     current_regime = str(current_row["regime"])
     confidence = _confidence_score(counts)
+    # Probabilities stay full precision through recommendation/explanation; rounded only for the response.
     cheaper_3d = _probability_of_cheaper_regime_within_days(matrix, current_regime, 3)
     cheaper_7d = _probability_of_cheaper_regime_within_days(matrix, current_regime, 7)
 
@@ -227,9 +248,9 @@ def _build_response(
         current_date=pd.Timestamp(current_row["date"]).date().isoformat(),
         current_avg_price=round(float(current_row["avg_price"]), 4),
         current_regime=current_regime,
-        next_day_probabilities=matrix[current_regime],
-        cheaper_within_3d=cheaper_3d,
-        cheaper_within_7d=cheaper_7d,
+        next_day_probabilities=rounded_matrix[current_regime],
+        cheaper_within_3d=round(cheaper_3d, 4),
+        cheaper_within_7d=round(cheaper_7d, 4),
         expected_days_in_current_regime=_expected_days_in_regime(matrix, current_regime),
         confidence=confidence,
         recommendation=_recommendation(current_regime, cheaper_3d, cheaper_7d),
@@ -242,7 +263,7 @@ def _build_response(
             confidence,
         ),
         insufficient_data=False,
-        transition_matrix=matrix,
+        transition_matrix=rounded_matrix,
     )
 
 
