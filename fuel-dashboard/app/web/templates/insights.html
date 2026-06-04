@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_share_button.html" import share_button %}
 {% set current_page = 'insights' %}
 {% block title %}Insights y tendencias · Fuel Precision{% endblock %}
 {% block meta_description %}Analiza tendencias de precios de combustible por provincia y código postal en España. Consulta históricos, previsiones y zonas más baratas.{% endblock %}
@@ -13,7 +14,7 @@
     <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Dashboard de análisis</p>
     <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight">Insights y tendencias</h1>
     {% set visible_tabs = 2 + (1 if insights_zones_enabled else 0) + (1 if insights_historical_enabled else 0) + (1 if insights_reportes_enabled else 0) %}
-    <nav class="mt-8 grid grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" data-testid="insight-tabs" aria-label="Secciones">
+    <nav class="mt-8 grid grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" data-testid="insight-tabs" data-active-tab="{{ active_tab | default('trends') }}" aria-label="Secciones">
       <button type="button" data-tab="trends" data-testid="insight-tab-trends" class="bg-white text-primary-container rounded-xl shadow-lg px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined filled-icon">trending_up</span>
         <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Tendencias</span>
@@ -75,24 +76,33 @@
       </form>
     </div>
 
-    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <h2 class="font-headline font-bold text-xl mb-4">Tendencia de precios</h2>
+    <div id="sec-trends-price" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <h2 class="font-headline font-bold text-xl">Tendencia de precios</h2>
+        {{ share_button("sec-trends-price") }}
+      </div>
       <div id="trend-kpis" data-testid="trend-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
       <div id="trend-chart" data-testid="trend-chart" class="h-80"></div>
     </div>
 
-    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <h2 class="font-headline font-bold text-xl mb-4">Comparativa de variantes</h2>
+    <div id="sec-trends-variants" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <h2 class="font-headline font-bold text-xl">Comparativa de variantes</h2>
+        {{ share_button("sec-trends-variants") }}
+      </div>
       <div id="group-trend-chart" data-testid="group-trend-chart" class="h-80"></div>
     </div>
 
-    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+    <div id="sec-trends-forecast" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
           <h2 class="font-headline font-bold text-xl">Pronóstico de repostaje</h2>
           <p class="text-sm text-on-surface-variant mt-1">Cadena de Markov sobre regímenes de precio local.</p>
         </div>
-        <div id="forecast-scope" data-testid="forecast-scope" class="text-sm text-outline"></div>
+        <div class="flex items-center gap-2">
+          <div id="forecast-scope" data-testid="forecast-scope" class="text-sm text-outline"></div>
+          {{ share_button("sec-trends-forecast") }}
+        </div>
       </div>
       <div id="forecast-banner" data-testid="forecast-banner" class="rounded-xl px-4 py-3 text-sm mb-4 hidden"></div>
       <div id="forecast-kpis" data-testid="forecast-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
@@ -105,7 +115,7 @@
 
   {% if insights_zones_enabled %}
   <!-- ZONES -->
-  <section data-panel="zones" class="space-y-6 hidden">
+  <section id="sec-zones-map" data-panel="zones" class="space-y-6 hidden">
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <div class="flex flex-wrap items-end gap-3 md:gap-4">
         <label class="block flex-1 min-w-[160px]">
@@ -116,6 +126,7 @@
           <input id="zones-mainland" type="checkbox" checked class="rounded">
           Solo península
         </label>
+        <div class="ml-auto mb-1">{{ share_button("sec-zones-map") }}</div>
       </div>
       <div id="zones-status" class="hidden mt-4 rounded-xl px-4 py-3 text-sm"></div>
     </div>
@@ -169,24 +180,39 @@
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
-        <h2 class="font-headline font-bold text-lg mb-3">Ranking por provincia</h2>
+      <div id="sec-hist-provinces" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <h2 class="font-headline font-bold text-lg">Ranking por provincia</h2>
+          {{ share_button("sec-hist-provinces") }}
+        </div>
         <div id="hist-provinces" class="h-80"></div>
       </div>
-      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
-        <h2 class="font-headline font-bold text-lg mb-3">Patrón por día de la semana</h2>
+      <div id="sec-hist-dow" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <h2 class="font-headline font-bold text-lg">Patrón por día de la semana</h2>
+          {{ share_button("sec-hist-dow") }}
+        </div>
         <div id="hist-dow" class="h-80"></div>
       </div>
-      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
-        <h2 class="font-headline font-bold text-lg mb-3">Ranking de marcas</h2>
+      <div id="sec-hist-brands" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <h2 class="font-headline font-bold text-lg">Ranking de marcas</h2>
+          {{ share_button("sec-hist-brands") }}
+        </div>
         <div id="hist-brands" class="h-80"></div>
       </div>
-      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
-        <h2 class="font-headline font-bold text-lg mb-3">Evolución por marcas</h2>
+      <div id="sec-hist-brand-trend" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <h2 class="font-headline font-bold text-lg">Evolución por marcas</h2>
+          {{ share_button("sec-hist-brand-trend") }}
+        </div>
         <div id="hist-brand-trend" class="h-80"></div>
       </div>
-      <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40 md:col-span-2">
-        <h2 class="font-headline font-bold text-lg mb-3">Volatilidad por zona (CP)</h2>
+      <div id="sec-hist-volatility" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 border border-outline-variant/40 md:col-span-2">
+        <div class="flex items-start justify-between gap-3 mb-3">
+          <h2 class="font-headline font-bold text-lg">Volatilidad por zona (CP)</h2>
+          {{ share_button("sec-hist-volatility") }}
+        </div>
         <div id="hist-volatility" class="h-96"></div>
       </div>
     </div>
@@ -211,8 +237,11 @@
     </div>
 
     <!-- Coverage (top — context for all charts below) -->
-    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <h2 class="font-headline font-bold text-lg mb-1">Cobertura geográfica</h2>
+    <div id="sec-reportes-coverage" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">Cobertura geográfica</h2>
+        {{ share_button("sec-reportes-coverage") }}
+      </div>
       <p class="text-sm text-on-surface-variant mb-4">Número de zonas distintas donde cada marca tiene presencia. Las marcas con menor cobertura tienen métricas más concentradas geográficamente.</p>
       <div class="overflow-x-auto">
         <div id="reportes-coverage-table" data-testid="reportes-coverage-table"></div>
@@ -220,31 +249,40 @@
     </div>
 
     <!-- Win Rate (direction filter only affects this chart) -->
-    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+    <div id="sec-reportes-win-rate" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
         <h2 class="font-headline font-bold text-lg">Tasa de éxito por marca</h2>
-        <label class="flex items-center gap-2 flex-shrink-0">
-          <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Dirección</span>
-          <select id="reportes-direction-select" data-testid="reportes-direction-select" class="rounded-lg border-outline-variant text-sm">
-            <option value="cheapest">Más barata</option>
-            <option value="priciest">Más cara</option>
-          </select>
-        </label>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <label class="flex items-center gap-2">
+            <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Dirección</span>
+            <select id="reportes-direction-select" data-testid="reportes-direction-select" class="rounded-lg border-outline-variant text-sm">
+              <option value="cheapest">Más barata</option>
+              <option value="priciest">Más cara</option>
+            </select>
+          </label>
+          {{ share_button("sec-reportes-win-rate") }}
+        </div>
       </div>
       <p class="text-sm text-on-surface-variant mb-4">Probabilidad de que la marca sea la más barata o más cara cuando hay al menos una estación en la zona.</p>
       <div id="reportes-win-rate-chart" data-testid="reportes-win-rate-chart" class="h-48 w-full overflow-hidden"></div>
     </div>
 
     <!-- Price Delta -->
-    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <h2 class="font-headline font-bold text-lg mb-1">Diferencial de precio vs. mercado</h2>
+    <div id="sec-reportes-price-delta" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">Diferencial de precio vs. mercado</h2>
+        {{ share_button("sec-reportes-price-delta") }}
+      </div>
       <p class="text-sm text-on-surface-variant mb-4">Cuánto más cara o barata es cada marca respecto al precio medio del mercado (% sobre el precio medio). Valores negativos = más barata que el mercado.</p>
       <div id="reportes-price-delta-chart" data-testid="reportes-price-delta-chart" class="h-48 w-full overflow-hidden"></div>
     </div>
 
     <!-- Days Below Market -->
-    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <h2 class="font-headline font-bold text-lg mb-1">Días por debajo del precio de mercado</h2>
+    <div id="sec-reportes-days-below" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">Días por debajo del precio de mercado</h2>
+        {{ share_button("sec-reportes-days-below") }}
+      </div>
       <p class="text-sm text-on-surface-variant mb-4">Porcentaje de días en que la marca mantuvo un precio inferior al promedio del mercado.</p>
       <div id="reportes-days-below-chart" data-testid="reportes-days-below-chart" class="h-48 w-full overflow-hidden"></div>
     </div>
@@ -253,10 +291,13 @@
   {% endif %}
 
   <!-- QUALITY -->
-  <section data-panel="quality" class="space-y-6 hidden">
+  <section id="sec-quality" data-panel="quality" class="space-y-6 hidden">
     <div id="quality-kpis" data-testid="quality-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <h2 class="font-headline font-bold text-lg mb-3">Últimas ingestas</h2>
+      <div class="flex items-start justify-between gap-3 mb-3">
+        <h2 class="font-headline font-bold text-lg">Últimas ingestas</h2>
+        {{ share_button("sec-quality") }}
+      </div>
       <p id="quality-summary" data-testid="quality-summary" class="text-sm text-on-surface-variant"></p>
     </div>
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">

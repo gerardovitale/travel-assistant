@@ -1,8 +1,223 @@
 import { api, qs } from "./app.js";
+import { registerShareBuilder, initShare } from "./share.js";
 import { populateFuelSelect, populateGroupSelect, getProvinces, getCatalog, FUEL_LABELS } from "./fuel.js";
 import { lineTrend, multiLine, horizontalBar, heatmap, emptyMsg } from "./charts.js";
 import { createMap, drawGeoJSON } from "./maps.js";
 import { formatPrice, escapeHtml } from "./format.js";
+
+// ----------------------------- URL STATE + SHARE -----------------------------
+// Deep-linkable views: the active tab lives in the path (/insights/{tab}) and only filters that
+// differ from their defaults are appended as query params, so common views stay short. Each section
+// registers a share builder that reproduces its exact view (tab + filters + #anchor).
+
+let activeTab = "trends";
+let initialTab = "trends";
+let pendingParams = null; // URLSearchParams parsed once from the initial URL
+const tabDefaults = {}; // baseline (pristine) filter values captured per tab after populate
+
+function ctrl(sel) {
+  return document.querySelector(sel);
+}
+
+function optText(elOrSel) {
+  const el = typeof elOrSel === "string" ? ctrl(elOrSel) : elOrSel;
+  if (!el || el.selectedIndex < 0) return "";
+  return (el.options[el.selectedIndex]?.text || "").trim();
+}
+
+// Current raw filter values per tab, keyed by the short query-param name.
+const PARAMS = {
+  trends: () => ({
+    fuel: ctrl('#trends-filter select[name="fuel_group"]')?.value || "",
+    prov: ctrl('#trends-filter select[name="province"]')?.value || "",
+    zip: (ctrl('#trends-filter input[name="zip_code"]')?.value || "").trim(),
+    period: ctrl('#trends-filter select[name="period"]')?.value || "",
+  }),
+  historical: () => ({
+    fuel: ctrl('#historical-form select[name="fuel_type"]')?.value || "",
+    period: ctrl('#historical-form select[name="period"]')?.value || "",
+    prov: ctrl('#historical-form select[name="province"]')?.value || "",
+  }),
+  reportes: () => ({
+    fuel: ctrl('#reportes-filter select[name="fuel_type"]')?.value || "",
+    dir: ctrl("#reportes-direction-select")?.value || "",
+  }),
+  zones: () => ({
+    fuel: ctrl("#zones-fuel")?.value || "",
+    mainland: ctrl("#zones-mainland") ? (ctrl("#zones-mainland").checked ? "1" : "0") : "1",
+  }),
+  quality: () => ({}),
+};
+
+function restoreFilters(tab) {
+  if (!pendingParams) return;
+  const p = pendingParams;
+  const set = (sel, key) => {
+    const el = ctrl(sel);
+    if (el && p.has(key)) el.value = p.get(key);
+  };
+  if (tab === "trends") {
+    set('#trends-filter select[name="fuel_group"]', "fuel");
+    set('#trends-filter select[name="province"]', "prov");
+    set('#trends-filter input[name="zip_code"]', "zip");
+    set('#trends-filter select[name="period"]', "period");
+  } else if (tab === "historical") {
+    set('#historical-form select[name="fuel_type"]', "fuel");
+    set('#historical-form select[name="period"]', "period");
+    set('#historical-form select[name="province"]', "prov");
+  } else if (tab === "reportes") {
+    set('#reportes-filter select[name="fuel_type"]', "fuel");
+    set("#reportes-direction-select", "dir");
+  } else if (tab === "zones") {
+    set("#zones-fuel", "fuel");
+    const m = ctrl("#zones-mainland");
+    if (m && p.has("mainland")) m.checked = p.get("mainland") !== "0";
+  }
+}
+
+// Capture pristine defaults (after selects are populated) then apply any URL filters for the tab the
+// link targeted. Call inside each tab's init, before its first load.
+function captureAndRestore(tab) {
+  tabDefaults[tab] = PARAMS[tab]();
+  if (tab === initialTab) restoreFilters(tab);
+}
+
+// Only emit params that differ from the captured defaults → short URLs for the common case.
+function serializeFilters(tab) {
+  const def = tabDefaults[tab];
+  if (!def) return {};
+  const cur = PARAMS[tab]();
+  const out = {};
+  for (const k of Object.keys(cur)) {
+    if (cur[k] !== "" && cur[k] !== def[k]) out[k] = cur[k];
+  }
+  return out;
+}
+
+function tabPath(tab) {
+  return tab === "trends" ? "/insights" : `/insights/${tab}`;
+}
+
+function syncUrl(tab, keepHash = true) {
+  if (!tab) return;
+  const query = qs(serializeFilters(tab));
+  const url = tabPath(tab) + (query ? `?${query}` : "") + (keepHash ? location.hash : "");
+  history.replaceState(null, "", url);
+}
+
+const SECTION_TAB = {
+  "sec-trends-price": "trends",
+  "sec-trends-variants": "trends",
+  "sec-trends-forecast": "trends",
+  "sec-zones-map": "zones",
+  "sec-hist-provinces": "historical",
+  "sec-hist-dow": "historical",
+  "sec-hist-brands": "historical",
+  "sec-hist-brand-trend": "historical",
+  "sec-hist-volatility": "historical",
+  "sec-reportes-coverage": "reportes",
+  "sec-reportes-win-rate": "reportes",
+  "sec-reportes-price-delta": "reportes",
+  "sec-reportes-days-below": "reportes",
+  "sec-quality": "quality",
+};
+const SECTION_TITLE = {
+  "sec-trends-price": "Tendencia de precios",
+  "sec-trends-variants": "Comparativa de variantes",
+  "sec-trends-forecast": "Pronóstico de repostaje",
+  "sec-zones-map": "Zonas más baratas",
+  "sec-hist-provinces": "Ranking por provincia",
+  "sec-hist-dow": "Patrón por día de la semana",
+  "sec-hist-brands": "Ranking de marcas",
+  "sec-hist-brand-trend": "Evolución por marcas",
+  "sec-hist-volatility": "Volatilidad por zona",
+  "sec-reportes-coverage": "Cobertura geográfica",
+  "sec-reportes-win-rate": "Tasa de éxito por marca",
+  "sec-reportes-price-delta": "Diferencial de precio vs. mercado",
+  "sec-reportes-days-below": "Días por debajo del precio de mercado",
+  "sec-quality": "Calidad de datos",
+};
+
+// Human-readable filter context per tab, read straight from the selected option labels.
+function tabContext(tab) {
+  const parts = [];
+  if (tab === "trends") {
+    parts.push(optText('#trends-filter select[name="fuel_group"]'));
+    const zip = (ctrl('#trends-filter input[name="zip_code"]')?.value || "").trim();
+    const prov = ctrl('#trends-filter select[name="province"]');
+    if (zip) parts.push(`CP ${zip}`);
+    else if (prov?.value) parts.push(optText(prov));
+    parts.push(optText('#trends-filter select[name="period"]'));
+  } else if (tab === "historical") {
+    parts.push(optText('#historical-form select[name="fuel_type"]'));
+    const prov = ctrl('#historical-form select[name="province"]');
+    if (prov?.value) parts.push(optText(prov));
+    parts.push(optText('#historical-form select[name="period"]'));
+  } else if (tab === "reportes") {
+    parts.push(optText('#reportes-filter select[name="fuel_type"]'));
+    parts.push(optText("#reportes-direction-select"));
+  } else if (tab === "zones") {
+    parts.push(optText("#zones-fuel"));
+    if (ctrl("#zones-mainland") && !ctrl("#zones-mainland").checked) parts.push("España completa");
+  }
+  return parts.filter(Boolean);
+}
+
+function buildShareText(key) {
+  const tab = SECTION_TAB[key];
+  return [SECTION_TITLE[key], ...tabContext(tab)].join(" · ") + " — Fuel Precision";
+}
+
+function buildShareUrl(tab, hash) {
+  const query = qs(serializeFilters(tab));
+  return location.origin + tabPath(tab) + (query ? `?${query}` : "") + (hash || "");
+}
+
+function registerShareBuilders() {
+  for (const key of Object.keys(SECTION_TAB)) {
+    registerShareBuilder(key, () => ({
+      title: "Fuel Precision",
+      text: buildShareText(key),
+      url: buildShareUrl(SECTION_TAB[key], `#${key}`),
+    }));
+  }
+}
+
+// Delegated listeners keep the URL in sync without touching each tab's existing handlers.
+// Selects/checkboxes (`change`) sync immediately; text inputs (`input`) are debounced so typing a
+// zip doesn't replaceState on every keystroke.
+const TRACKED_FILTERS =
+  '#trends-filter [name], #historical-form [name], #reportes-filter [name], #reportes-direction-select, #zones-fuel, #zones-mainland';
+const debouncedUrlSync = debounce(() => syncUrl(activeTab, true), 600);
+function onFilterChange(e) {
+  if (e.target.matches?.(TRACKED_FILTERS)) syncUrl(activeTab, true);
+}
+function onFilterInput(e) {
+  if (e.target.matches?.(TRACKED_FILTERS)) debouncedUrlSync();
+}
+
+// Scroll a shared #section into view. Charts render asynchronously and resize the section after the
+// first scroll, so re-align on each reflow for a short window, then stop. scroll-margin-top (CSS)
+// keeps the title clear of the fixed app bar.
+function scrollToHashTarget(target) {
+  const el = document.querySelector(target);
+  if (!el) return;
+  const align = () => el.scrollIntoView({ behavior: "smooth", block: "start" });
+  align();
+  if (typeof ResizeObserver === "undefined") return;
+  const ro = new ResizeObserver(() => align());
+  ro.observe(el);
+  setTimeout(() => ro.disconnect(), 2500);
+}
+
+function applyStateFromUrl() {
+  const tabsEl = document.getElementById("insight-tabs");
+  const fromPath = tabsEl?.dataset.activeTab || "trends";
+  initialTab = loaders[fromPath] ? fromPath : "trends";
+  pendingParams = new URLSearchParams(location.search);
+  switchTab(initialTab, { sync: false });
+  if (location.hash) scrollToHashTarget(location.hash);
+}
 
 function debounce(fn, ms) {
   let t;
@@ -536,7 +751,7 @@ async function loadQuality() {
 const loaders = { trends: null, zones: null, historical: null, reportes: null, quality: null };
 const loaded = new Set();
 
-function switchTab(name) {
+function switchTab(name, opts = {}) {
   document.querySelectorAll("#insight-tabs button").forEach((b) => {
     const active = b.dataset.tab === name;
     b.classList.toggle("bg-white", active); b.classList.toggle("text-primary-container", active);
@@ -545,6 +760,9 @@ function switchTab(name) {
   });
   document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
   if (!loaded.has(name) && loaders[name]) { loaders[name](); loaded.add(name); }
+  activeTab = name;
+  // Switching tabs drops the previous section anchor and the other tab's filters.
+  if (opts.sync !== false) syncUrl(name, false);
 }
 
 async function initTrends() {
@@ -567,6 +785,7 @@ async function initTrends() {
   document.querySelector('#trends-filter input[name="zip_code"]').addEventListener("input", dAll);
   provSel.addEventListener("change", reloadAll);
 
+  captureAndRestore("trends");
   loadTrends();
   loadGroupTrends();
   loadForecast();
@@ -577,6 +796,7 @@ async function initZones() {
   document.getElementById("zones-fuel").addEventListener("change", loadProvinceMap);
   document.getElementById("zones-mainland").addEventListener("change", loadProvinceMap);
   document.getElementById("zones-detail-reset").addEventListener("click", loadProvinceMap);
+  captureAndRestore("zones");
   loadProvinceMap();
 }
 async function initHistorical() {
@@ -594,9 +814,10 @@ async function initHistorical() {
   document.querySelector('#historical-form select[name="period"]').addEventListener("change", loadHistorical);
   provSel.addEventListener("change", loadHistorical);
   zipInput.addEventListener("input", debouncedHistorical);
+  captureAndRestore("historical");
   loadHistorical();
 }
-async function initQuality() { loadQuality(); }
+async function initQuality() { captureAndRestore("quality"); loadQuality(); }
 
 async function loadWinRate() {
   const el = document.getElementById("reportes-win-rate-chart");
@@ -662,6 +883,7 @@ async function initReportes() {
   const reload = () => { loadWinRate(); loadPriceComparison(); loadCoverage(); };
   document.querySelector('#reportes-filter select[name="fuel_type"]').addEventListener("change", reload);
   document.getElementById("reportes-direction-select").addEventListener("change", loadWinRate);
+  captureAndRestore("reportes");
   loadWinRate();
   loadPriceComparison();
   loadCoverage();
@@ -677,5 +899,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("#insight-tabs button").forEach((b) => {
     b.addEventListener("click", () => switchTab(b.dataset.tab));
   });
-  switchTab("trends");
+  registerShareBuilders();
+  initShare(document);
+  document.addEventListener("change", onFilterChange);
+  document.addEventListener("input", onFilterInput);
+  applyStateFromUrl();
 });

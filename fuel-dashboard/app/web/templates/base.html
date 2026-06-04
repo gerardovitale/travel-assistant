@@ -8,16 +8,16 @@
 <meta property="og:title" content="{% block og_title %}Fuel Precision — Precios de combustible en España{% endblock %}">
 <meta property="og:description" content="{% block og_description %}Busca estaciones baratas, planifica tu ruta y ahorra en gasolina o diésel con datos actualizados a diario.{% endblock %}">
 <meta property="og:type" content="website">
-<meta property="og:url" content="{{ public_url }}{{ request.url.path }}">
+<meta property="og:url" content="{{ public_url }}{{ canonical_path or request.url.path }}">
 <meta property="og:locale" content="es_ES">
 <meta property="og:image" content="{{ public_url }}/static/og-image.png">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="{% block twitter_title %}Fuel Precision — Precios de combustible en España{% endblock %}">
 <meta name="twitter:description" content="{% block twitter_description %}Busca estaciones baratas, planifica tu ruta y ahorra en gasolina o diésel.{% endblock %}">
 <meta name="twitter:image" content="{{ public_url }}/static/og-image.png">
-<link rel="canonical" href="{{ public_url }}{{ request.url.path }}">
-<link rel="alternate" hreflang="es-ES" href="{{ public_url }}{{ request.url.path }}">
-<link rel="alternate" hreflang="x-default" href="{{ public_url }}{{ request.url.path }}">
+<link rel="canonical" href="{{ public_url }}{{ canonical_path or request.url.path }}">
+<link rel="alternate" hreflang="es-ES" href="{{ public_url }}{{ canonical_path or request.url.path }}">
+<link rel="alternate" hreflang="x-default" href="{{ public_url }}{{ canonical_path or request.url.path }}">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 <link rel="manifest" href="/static/site.webmanifest">
@@ -172,6 +172,7 @@
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
 {% endif %}
 <script type="module" src="/static/js/app.js"></script>
+<script type="module" src="/static/js/share.js"></script>
 {% block page_scripts %}{% endblock %}
 </body>
 </html>

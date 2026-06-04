@@ -8,6 +8,7 @@ from api.router import limiter
 from api.router import router
 from config import settings
 from fastapi import FastAPI
+from fastapi import HTTPException
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import Response
@@ -102,12 +103,28 @@ def sitemap_xml():
     if not settings.public_url:
         logger.warning("DASHBOARD_PUBLIC_URL not set — sitemap.xml will contain invalid URLs")
     base = settings.public_url.rstrip("/")
-    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
-  <url><loc>{base}/trip</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
-  <url><loc>{base}/insights</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
-</urlset>"""
+    urls = [
+        f"  <url><loc>{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>",
+        f"  <url><loc>{base}/trip</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>",
+        f"  <url><loc>{base}/insights</loc><changefreq>daily</changefreq><priority>0.9</priority></url>",
+    ]
+    # Distinct, crawlable deep links per enabled insights tab. /insights/trends is omitted because it
+    # canonicalises to /insights (identical content).
+    enabled_tabs = [
+        ("reportes", settings.insights_reportes_enabled),
+        ("zones", settings.insights_zones_enabled),
+        ("historical", settings.insights_historical_enabled),
+        ("quality", True),
+    ]
+    for tab, enabled in enabled_tabs:
+        if enabled:
+            urls.append(
+                f"  <url><loc>{base}/insights/{tab}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>"
+            )
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(urls) + "\n</urlset>"
+    )
     return Response(content=xml, media_type="application/xml")
 
 
@@ -215,8 +232,10 @@ def page_trip(request: Request):
     return _render_page(request, "trip.html", "trip")
 
 
-@app.get("/insights")
-def page_insights(request: Request):
+INSIGHTS_TABS = ("trends", "zones", "historical", "reportes", "quality")
+
+
+def _render_insights(request: Request, active_tab: str):
     data_ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
     if not data_ready:
         return templates.TemplateResponse(
@@ -227,11 +246,36 @@ def page_insights(request: Request):
         if settings.ui_test_mode
         else (settings.insights_zones_enabled, settings.insights_historical_enabled, settings.insights_reportes_enabled)
     )
+    # Fall back to the always-available trends tab when a deep link targets a disabled tab.
+    tab_enabled = {
+        "trends": True,
+        "zones": insights_zones_enabled,
+        "historical": insights_historical_enabled,
+        "reportes": insights_reportes_enabled,
+        "quality": True,
+    }
+    if not tab_enabled.get(active_tab, False):
+        active_tab = "trends"
     ctx = _base_context("insights")
     ctx["insights_zones_enabled"] = insights_zones_enabled
     ctx["insights_historical_enabled"] = insights_historical_enabled
     ctx["insights_reportes_enabled"] = insights_reportes_enabled
+    ctx["active_tab"] = active_tab
+    # /insights/trends duplicates /insights — canonicalise it to the bare path; other tabs are distinct.
+    ctx["canonical_path"] = "/insights" if active_tab == "trends" else f"/insights/{active_tab}"
     return templates.TemplateResponse(request, "insights.html", ctx)
+
+
+@app.get("/insights")
+def page_insights(request: Request):
+    return _render_insights(request, "trends")
+
+
+@app.get("/insights/{tab}")
+def page_insights_tab(request: Request, tab: str):
+    if tab not in INSIGHTS_TABS:
+        raise HTTPException(status_code=404, detail="Unknown insights tab")
+    return _render_insights(request, tab)
 
 
 if __name__ == "__main__":

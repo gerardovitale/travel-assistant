@@ -112,6 +112,71 @@ test("forecast sends the selected period as the forecast window", async ({ page 
   await responsePromise;
 });
 
+test("section share button opens a share menu and copies a deep link", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  // Force the popover path (no native share sheet) deterministically across browsers.
+  await page.addInitScript(() => {
+    try {
+      // @ts-expect-error remove native share so the popover renders
+      delete window.navigator.share;
+    } catch {
+      /* ignore */
+    }
+  });
+
+  const insightsPage = new InsightsPage(page);
+  await insightsPage.goto();
+  await expect(page.getByTestId("trend-chart")).toHaveAttribute("data-plot-ready", "true");
+
+  const shareBtn = page.locator('[data-share="sec-trends-price"]');
+  await expect(shareBtn).toBeVisible();
+  await expect(shareBtn).toHaveAttribute("aria-expanded", "false");
+  await shareBtn.click();
+  await expect(shareBtn).toHaveAttribute("aria-expanded", "true");
+
+  await expect(page.getByText("Copiar enlace")).toBeVisible();
+  await expect(page.getByText("WhatsApp")).toBeVisible();
+  await expect(page.getByText("Telegram")).toBeVisible();
+
+  await page.getByText("Copiar enlace").click();
+  await expect(page.getByTestId("toast")).toContainText("Enlace copiado");
+
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clip).toContain("/insights");
+  expect(clip).toContain("#sec-trends-price");
+});
+
+test("filter changes sync to the URL and restore on reload", async ({ page }) => {
+  const insightsPage = new InsightsPage(page);
+  await insightsPage.goto();
+  await expect(page.getByTestId("trend-chart")).toHaveAttribute("data-plot-ready", "true");
+
+  await insightsPage.trendsPeriodSelect.selectOption("year");
+  await expect(page).toHaveURL(/[?&]period=year/);
+
+  await page.reload();
+  await expect(insightsPage.trendsPeriodSelect).toHaveValue("year");
+});
+
+test("switching tabs updates the path", async ({ page }) => {
+  const insightsPage = new InsightsPage(page);
+  await insightsPage.goto();
+
+  await page.getByTestId("insight-tab-quality").click();
+  await expect(page).toHaveURL(/\/insights\/quality$/);
+});
+
+test("reportes deep link restores the active tab and its filters", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?fuel=diesel_a_price&dir=priciest");
+
+  // Server activates the reportes tab; the client restores both filters from the query.
+  await expect(page.getByTestId("insight-tabs")).toHaveAttribute("data-active-tab", "reportes");
+  await expect(page.getByTestId("reportes-fuel-select")).toHaveValue("diesel_a_price");
+  await expect(page.getByTestId("reportes-direction-select")).toHaveValue("priciest");
+  await expect(page.locator('[data-share="sec-reportes-win-rate"]')).toBeVisible();
+});
+
 test("forecast clamps short trend periods to the minimum forecast window of 90 days", async ({ page }) => {
   await setFixture(page, "insights_all");
   const insightsPage = new InsightsPage(page);

@@ -159,6 +159,74 @@ def test_page_insights_renders():
     assert "/static/js/insights.js" in resp.text
 
 
+def test_insights_tab_routes_render_with_active_tab():
+    with patch("main.is_data_ready", return_value=True):
+        client = _get_client()
+        for tab in ("trends", "reportes", "quality"):  # enabled by default
+            resp = client.get(f"/insights/{tab}")
+            assert resp.status_code == 200, tab
+            assert "/static/js/insights.js" in resp.text
+            assert f'data-active-tab="{tab}"' in resp.text
+
+
+def test_insights_unknown_tab_returns_404():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/nonsense")
+    assert resp.status_code == 404
+
+
+def test_insights_disabled_tab_falls_back_to_trends():
+    # zones + historical are disabled by default — a deep link to them renders the trends tab.
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/zones")
+    assert resp.status_code == 200
+    assert 'data-active-tab="trends"' in resp.text
+
+
+def test_insights_trends_path_canonicalizes_to_bare_insights():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"), patch(
+        "main.is_data_ready", return_value=True
+    ):
+        resp = _get_client().get("/insights/trends")
+    assert resp.status_code == 200
+    assert 'rel="canonical" href="https://fuelprecision.es/insights"' in resp.text
+
+
+def test_insights_tab_path_is_self_canonical():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"), patch(
+        "main.is_data_ready", return_value=True
+    ):
+        resp = _get_client().get("/insights/reportes")
+    assert 'rel="canonical" href="https://fuelprecision.es/insights/reportes"' in resp.text
+    assert 'property="og:url" content="https://fuelprecision.es/insights/reportes"' in resp.text
+
+
+def test_insights_renders_section_share_buttons():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights")
+    assert resp.status_code == 200
+    assert 'data-share="sec-trends-price"' in resp.text
+    assert 'data-share="sec-reportes-win-rate"' in resp.text
+
+
+def test_share_js_loaded_on_all_pages():
+    with patch("main.is_data_ready", return_value=True):
+        client = _get_client()
+        for path in ("/", "/trip", "/insights"):
+            resp = client.get(path)
+            assert "/static/js/share.js" in resp.text, path
+
+
+def test_sitemap_includes_enabled_insights_tabs_only():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"):
+        resp = _get_client().get("/sitemap.xml")
+    assert "<loc>https://fuelprecision.es/insights/reportes</loc>" in resp.text
+    assert "<loc>https://fuelprecision.es/insights/quality</loc>" in resp.text
+    # trends duplicates /insights; disabled tabs are omitted.
+    assert "/insights/trends</loc>" not in resp.text
+    assert "/insights/zones</loc>" not in resp.text
+
+
 def test_pages_wait_for_data_before_rendering():
     with patch("main.is_data_ready", return_value=False):
         for path in ("/", "/trip", "/insights"):
