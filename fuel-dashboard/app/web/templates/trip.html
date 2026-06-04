@@ -120,15 +120,11 @@
     <a id="trip-assumptions-edit" href="#advanced-section" data-testid="trip-assumptions-edit" class="inline-block mt-2 text-[12px] font-label font-bold text-primary-container">Ajustar parámetros →</a>
   </div>
 
+  <div id="trip-kpis" data-testid="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-5 gap-3"></div>
+
   <div id="trip-floor-warning" data-testid="trip-floor-warning" class="hidden rounded-xl px-4 py-3 text-sm bg-amber-600/15 text-amber-700 border border-amber-600/30 flex items-center gap-2">
     <span class="material-symbols-outlined text-[18px]">warning</span>
     <span id="trip-floor-warning-text"></span>
-  </div>
-
-  <div id="trip-kpis" data-testid="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-5 gap-3"></div>
-
-  <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">
-    <div id="trip-map" data-testid="trip-map" class="h-[360px] md:h-[500px]"></div>
   </div>
 
   <div>
@@ -136,11 +132,6 @@
     <div id="trip-stops" data-testid="trip-stops" class="space-y-3">
       <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">Introduce origen y destino para planificar.</div>
     </div>
-  </div>
-
-  <div id="alt-plans-wrap" data-testid="trip-alt-plans-wrap" class="hidden">
-    <h2 class="font-headline font-bold text-xl mb-3">Alternativas</h2>
-    <div id="alt-plans" data-testid="trip-alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
   </div>
 
   <div id="trip-actions" data-testid="trip-actions" class="hidden bg-surface-container-lowest rounded-2xl border border-outline-variant/40 px-5 py-4 flex flex-wrap items-center gap-3 shadow-sm">
@@ -152,6 +143,21 @@
       {{ brand_icon('navigate', 'w-5 h-5') }}
       <span>Navegar</span>
     </button>
+  </div>
+
+  <div class="bg-surface-container-lowest rounded-2xl shadow-md overflow-hidden border border-outline-variant/40" style="min-height: 360px;">
+    <div id="trip-map" data-testid="trip-map" class="h-[360px] md:h-[500px]"></div>
+  </div>
+
+  <div id="trip-fuel-chart-wrap" data-testid="trip-fuel-chart-wrap" class="hidden bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+    <h2 class="font-headline font-bold text-xl mb-1">Nivel del depósito</h2>
+    <p class="text-[12px] text-on-surface-variant mb-4">Nivel estimado del depósito (%) a lo largo del recorrido; sube al repostar en cada parada.</p>
+    <div id="trip-fuel-chart" data-testid="trip-fuel-chart" class="h-72 md:h-80 w-full overflow-hidden"></div>
+  </div>
+
+  <div id="alt-plans-wrap" data-testid="trip-alt-plans-wrap" class="hidden">
+    <h2 class="font-headline font-bold text-xl mb-3">Alternativas</h2>
+    <div id="alt-plans" data-testid="trip-alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
   </div>
 
   <dialog id="trip-share-dialog" data-testid="trip-share-dialog" class="trip-action-sheet" aria-labelledby="trip-share-dialog-title">

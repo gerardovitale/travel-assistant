@@ -29,6 +29,13 @@ test("trip planner renders KPIs, stops, and alternatives from the happy path fix
   await expect(page.getByTestId("trip-map")).toBeVisible();
   await expect(page.getByTestId("trip-floor-warning")).toBeHidden();
 
+  // Tank-level chart renders at the bottom: one Plotly bar trace sampled across
+  // even distance buckets for the happy-path fixture.
+  await expect(page.getByTestId("trip-fuel-chart-wrap")).toBeVisible();
+  const chart = page.getByTestId("trip-fuel-chart");
+  await expect(chart).toHaveAttribute("data-plot-ready", "true");
+  await expect(chart).toHaveAttribute("data-plot-traces", "1");
+
   const stopCard = page.getByTestId("trip-stop-card").first();
   const mapsLink = stopCard.locator('a[title="Cómo llegar"]');
   // Href stays Google Maps (desktop / right-click affordance); the click is
@@ -99,6 +106,9 @@ test("no-stop journeys keep the success state but collapse alternatives", async 
 
   await expect(page.getByTestId("trip-stops")).toContainText("No hacen falta paradas");
   await expect(page.getByTestId("trip-alt-plans-wrap")).toBeHidden();
+  // A stop-free trip still charts the single origin→destination leg.
+  await expect(page.getByTestId("trip-fuel-chart-wrap")).toBeVisible();
+  await expect(page.getByTestId("trip-fuel-chart")).toHaveAttribute("data-plot-ready", "true");
 });
 
 test("arrival-fuel floor that cannot be met surfaces a visible warning", async ({ page }) => {
@@ -128,6 +138,7 @@ test("trip planner errors reset the previous plan", async ({ page }) => {
   await expect(page.getByTestId("trip-banner")).toContainText("Route unavailable for selected itinerary");
   await expect(page.getByTestId("trip-stops")).toContainText("Route unavailable for selected itinerary");
   await expect(page.getByTestId("trip-alt-plans-wrap")).toBeHidden();
+  await expect(page.getByTestId("trip-fuel-chart-wrap")).toBeHidden();
 });
 
 test("share dialog exposes copy, WhatsApp, and Telegram tiles after a successful plan", async ({ page }) => {

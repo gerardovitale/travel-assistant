@@ -65,6 +65,58 @@ export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642",
   );
 }
 
+// Tank level across the trip, iPhone-battery style: one bar per distance bucket, height
+// is the tank fill % at that km. Fuel drains as km add up and jumps back up at each
+// refuel stop. Bars are colored by fuel status (same thresholds as the trip KPIs) and a
+// dashed line marks the requested reserve floor.
+// Tank-level thresholds (%) shared with the trip KPIs so the chart colors and the
+// "Combustible al llegar" KPI stay locked to the same low/mid boundaries.
+export const FUEL_LOW_PCT = 15;
+export const FUEL_MID_PCT = 30;
+const FUEL_COLORS = { low: "#ba1a1a", mid: "#b3923a", ok: "#0e7b52" };
+function fuelColor(pct) {
+  return pct < FUEL_LOW_PCT ? FUEL_COLORS.low : pct < FUEL_MID_PCT ? FUEL_COLORS.mid : FUEL_COLORS.ok;
+}
+
+export function fuelByDistance(el, points, { floorPct = null } = {}) {
+  if (!points || !points.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
+  el.innerHTML = "";
+  const x = points.map((p) => p.km);
+  const y = points.map((p) => p.pct);
+  const colors = points.map((p) => fuelColor(p.pct));
+
+  const shapes = [];
+  const annotations = [];
+  if (floorPct != null && floorPct > 0) {
+    shapes.push({
+      type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: floorPct, y1: floorPct,
+      line: { color: "#ba1a1a", width: 1.5, dash: "dash" },
+    });
+    annotations.push({
+      xref: "paper", x: 1, yref: "y", y: floorPct, yanchor: "bottom", xanchor: "right",
+      text: "Reserva mín.", showarrow: false, font: { size: 10, color: "#ba1a1a" },
+    });
+  }
+
+  Plotly.newPlot(
+    el,
+    [{
+      x, y, type: "bar", marker: { color: colors },
+      hovertemplate: "%{x:.0f} km<br>%{y:.0f}%<extra></extra>",
+    }],
+    {
+      ...COMMON_LAYOUT,
+      margin: { l: 48, r: 16, t: 24, b: 48 },
+      bargap: 0.15,
+      shapes,
+      annotations,
+      xaxis: { ...COMMON_LAYOUT.xaxis, type: "linear", ticksuffix: " km", rangemode: "tozero" },
+      yaxis: { ...COMMON_LAYOUT.yaxis, ticksuffix: "%", range: [0, 100] },
+    },
+    CONFIG,
+  );
+}
+
 export function heatmap(el, x, y, z) {
   if (!z || !z.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";

@@ -4,6 +4,7 @@ import { createMap, drawStations, drawRoute, clearLayer } from "./maps.js";
 import { formatPrice, formatKm, formatEur, formatMin, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels, updateBrandsLabel } from "./brands.js";
 import { attachAutocomplete } from "./addressAutocomplete.js";
+import { fuelByDistance, FUEL_LOW_PCT, FUEL_MID_PCT } from "./charts.js";
 import {
   buildNavUrls,
   getProviderOrder,
@@ -98,8 +99,8 @@ function hideAssumptions() {
 function renderKpis(plan, body) {
   const fuelPct = plan.fuel_at_destination_pct;
   const fuelClass = fuelPct == null ? "text-on-surface"
-    : fuelPct < 15             ? "text-error"
-    : fuelPct < 30             ? "text-amber-600"
+    : fuelPct < FUEL_LOW_PCT   ? "text-error"
+    : fuelPct < FUEL_MID_PCT   ? "text-amber-600"
     :                            "text-tertiary-container";
   const el = document.getElementById("trip-kpis");
   el.innerHTML = [
@@ -195,6 +196,64 @@ function renderAlternatives(plan) {
   wrap.classList.remove("hidden");
 }
 
+const clampPct = (v) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
+
+// Piecewise-linear anchors of the tank level (%) over distance. Fuel drains linearly
+// between known points; each stop dips to its arrival level then jumps back to 100%
+// (the planner refills to full). Anchoring on the planner's own arrival values keeps the
+// chart consistent with the KPIs regardless of rounding.
+function fuelCurveAnchors(plan, body) {
+  const anchors = [{ km: 0, pct: clampPct(body?.fuel_level_pct) }];
+  for (const s of plan.stops || []) {
+    anchors.push({ km: s.route_km, pct: clampPct(s.fuel_at_arrival_pct) }); // arrival dip
+    anchors.push({ km: s.route_km, pct: 100 }); // full refill
+  }
+  anchors.push({ km: plan.total_distance_km, pct: clampPct(plan.fuel_at_destination_pct) });
+  return anchors;
+}
+
+// Tank level (%) at a given km along the anchored curve. Duplicate-km anchors (the
+// refill jump) are skipped so we always interpolate within a real, positive-length leg.
+function levelAt(km, anchors) {
+  for (let i = 0; i < anchors.length - 1; i++) {
+    const a = anchors[i];
+    const b = anchors[i + 1];
+    if (b.km > a.km && km <= b.km) {
+      const t = (km - a.km) / (b.km - a.km);
+      return clampPct(a.pct + t * (b.pct - a.pct));
+    }
+  }
+  return clampPct(anchors[anchors.length - 1].pct);
+}
+
+// Bottom-of-view transparency chart (iPhone-battery style): tank fill % sampled at even
+// distance buckets, so users see fuel draining with distance and refilling at each stop.
+function renderFuelChart(plan, body) {
+  const wrap = document.getElementById("trip-fuel-chart-wrap");
+  const el = document.getElementById("trip-fuel-chart");
+  const total = plan?.total_distance_km;
+  if (!plan || !Number.isFinite(total) || total <= 0) {
+    el.innerHTML = "";
+    wrap.classList.add("hidden");
+    return;
+  }
+
+  const anchors = fuelCurveAnchors(plan, body);
+  const BUCKETS = 24;
+  const step = total / BUCKETS;
+  const points = [];
+  for (let i = 0; i <= BUCKETS; i++) {
+    const km = i * step;
+    points.push({ km, pct: levelAt(km, anchors) });
+  }
+
+  // Unhide before plotting: Plotly sizes to the container, and a display:none parent
+  // reports zero width — it would fall back to a fixed default and overflow on mobile.
+  wrap.classList.remove("hidden");
+  const minPct = body?.min_fuel_at_destination_pct;
+  fuelByDistance(el, points, { floorPct: Number.isFinite(minPct) ? minPct : null });
+}
+
 function showShare(formData, plan) {
   const publicUrl = window.__APP_CONFIG__?.public_url || "";
   const shareUrl = buildShareUrl(formData, publicUrl);
@@ -283,6 +342,8 @@ function resetPlanView(message = "Introduce origen y destino para planificar.") 
     <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">${escapeHtml(message)}</div>`;
   document.getElementById("alt-plans-wrap").classList.add("hidden");
   document.getElementById("alt-plans").innerHTML = "";
+  document.getElementById("trip-fuel-chart-wrap").classList.add("hidden");
+  document.getElementById("trip-fuel-chart").innerHTML = "";
   hideShare();
   routeLayer && map.removeLayer(routeLayer);
   markersLayer && map.removeLayer(markersLayer);
@@ -428,6 +489,7 @@ async function runPlan(form) {
     renderKpis(plan, body);
     renderStops(plan);
     renderAlternatives(plan);
+    renderFuelChart(plan, body);
     renderMap(plan);
     showShare(body, plan);
   } catch (err) {
