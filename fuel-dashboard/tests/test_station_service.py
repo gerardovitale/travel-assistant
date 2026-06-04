@@ -299,7 +299,7 @@ def test_get_zip_code_boundary_not_found(mock_load):
     from services.station_service import get_zip_code_boundary
 
     mock_load.return_value = None
-    result = get_zip_code_boundary("99999")
+    result = get_zip_code_boundary("28999")
     assert result is None
 
 
@@ -843,3 +843,75 @@ def test_get_brand_coverage_report_respects_config_brands(mock_agg, monkeypatch)
 
     assert len(rows) == 1
     assert rows[0]["brand"] == "ballenoil"
+
+
+# ---- _validate_zip_code range ------------------------------------------------
+
+
+@pytest.mark.parametrize("bad_zip", ["00000", "00999", "53000", "99999"])
+def test_get_zip_code_boundary_rejects_out_of_spanish_range(bad_zip):
+    from services.station_service import get_zip_code_boundary
+
+    with pytest.raises(ValueError, match="Spanish range"):
+        get_zip_code_boundary(bad_zip)
+
+
+@pytest.mark.parametrize("good_zip", ["01000", "28001", "52999"])
+@patch("services.station_service.load_postal_code_boundary", return_value={"type": "Feature"})
+def test_get_zip_code_boundary_accepts_in_range(mock_load, good_zip):
+    from services.station_service import get_zip_code_boundary
+
+    assert get_zip_code_boundary(good_zip) == {"type": "Feature"}
+
+
+# ---- div-by-zero guards (appearances sum == 0) ------------------------------
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_handles_zero_appearances(mock_agg):
+    """All-zero appearances must not raise or emit NaN; degenerate rows are dropped."""
+    from services.station_service import get_brand_win_rate_report
+
+    df = _make_win_rate_df()
+    df["appearances"] = 0
+    mock_agg.return_value = df
+    rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
+
+    # NaN rows dropped -> no NaN reaches the JSON response
+    assert rows == []
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_handles_zero_appearances(mock_agg):
+    """All-zero appearances must not raise or emit NaN; degenerate rows are dropped."""
+    from services.station_service import get_brand_price_comparison_report
+
+    df = _make_comparison_df()
+    df["appearances"] = 0
+    mock_agg.return_value = df
+    rows = get_brand_price_comparison_report("gasoline_95_e5_price")
+
+    assert rows == []
+
+
+# ---- get_district_price_map zero-count guard --------------------------------
+
+
+@patch("services.station_service.assign_districts")
+@patch("services.station_service.query_stations_by_province")
+@patch("services.station_service.load_madrid_districts")
+@patch("services.station_service.normalize_data_province_name", return_value="madrid")
+def test_get_district_price_map_skips_zero_count_district(mock_norm, mock_geo, mock_query, mock_assign):
+    from services.station_service import get_district_price_map
+
+    mock_geo.return_value = {"features": []}
+    mock_query.return_value = pd.DataFrame({"latitude": [40.4], "longitude": [-3.7], "price": [1.50]})
+    mock_assign.return_value = {
+        "Centro": {"total_price": 3.0, "count": 2},
+        "Empty": {"total_price": 0.0, "count": 0},
+    }
+    results = get_district_price_map("madrid", FuelType.gasoline_95_e5_price)
+
+    assert len(results) == 1
+    assert results[0].district == "Centro"
+    assert results[0].avg_price == pytest.approx(1.5)

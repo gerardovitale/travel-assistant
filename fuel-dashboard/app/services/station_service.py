@@ -60,7 +60,18 @@ logger = logging.getLogger(__name__)
 def _validate_zip_code(zip_code: str) -> str:
     if not re.fullmatch(r"\d{5}", zip_code):
         raise ValueError(f"Invalid zip code: {zip_code!r}. Must be exactly 5 digits.")
+    # Spanish postal codes: 2-digit province prefix 01-52 + 3 digits -> range 01000-52999.
+    if not (1000 <= int(zip_code) <= 52999):
+        raise ValueError(f"Invalid zip code: {zip_code!r}. Outside Spanish range 01000-52999.")
     return zip_code
+
+
+def _weighted_mean(g: pd.DataFrame, value_col: str, weight_col: str = "appearances") -> float:
+    """Appearance-weighted mean; NaN when total weight is 0 (avoids 0/0)."""
+    total_weight = g[weight_col].sum()
+    if total_weight <= 0:
+        return float("nan")
+    return (g[value_col] * g[weight_col]).sum() / total_weight
 
 
 def _trend_points_from_df(df: pd.DataFrame) -> list[TrendPoint]:
@@ -444,6 +455,8 @@ def get_district_price_map(province: str, fuel_type: FuelType) -> list[DistrictP
     )
     results = []
     for district, data in aggregated.items():
+        if data["count"] == 0:
+            continue
         results.append(
             DistrictPriceResult(
                 district=district,
@@ -661,7 +674,7 @@ def get_brand_win_rate_report(fuel_type: str, direction: str) -> list[dict] | No
         .apply(
             lambda g: pd.Series(
                 {
-                    "win_rate_pct": (g["win_rate_pct"] * g["appearances"]).sum() / g["appearances"].sum(),
+                    "win_rate_pct": _weighted_mean(g, "win_rate_pct"),
                     "appearances": g["appearances"].sum(),
                 }
             ),
@@ -669,6 +682,7 @@ def get_brand_win_rate_report(fuel_type: str, direction: str) -> list[dict] | No
         )
         .reset_index()
     )
+    grouped = grouped.dropna(subset=["win_rate_pct"])
     grouped["win_rate_pct"] = grouped["win_rate_pct"].round(2)
     grouped["appearances"] = grouped["appearances"].astype(int)
     return grouped.sort_values("win_rate_pct", ascending=False).to_dict(orient="records")
@@ -695,9 +709,8 @@ def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
         .apply(
             lambda g: pd.Series(
                 {
-                    "price_delta_pct": (g["price_delta_pct"] * g["appearances"]).sum() / g["appearances"].sum(),
-                    "days_below_market_pct": (g["days_below_market_pct"] * g["appearances"]).sum()
-                    / g["appearances"].sum(),
+                    "price_delta_pct": _weighted_mean(g, "price_delta_pct"),
+                    "days_below_market_pct": _weighted_mean(g, "days_below_market_pct"),
                     "appearances": g["appearances"].sum(),
                 }
             ),
@@ -705,6 +718,7 @@ def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
         )
         .reset_index()
     )
+    grouped = grouped.dropna(subset=["price_delta_pct", "days_below_market_pct"])
     grouped["price_delta_pct"] = grouped["price_delta_pct"].round(2)
     grouped["days_below_market_pct"] = grouped["days_below_market_pct"].round(2)
     grouped["appearances"] = grouped["appearances"].astype(int)
