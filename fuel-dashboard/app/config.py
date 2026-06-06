@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     realtime_enabled: bool = True
     realtime_refresh_seconds: int = 600
     realtime_curl_timeout: int = 120
+    realtime_connect_timeout: int = 10
+    realtime_max_retries: int = 3
+    realtime_retry_base_delay: int = 10
 
     ui_test_mode: bool = False
     ui_fixture_set: str = "happy_path"

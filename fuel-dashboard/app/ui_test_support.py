@@ -6,7 +6,10 @@ from typing import Iterable
 from typing import Optional
 
 from api.schemas import AlternativePlan
+from api.schemas import BrandCoverageRow
 from api.schemas import BrandHistoricalResponse
+from api.schemas import BrandPriceComparisonRow
+from api.schemas import BrandWinRateRow
 from api.schemas import DataFrameResponse
 from api.schemas import DataInventory
 from api.schemas import DistrictMapResponse
@@ -409,6 +412,30 @@ def historical_volatility_response() -> DataFrameResponse:
             {"zip_code": "28901", "volatility_pct": 1.1, "coefficient_of_variation": 0.011},
         ]
     )
+
+
+def reportes_win_rate_response() -> list[BrandWinRateRow]:
+    return [
+        BrandWinRateRow(brand="plenoil", win_rate_pct=41.2, appearances=87),
+        BrandWinRateRow(brand="ballenoil", win_rate_pct=18.7, appearances=62),
+        BrandWinRateRow(brand="cepsa", win_rate_pct=14.3, appearances=95),
+    ]
+
+
+def reportes_price_comparison_response() -> list[BrandPriceComparisonRow]:
+    return [
+        BrandPriceComparisonRow(brand="plenoil", price_delta_pct=-1.8, days_below_market_pct=72.4, appearances=87),
+        BrandPriceComparisonRow(brand="cepsa", price_delta_pct=-0.4, days_below_market_pct=51.2, appearances=95),
+        BrandPriceComparisonRow(brand="repsol", price_delta_pct=0.7, days_below_market_pct=33.8, appearances=112),
+    ]
+
+
+def reportes_coverage_response() -> list[BrandCoverageRow]:
+    return [
+        BrandCoverageRow(brand="repsol", zip_codes=892, localities=1247, municipalities=634, total_observations=38421),
+        BrandCoverageRow(brand="cepsa", zip_codes=743, localities=1089, municipalities=512, total_observations=31287),
+        BrandCoverageRow(brand="bp", zip_codes=412, localities=587, municipalities=298, total_observations=17843),
+    ]
 
 
 def quality_response() -> QualityResponse:

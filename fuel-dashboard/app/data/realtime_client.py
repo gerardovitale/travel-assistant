@@ -23,14 +23,19 @@ MIN_EXPECTED_STATIONS = 5000
 logger = logging.getLogger(__name__)
 
 
-def fetch_realtime_stations(curl_timeout: int = 120) -> pd.DataFrame | None:
+def fetch_realtime_stations(
+    curl_timeout: int = 120,
+    connect_timeout: int = 10,
+    max_retries: int = 3,
+    retry_base_delay: int = 10,
+) -> pd.DataFrame | None:
     """Fetch fuel prices from the Spain government API and return a transformed DataFrame.
 
     Uses curl subprocess to bypass TLS fingerprinting issues with Python's OpenSSL 3.x.
     Returns None on any failure (never raises).
     """
     try:
-        raw_data = _fetch_raw_data(curl_timeout)
+        raw_data = _fetch_raw_data(curl_timeout, connect_timeout, max_retries, retry_base_delay)
         _validate_api_response(raw_data)
         df = _transform_to_dataframe(raw_data)
         if len(df) < MIN_EXPECTED_STATIONS:
@@ -42,10 +47,8 @@ def fetch_realtime_stations(curl_timeout: int = 120) -> pd.DataFrame | None:
         return None
 
 
-def _fetch_raw_data(curl_timeout: int) -> dict:
-    max_attempts = 3
-    retry_delay = 10
-    for attempt in range(1, max_attempts + 1):
+def _fetch_raw_data(curl_timeout: int, connect_timeout: int, max_retries: int, retry_base_delay: int) -> dict:
+    for attempt in range(1, max_retries + 1):
         try:
             result = subprocess.run(
                 [
@@ -53,7 +56,7 @@ def _fetch_raw_data(curl_timeout: int) -> dict:
                     "-s",
                     "-f",
                     "--connect-timeout",
-                    "10",
+                    str(connect_timeout),
                     "--max-time",
                     str(curl_timeout),
                     "--tlsv1.2",
@@ -66,19 +69,20 @@ def _fetch_raw_data(curl_timeout: int) -> dict:
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=curl_timeout + 10,
+                timeout=curl_timeout + connect_timeout,
             )
             return json.loads(result.stdout)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            if attempt < max_attempts:
+            if attempt < max_retries:
+                delay = retry_base_delay * (2 ** (attempt - 1))
                 logger.warning(
                     "Real-time fetch attempt %d/%d failed: %s. Retrying in %ds...",
                     attempt,
-                    max_attempts,
+                    max_retries,
                     exc,
-                    retry_delay,
+                    delay,
                 )
-                time.sleep(retry_delay)
+                time.sleep(delay)
             else:
                 raise
     raise RuntimeError("All fetch attempts exhausted")

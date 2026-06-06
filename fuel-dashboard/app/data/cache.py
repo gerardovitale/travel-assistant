@@ -19,6 +19,7 @@ _realtime_refresh_thread: threading.Thread = None
 _data_ready = threading.Event()
 
 _last_realtime_refresh: float | None = None
+_consecutive_realtime_failures: int = 0
 
 
 def _is_realtime_active() -> bool:
@@ -88,18 +89,28 @@ def get_realtime_status() -> dict:
 
 
 def _realtime_refresh_loop():
-    global _last_realtime_refresh
+    global _last_realtime_refresh, _consecutive_realtime_failures
     while True:
         try:
-            df = fetch_realtime_stations(curl_timeout=settings.realtime_curl_timeout)
+            df = fetch_realtime_stations(
+                curl_timeout=settings.realtime_curl_timeout,
+                connect_timeout=settings.realtime_connect_timeout,
+                max_retries=settings.realtime_max_retries,
+                retry_base_delay=settings.realtime_retry_base_delay,
+            )
             if df is not None and len(df) > 0:
                 df = filter_public_stations(df)
                 count = replace_latest_stations(df)
                 _last_realtime_refresh = time.time()
+                _consecutive_realtime_failures = 0
                 _data_ready.set()
                 logger.info("Real-time refresh loaded %d stations", count)
             else:
-                logger.warning("Real-time refresh returned no data, keeping existing snapshot")
+                _consecutive_realtime_failures += 1
+                logger.warning(
+                    "Real-time refresh returned no data (consecutive failures: %d), keeping existing snapshot",
+                    _consecutive_realtime_failures,
+                )
         except Exception as e:
             logger.error(f"Error in real-time refresh loop: {e}")
         time.sleep(settings.realtime_refresh_seconds)
@@ -131,7 +142,10 @@ def start_cache_refresh(skip_initial_trend_refresh: bool = False):
         _realtime_refresh_thread = threading.Thread(target=_realtime_refresh_loop, daemon=True)
         _realtime_refresh_thread.start()
         logger.info(
-            "Real-time refresh started (interval: %ds, curl timeout: %ds)",
+            "Real-time refresh started (interval: %ds, curl: %ds, connect: %ds, retries: %d, base delay: %ds)",
             settings.realtime_refresh_seconds,
             settings.realtime_curl_timeout,
+            settings.realtime_connect_timeout,
+            settings.realtime_max_retries,
+            settings.realtime_retry_base_delay,
         )

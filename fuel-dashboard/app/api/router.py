@@ -587,6 +587,8 @@ def reportes_win_rate(
     fuel_type: BrandReportFuelType = Query(...),
     direction: Direction = Query(...),
 ):
+    if settings.ui_test_mode:
+        return ui_test.reportes_win_rate_response()
     rows = get_brand_win_rate_report(fuel_type.value, direction.value)
     if rows is None:
         raise HTTPException(status_code=404, detail="Aggregate report not available")
@@ -599,6 +601,8 @@ def reportes_price_comparison(
     request: Request,
     fuel_type: BrandReportFuelType = Query(...),
 ):
+    if settings.ui_test_mode:
+        return ui_test.reportes_price_comparison_response()
     rows = get_brand_price_comparison_report(fuel_type.value)
     if rows is None:
         raise HTTPException(status_code=404, detail="Aggregate report not available")
@@ -611,6 +615,8 @@ def reportes_coverage(
     request: Request,
     fuel_type: BrandReportFuelType = Query(...),
 ):
+    if settings.ui_test_mode:
+        return ui_test.reportes_coverage_response()
     rows = get_brand_coverage_report(fuel_type.value)
     if rows is None:
         raise HTTPException(status_code=404, detail="Aggregate report not available")
