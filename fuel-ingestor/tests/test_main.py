@@ -5,19 +5,16 @@ from ingestor.main import main
 
 
 @patch("ingestor.main.logging")
-@patch("ingestor.main.extract_fuel_prices_raw_data")
-@patch("ingestor.main.create_spain_fuel_dataframe")
+@patch("ingestor.main.fetch_fuel_stations")
 @patch("ingestor.main.validate_dataframe")
 @patch("ingestor.main.write_spain_fuel_prices_data_as_parquet")
 def test_main(
     mock_write_spain_fuel_prices_data_as_parquet: Mock,
     mock_validate_dataframe: Mock,
-    mock_create_spain_fuel_dataframe: Mock,
-    mock_extract_fuel_prices_raw_data: Mock,
+    mock_fetch_fuel_stations: Mock,
     mock_logging: Mock,
 ):
     main()
-    mock_extract_fuel_prices_raw_data.assert_called_once()
-    mock_create_spain_fuel_dataframe.assert_called_once()
+    mock_fetch_fuel_stations.assert_called_once()
     mock_validate_dataframe.assert_called_once()
     mock_write_spain_fuel_prices_data_as_parquet.assert_called_once()

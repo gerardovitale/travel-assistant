@@ -1,0 +1,10 @@
+[tool.uv.workspace]
+members = ["spain-fuel-fetcher", "fuel-ingestor", "fuel-dashboard"]
+exclude = ["ingest-fuel-prices"]
+
+[tool.uv]
+# Consolidating per-service locks into one root lock re-resolved transitives to
+# latest. cryptography 48.x crashes ("Illegal instruction") on arm64 Docker; pin
+# back to the version both services shipped on main (known-good in CI + on the
+# Raspberry Pi). This keeps the refactor dependency-neutral.
+constraint-dependencies = ["cryptography==46.0.5"]

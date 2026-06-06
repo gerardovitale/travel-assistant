@@ -1,12 +1,16 @@
+# Build context = repo root (workspace). See deploy.yaml / makefile.
 FROM python:3.13-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.6 /uv /uvx /bin/
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project
+COPY spain-fuel-fetcher/ ./spain-fuel-fetcher/
+COPY fuel-dashboard/pyproject.toml ./fuel-dashboard/
+COPY fuel-ingestor/pyproject.toml ./fuel-ingestor/
+RUN uv sync --frozen --no-dev --no-install-project --no-editable --package fuel-dashboard
 
 FROM python:3.13-slim AS asset-builder
 WORKDIR /app
-COPY ./app/ ./app/
+COPY ./fuel-dashboard/app/ ./app/
 RUN python - <<'PY'
 import gzip
 import json

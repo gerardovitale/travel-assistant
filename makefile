@@ -10,11 +10,10 @@ include $(ENV)
 export
 
 setup:
-	cd fuel-ingestor && uv sync --dev
-	cd fuel-dashboard && uv sync --dev
+	uv sync --all-packages --dev
 
-test: fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
-test-local: setup fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
+test: spain-fuel-fetcher.test fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
+test-local: setup spain-fuel-fetcher.test-local fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
 scan: fuel-ingestor.scan fuel-dashboard.scan
 done: setup test scan
 
@@ -41,12 +40,15 @@ notebook:
 		quay.io/jupyter/scipy-notebook:latest
 
 
-# LOCAL DEV (uv)
+# LOCAL DEV (uv) — single workspace at repo root, one shared .venv
 fuel-ingestor.sync:
-	cd fuel-ingestor && uv sync --no-install-project
+	uv sync --package fuel-ingestor --no-install-project
 
 fuel-dashboard.sync:
-	cd fuel-dashboard && uv sync --no-install-project
+	uv sync --package fuel-dashboard --no-install-project
+
+spain-fuel-fetcher.test-local:
+	uv run --package spain-fuel-fetcher pytest --durations=5 -vv spain-fuel-fetcher/tests/
 
 fuel-ingestor.test-local:
 	cd fuel-ingestor && uv run pytest --durations=5 -vv tests/
@@ -60,7 +62,7 @@ fuel-dashboard.ui-test-local:
 
 # IMAGE SCANNING
 define scan-service
-	docker buildx build -t travass-$(1):local $(1)/ && \
+	docker buildx build -f $(1)/Dockerfile -t travass-$(1):local . && \
 	docker run --rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(PWD)/.trivyignore:/root/.trivyignore \
@@ -78,21 +80,26 @@ fuel-dashboard.scan:
 	$(call scan-service,fuel-dashboard)
 
 
+# SPAIN FUEL FETCHER (shared package)
+spain-fuel-fetcher.test:
+	./scripts/run-docker-test.sh spain-fuel-fetcher
+
+
 # FUEL INGESTOR
 fuel-ingestor.test:
 	./scripts/run-docker-test.sh fuel-ingestor
 
 fuel-ingestor.run:
-	cd fuel-ingestor && docker buildx build -t fuel-ingestor . && \
+	docker buildx build -f fuel-ingestor/Dockerfile -t fuel-ingestor . && \
 	mkdir -p output && \
 	docker run --rm \
 		-v $(PWD)/fuel-ingestor/output:/output \
 		--entrypoint python3 \
-		fuel-ingestor local_run.py
+		fuel-ingestor ingestor/local_run.py
 
 fuel-aggregator.run:
+	uv sync --frozen --no-dev --no-install-project --package fuel-ingestor && \
 	cd fuel-ingestor && \
-	uv sync --frozen --no-dev --no-install-project && \
 	PYTHONPATH=app uv run --frozen --no-sync python app/aggregator/main.py
 
 
@@ -101,14 +108,14 @@ fuel-dashboard.test:
 	./scripts/run-docker-test.sh fuel-dashboard
 
 fuel-dashboard.run:
-	cd fuel-dashboard && docker buildx build -t fuel-dashboard . && \
+	docker buildx build -f fuel-dashboard/Dockerfile -t fuel-dashboard . && \
 	docker run --rm -p 8080:8080 \
 		-v $(DASHBOARD_CREDENTIALS_PATH):/app/credentials.json:ro \
 		-e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json \
 		fuel-dashboard
 
 fuel-dashboard.ui-test:
-	cd fuel-dashboard && docker buildx build -f Dockerfile.e2e -t fuel-dashboard-e2e . && \
+	docker buildx build -f fuel-dashboard/Dockerfile.e2e -t fuel-dashboard-e2e . && \
 	docker run --rm fuel-dashboard-e2e
 
 

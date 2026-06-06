@@ -1,4 +1,13 @@
+"""Schema maps for the Spain government fuel-price API.
+
+These functions define the data contract between the raw government API response
+(Spanish field names) and the normalized DataFrame both services consume. See
+SCHEMA.md for the full contract.
+"""
+
+
 def get_renaming_map() -> dict[str, str]:
+    """Map raw Spanish API field names to normalized English column names."""
     return {
         "C.P.": "zip_code",
         "IDEESS": "eess_id",
@@ -31,6 +40,7 @@ def get_renaming_map() -> dict[str, str]:
 
 
 def get_float_columns() -> list[str]:
+    """Columns that must be parsed from comma-decimal strings to floats."""
     return [
         "latitude",
         "longitude",
@@ -52,6 +62,7 @@ def get_float_columns() -> list[str]:
 
 
 def get_expected_columns() -> list[str]:
+    """Final column order of the transformed DataFrame (the output contract)."""
     return [
         "timestamp",
         "zip_code",

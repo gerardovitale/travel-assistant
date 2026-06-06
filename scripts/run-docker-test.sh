@@ -25,8 +25,10 @@ if [ ! -f "$SUBDIR/Dockerfile.test" ]; then
   exit 1
 fi
 
-# Build and run Docker test image
+# Build and run Docker test image.
+# Build context is the repo root (workspace) so the shared spain-fuel-fetcher
+# package and the root uv.lock are reachable by the Dockerfile.
 logger "INFO" "🐳 Building Docker image for $SUBDIR"
-cd "$SUBDIR" && docker buildx build -f Dockerfile.test -t "$IMAGE_NAME" . && cd - || exit
+docker buildx build -f "$SUBDIR/Dockerfile.test" -t "$IMAGE_NAME" . || exit
 logger "INFO" "🚀 Running Docker container for $IMAGE_NAME"
 docker run --rm "$IMAGE_NAME":latest
