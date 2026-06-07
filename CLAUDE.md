@@ -2,27 +2,30 @@
 
 ## CONTEXT
 
-- Stack: Python 3.13, FastAPI + Jinja2 (dashboard), pandas + DuckDB, GCP (Cloud Run Job + GCS for ingestor), Terraform
+- Stack: Python 3.13, FastAPI + Jinja2 (dashboard), pandas + DuckDB, GCP (GitHub Actions + GCS for ingestor), Terraform
 - Purpose: fetch Spain fuel station prices from gov API, store Parquet in GCS, serve via FastAPI dashboard
-- Deployment split: **fuel-ingestor** runs on GCP Cloud Run Job; **fuel-dashboard** runs self-hosted on a Raspberry Pi 5
-  (arm64, Docker). Dashboard reads Parquet from GCS — not a Cloud Run service.
+- Deployment split: **fuel-ingestor** runs in GitHub Actions (`trigger-ingestor.yaml`, daily cron) writing Parquet to
+  GCS; **fuel-dashboard** runs self-hosted on a Raspberry Pi 5 (arm64, Docker). Dashboard reads Parquet from GCS.
 - Key constraints: Docker tests CI source of truth; pre-commit enforces black (120) + flake8 (120) + import order
 - `fuel-ingestor/` active; `ingest-fuel-prices/` legacy — don't extend
 - **uv workspace** at repo root (`pyproject.toml` `[tool.uv.workspace]`, single root `uv.lock`). Members:
   `spain-fuel-fetcher`, `fuel-ingestor`, `fuel-dashboard`. Docker build context for all services = **repo root**
   (Dockerfiles `COPY` the root lock + `spain-fuel-fetcher/`); CI build/test jobs are inlined in `deploy.yaml`.
 - GCP project: `travel-assistant-417315`, region: `europe-southwest1`, resource prefix: `travass`
+- Git: work directly on `main`, leave changes uncommitted. Do NOT create branches or commit/push unless explicitly
+  asked.
 
 ## Architecture
 
-- **fuel-ingestor/** — Cloud Run Job, daily cron via GitHub Actions (`trigger-ingestor.yaml`). Entry: `app/main.py`
+- **fuel-ingestor/** — runs in GitHub Actions, daily cron (`trigger-ingestor.yaml`) via `run-python-job-reusable.yaml`.
+  Entry: `app/ingestor/main.py`
 - **fuel-dashboard/** — FastAPI + Jinja2 templates. Entry: `app/main.py`. Deployed on a **Raspberry Pi 5** (arm64,
   Docker container), not Cloud Run. Runs unoptimized CPython (no `-O`), so `assert` statements stay active.
 - **spain-fuel-fetcher/** — shared package (`spain_fuel_api`): single source of truth for fetching/validating/
   transforming the gov API. Both services import it (`fetch_fuel_stations`, schema maps). Data contract in
   `spain-fuel-fetcher/SCHEMA.md`. Curl-based fetch lives here; do NOT re-add fetch/transform code to the services.
 - **ingest-fuel-prices/** — Cloud Function (legacy, HTTP-triggered)
-- **infra/** — Terraform: Cloud Run job, GCS bucket, service accounts, IAM
+- **infra/** — Terraform: GCS bucket, service accounts, IAM
 - Pipeline: fetch JSON (Spain fuel API, via `spain_fuel_api`) → transform with pandas → upload Parquet to GCS
 - Deployment: push to `main` → Docker test → build & push image (`deploy.yaml`) → Terraform apply
 

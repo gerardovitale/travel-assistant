@@ -15,7 +15,7 @@ def main():
     spain_fuel_price_df = fetch_fuel_stations()
 
     timestamp = datetime.now().isoformat(timespec="seconds")
-    output_path = f"/output/spain_fuel_prices_{timestamp}.csv"
+    output_path = f"output/spain_fuel_prices_{timestamp}.csv"
     spain_fuel_price_df.to_csv(output_path, index=False)
     logging.info(f"Wrote {len(spain_fuel_price_df)} rows to {output_path}")
 

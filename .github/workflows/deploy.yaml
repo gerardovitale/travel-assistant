@@ -117,41 +117,6 @@ jobs:
   # ---------------------------------------------------------------------------
   # Build jobs (multi-arch, build context = repo root)
   # ---------------------------------------------------------------------------
-  build-fuel-ingestor:
-    needs: [detect-changes, test-spain-fuel-fetcher, test-fuel-ingestor]
-    if: >-
-      always() && !failure() && !cancelled() &&
-      (needs.detect-changes.outputs.fuel-ingestor == 'true' ||
-        inputs.force_all == true)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6.0.2
-      - name: Compute short SHA
-        id: vars
-        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: fuel-ingestor/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/travass-fuel-ingestor:${{ steps.vars.outputs.short_sha }}
-            ${{ secrets.DOCKER_USERNAME }}/travass-fuel-ingestor:latest
-          cache-from: type=gha,scope=fuel-ingestor
-          cache-to: type=gha,mode=max,scope=fuel-ingestor
-
   build-fuel-dashboard:
     needs: [detect-changes, test-spain-fuel-fetcher, test-fuel-dashboard]
     if: >-
@@ -190,29 +155,6 @@ jobs:
   # ---------------------------------------------------------------------------
   # Image scanning
   # ---------------------------------------------------------------------------
-  scan-fuel-ingestor:
-    needs: build-fuel-ingestor
-    if: >-
-      always() && !failure() && !cancelled() &&
-      needs.build-fuel-ingestor.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Compute short SHA
-        id: vars
-        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          image-ref: "${{ secrets.DOCKER_USERNAME }}/travass-fuel-ingestor:${{ steps.vars.outputs.short_sha }}"
-          format: "table"
-          exit-code: "1"
-          severity: "CRITICAL,HIGH"
-          trivyignores: ".trivyignore"
-
   scan-fuel-dashboard:
     needs: build-fuel-dashboard
     if: >-
@@ -243,9 +185,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - detect-changes
-      - build-fuel-ingestor
       - build-fuel-dashboard
-      - scan-fuel-ingestor
       - scan-fuel-dashboard
     if: >-
       always() && !failure() && !cancelled() &&
@@ -256,7 +196,6 @@ jobs:
       TF_VAR_APP_NAME: travass
       TF_VAR_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
       TF_VAR_REGION: europe-southwest1
-      TF_VAR_DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6.0.2
@@ -279,33 +218,10 @@ jobs:
         working-directory: ./infra
         run: terraform init
 
-      - name: Determine Docker image tags
-        id: tags
-        working-directory: ./infra
-        run: |
-          FORCE="${{ inputs.force_all }}"
-
-          current_tag() {
-            terraform output -raw "$1" 2>/dev/null || echo "${GITHUB_SHA::7}"
-          }
-
-          resolve_tag() {
-            local KEY="$1" CHANGED="$2"
-            if [[ "$CHANGED" == "true" || "$FORCE" == "true" ]]; then
-              echo "${GITHUB_SHA::7}"
-            else
-              current_tag "docker_image_tag_$(echo "$KEY" | tr '[:upper:]' '[:lower:]')"
-            fi
-          }
-
-          {
-            echo "tag_FUEL_INGESTOR=$(resolve_tag FUEL_INGESTOR '${{ needs.detect-changes.outputs.fuel-ingestor }}')"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Plan Terraform changes
         working-directory: ./infra
-        run: terraform plan -input=false -var "DOCKER_IMAGE_TAG=${{ steps.tags.outputs.tag_FUEL_INGESTOR }}"
+        run: terraform plan -input=false
 
       - name: Apply Terraform changes
         working-directory: ./infra
-        run: terraform apply -auto-approve -input=false -var "DOCKER_IMAGE_TAG=${{ steps.tags.outputs.tag_FUEL_INGESTOR }}"
+        run: terraform apply -auto-approve -input=false

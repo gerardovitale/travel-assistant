@@ -16,7 +16,7 @@ on:
 
 jobs:
   run-aggregation:
-    uses: ./.github/workflows/run-aggregation-reusable.yaml
+    uses: ./.github/workflows/run-python-job-reusable.yaml
     with:
       working_directory: ${{ inputs.working_directory }}
       script_path: ${{ inputs.script_path }}

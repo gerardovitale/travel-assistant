@@ -14,7 +14,7 @@ planning, and price visualizations.
                           GitHub Actions
                                 |
                                 v
-  Spain Gov API ──> fuel-ingestor (Cloud Run Job) ──> GCS Bucket (Parquet)
+  Spain Gov API ──> fuel-ingestor (GitHub Actions) ──> GCS Bucket (Parquet)
                                                            |
                                                            v
                                                      fuel-dashboard (Cloud Run Service)
@@ -29,7 +29,7 @@ planning, and price visualizations.
 ## Repository Structure
 
 ```
-fuel-ingestor/     Batch ingestion pipeline (Cloud Run Job)
+fuel-ingestor/     Batch ingestion pipeline (GitHub Actions)
 fuel-dashboard/    Web dashboard (FastAPI + NiceGUI)
 infra/             Terraform IaC for GCP
 scripts/           Utility and migration scripts

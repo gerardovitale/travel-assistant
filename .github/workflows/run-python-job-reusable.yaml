@@ -1,4 +1,4 @@
-name: Run Aggregation Reusable
+name: Run Python Job Reusable
 
 on:
   workflow_call:
@@ -14,7 +14,7 @@ on:
         required: true
 
 jobs:
-  run-aggregation:
+  run-python-job:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

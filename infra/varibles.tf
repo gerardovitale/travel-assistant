@@ -12,13 +12,3 @@ variable "REGION" {
   type        = string
   description = "GCP region to deploy tf state related resources"
 }
-
-variable "DOCKER_HUB_USERNAME" {
-  type        = string
-  description = "Docker Hub username"
-}
-
-variable "DOCKER_IMAGE_TAG" {
-  type        = string
-  description = "Docker image tag"
-}

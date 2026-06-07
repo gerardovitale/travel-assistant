@@ -6,18 +6,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  trigger-ingestor:
-    uses: gerardovitale/github-workflows/.github/workflows/trigger-cloud-run-job.yml@v1
+  run-ingestor:
+    uses: ./.github/workflows/run-python-job-reusable.yaml
     with:
-      region: europe-southwest1
-      app_name: travass
-      component: fuel-ingestor-job
+      working_directory: fuel-ingestor
+      script_path: app/ingestor/main.py
     secrets:
       gcp_credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
 
   run-aggregation:
-    needs: trigger-ingestor
-    uses: ./.github/workflows/run-aggregation-reusable.yaml
+    needs: run-ingestor
+    uses: ./.github/workflows/run-python-job-reusable.yaml
     with:
       working_directory: fuel-ingestor
       script_path: app/aggregator/main.py

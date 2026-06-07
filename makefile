@@ -14,7 +14,7 @@ setup:
 
 test: spain-fuel-fetcher.test fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
 test-local: setup spain-fuel-fetcher.test-local fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
-scan: fuel-ingestor.scan fuel-dashboard.scan
+scan: fuel-dashboard.scan
 done: setup test scan
 
 
@@ -73,9 +73,6 @@ define scan-service
 		travass-$(1):local
 endef
 
-fuel-ingestor.scan:
-	$(call scan-service,fuel-ingestor)
-
 fuel-dashboard.scan:
 	$(call scan-service,fuel-dashboard)
 
@@ -90,12 +87,10 @@ fuel-ingestor.test:
 	./scripts/run-docker-test.sh fuel-ingestor
 
 fuel-ingestor.run:
-	docker buildx build -f fuel-ingestor/Dockerfile -t fuel-ingestor . && \
+	uv sync --frozen --no-dev --no-install-project --package fuel-ingestor && \
+	cd fuel-ingestor && \
 	mkdir -p output && \
-	docker run --rm \
-		-v $(PWD)/fuel-ingestor/output:/output \
-		--entrypoint python3 \
-		fuel-ingestor ingestor/local_run.py
+	PYTHONPATH=app uv run --frozen --no-sync python app/ingestor/local_run.py
 
 fuel-aggregator.run:
 	uv sync --frozen --no-dev --no-install-project --package fuel-ingestor && \
