@@ -368,6 +368,7 @@ class BrandWinRateRow(BaseModel):
     brand: str
     win_rate_pct: float
     appearances: int
+    confidence: str  # "high" | "medium" | "low" — banded by aggregate sample size (appearances)
 
 
 class BrandPriceComparisonRow(BaseModel):
@@ -375,6 +376,9 @@ class BrandPriceComparisonRow(BaseModel):
     price_delta_pct: float
     days_below_market_pct: float
     appearances: int
+    confidence: str  # "high" | "medium" | "low" — banded by aggregate sample size (appearances)
+    brand_avg_price: float  # appearance-weighted mean brand price (EUR/L)
+    market_avg_price: float  # appearance-weighted mean market price (EUR/L)
 
 
 class BrandCoverageRow(BaseModel):

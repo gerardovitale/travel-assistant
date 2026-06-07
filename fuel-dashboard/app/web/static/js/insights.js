@@ -819,6 +819,86 @@ async function initHistorical() {
 }
 async function initQuality() { captureAndRestore("quality"); loadQuality(); }
 
+// ----------------------------- REPORTES: confidence + savings -----------------------------
+// Sample-size confidence bands. Mirror the backend (station_service.py / ingestor reports/config.py):
+// 384 ~= n for +/-5% margin at 95% confidence; 100 = rough floor. Coverage rows carry no
+// `confidence` field, so we band their `total_observations` (same unit: summed appearances).
+const CONFIDENCE_OBS_HIGH = 384;
+const CONFIDENCE_OBS_MEDIUM = 100;
+const CONFIDENCE_META = {
+  high: { label: "Alta", cls: "bg-tertiary-container text-on-tertiary-container" },
+  medium: { label: "Media", cls: "bg-secondary-container text-on-secondary-container" },
+  low: { label: "Baja", cls: "bg-surface-container-high text-on-surface-variant" },
+};
+
+function confidenceFromCount(n) {
+  if (n >= CONFIDENCE_OBS_HIGH) return "high";
+  if (n >= CONFIDENCE_OBS_MEDIUM) return "medium";
+  return "low";
+}
+
+function confidenceBadge(level) {
+  const m = CONFIDENCE_META[level] || CONFIDENCE_META.low;
+  return `<span class="inline-block rounded-full px-2 py-0.5 text-[11px] font-label font-bold ${m.cls}">${m.label}</span>`;
+}
+
+// Render a one-line confidence legend (brand -> badge) as a sibling right after a chart container,
+// keeping the shared horizontalBar() util untouched. Re-render replaces the prior legend.
+function renderConfidenceLegend(chartEl, rows) {
+  const legendId = `${chartEl.id}-confidence`;
+  let legend = document.getElementById(legendId);
+  if (!legend) {
+    legend = document.createElement("div");
+    legend.id = legendId;
+    legend.className = "mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-on-surface-variant";
+    chartEl.insertAdjacentElement("afterend", legend);
+  }
+  if (!rows || !rows.length) { legend.innerHTML = ""; return; }
+  legend.innerHTML = `<span class="font-label font-bold uppercase tracking-wide">Confianza</span>` +
+    rows.map((r) => `<span class="inline-flex items-center gap-1"><span class="capitalize">${escapeHtml(r.brand)}</span>${confidenceBadge(r.confidence)}</span>`).join("");
+}
+
+let lastComparisonRows = [];
+
+function savingsInputs() {
+  const liters = parseFloat(document.getElementById("reportes-tank-liters")?.value) || 0;
+  const fills = parseFloat(document.getElementById("reportes-fills-month")?.value) || 0;
+  return { liters, fills };
+}
+
+// €/year vs market: weighted-mean prices x tank size x fills. An estimate under explicit,
+// user-editable assumptions — never presented as exact.
+function renderSavings(rows) {
+  const el = document.getElementById("reportes-savings-kpis");
+  if (!el) return;
+  if (!rows || !rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
+  const { liters, fills } = savingsInputs();
+  const cards = rows
+    .map((r) => {
+      const savingsPerL = (r.market_avg_price ?? 0) - (r.brand_avg_price ?? 0);
+      const eurPerYear = savingsPerL * liters * fills * 12;
+      return { brand: r.brand, savingsPerL, eurPerYear };
+    })
+    .sort((a, b) => b.eurPerYear - a.eurPerYear);
+  el.innerHTML = cards
+    .map((c) => {
+      const positive = c.savingsPerL > 0;
+      const value = positive
+        ? `~${eurFmt(c.eurPerYear)}/año`
+        : "Sin ahorro vs. mercado";
+      const valueCls = positive ? "text-on-surface" : "text-on-surface-variant";
+      return `<div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm">
+        <p class="text-[11px] font-label font-bold tracking-wider uppercase text-outline capitalize">${escapeHtml(c.brand)}</p>
+        <p class="mt-2 font-headline font-extrabold text-2xl ${valueCls}">${value}</p>
+        <p class="mt-1 text-xs text-on-surface-variant">${positive ? `${eurFmt(c.savingsPerL, 3)}/L vs. mercado` : ""}</p></div>`;
+    })
+    .join("");
+}
+
+function eurFmt(n, decimals = 2) {
+  return `${(n || 0).toLocaleString("es-ES", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} €`;
+}
+
 async function loadWinRate() {
   const el = document.getElementById("reportes-win-rate-chart");
   if (!el) return;
@@ -829,7 +909,8 @@ async function loadWinRate() {
     const url = `/reportes/win-rate?fuel_type=${encodeURIComponent(fuelType)}&direction=${encodeURIComponent(direction)}`;
     const rows = await api(url);
     horizontalBar(el, rows, { labelKey: "brand", valueKey: "win_rate_pct", color: "#0453cd", tickSuffix: " %" });
-  } catch (err) { el.innerHTML = emptyMsg(err.message); }
+    renderConfidenceLegend(el, rows);
+  } catch (err) { el.innerHTML = emptyMsg(err.message); renderConfidenceLegend(el, []); }
 }
 
 async function loadPriceComparison() {
@@ -846,9 +927,18 @@ async function loadPriceComparison() {
       colorFn: (r) => r.price_delta_pct >= 0 ? "#a33d3d" : "#1b5e20",
       tickSuffix: " %",
     });
+    renderConfidenceLegend(deltaEl, rows);
     const byDays = rows.slice().sort((a, b) => b.days_below_market_pct - a.days_below_market_pct);
     horizontalBar(daysEl, byDays, { labelKey: "brand", valueKey: "days_below_market_pct", color: "#0453cd", tickSuffix: " %" });
-  } catch (err) { deltaEl.innerHTML = emptyMsg(err.message); daysEl.innerHTML = emptyMsg(err.message); }
+    renderConfidenceLegend(daysEl, byDays);
+    lastComparisonRows = rows;
+    renderSavings(rows);
+  } catch (err) {
+    deltaEl.innerHTML = emptyMsg(err.message);
+    daysEl.innerHTML = emptyMsg(err.message);
+    renderConfidenceLegend(deltaEl, []);
+    renderConfidenceLegend(daysEl, []);
+  }
 }
 
 async function loadCoverage() {
@@ -865,7 +955,8 @@ async function loadCoverage() {
         <th class="pb-2 pr-6 text-right whitespace-nowrap">C.P.</th>
         <th class="pb-2 pr-6 text-right whitespace-nowrap">Municipios</th>
         <th class="pb-2 pr-6 text-right whitespace-nowrap">Localidades</th>
-        <th class="pb-2 text-right whitespace-nowrap">Observaciones</th>
+        <th class="pb-2 pr-6 text-right whitespace-nowrap">Observaciones</th>
+        <th class="pb-2 text-right whitespace-nowrap">Confianza</th>
       </tr></thead>
       <tbody class="divide-y divide-outline-variant/30">${rows.map((r) => `
         <tr>
@@ -873,7 +964,8 @@ async function loadCoverage() {
           <td class="py-2 pr-6 text-right whitespace-nowrap">${r.zip_codes.toLocaleString("es-ES")}</td>
           <td class="py-2 pr-6 text-right whitespace-nowrap">${r.municipalities.toLocaleString("es-ES")}</td>
           <td class="py-2 pr-6 text-right whitespace-nowrap">${r.localities.toLocaleString("es-ES")}</td>
-          <td class="py-2 text-right whitespace-nowrap text-on-surface-variant">${r.total_observations.toLocaleString("es-ES")}</td>
+          <td class="py-2 pr-6 text-right whitespace-nowrap text-on-surface-variant">${r.total_observations.toLocaleString("es-ES")}</td>
+          <td class="py-2 text-right whitespace-nowrap">${confidenceBadge(confidenceFromCount(r.total_observations))}</td>
         </tr>`).join("")}
       </tbody></table>`;
   } catch (err) { el.innerHTML = emptyMsg(err.message); }
@@ -883,6 +975,10 @@ async function initReportes() {
   const reload = () => { loadWinRate(); loadPriceComparison(); loadCoverage(); };
   document.querySelector('#reportes-filter select[name="fuel_type"]').addEventListener("change", reload);
   document.getElementById("reportes-direction-select").addEventListener("change", loadWinRate);
+  // Recompute the savings estimate from cached rows on input change — no refetch needed.
+  const recomputeSavings = () => renderSavings(lastComparisonRows);
+  document.getElementById("reportes-tank-liters")?.addEventListener("input", recomputeSavings);
+  document.getElementById("reportes-fills-month")?.addEventListener("input", recomputeSavings);
   captureAndRestore("reportes");
   loadWinRate();
   loadPriceComparison();

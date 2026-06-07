@@ -845,6 +845,66 @@ def test_get_brand_coverage_report_respects_config_brands(mock_agg, monkeypatch)
     assert rows[0]["brand"] == "ballenoil"
 
 
+# ---- confidence band + savings inputs ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "appearances,expected",
+    [(0, "low"), (99, "low"), (100, "medium"), (383, "medium"), (384, "high"), (1000, "high")],
+)
+def test_confidence_band_boundaries(appearances, expected):
+    from services.station_service import _confidence_band
+
+    assert _confidence_band(appearances) == expected
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_includes_confidence(mock_agg):
+    from services.station_service import get_brand_win_rate_report
+
+    mock_agg.return_value = _make_win_rate_df()
+    rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
+
+    # ballenoil 100+50=150 -> medium; repsol 200+100=300 -> medium
+    assert all("confidence" in r for r in rows)
+    ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
+    assert ballenoil["confidence"] == "medium"
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_drops_null_avg_price(mock_agg):
+    """A null brand/market avg price must not reach the response as NaN (invalid JSON)."""
+    import numpy as np
+
+    from services.station_service import get_brand_price_comparison_report
+
+    df = _make_comparison_df()
+    # repsol keeps valid delta/days but null prices -> must be dropped, not emitted as NaN.
+    df.loc[df["brand"] == "repsol", "brand_avg_price"] = np.nan
+    df.loc[df["brand"] == "repsol", "market_avg_price"] = np.nan
+    mock_agg.return_value = df
+    rows = get_brand_price_comparison_report("gasoline_95_e5_price")
+
+    brands = {r["brand"] for r in rows}
+    assert "repsol" not in brands
+    assert all(r["brand_avg_price"] == r["brand_avg_price"] for r in rows)  # no NaN survives
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_includes_weighted_prices_and_confidence(mock_agg):
+    from services.station_service import get_brand_price_comparison_report
+
+    mock_agg.return_value = _make_comparison_df()
+    rows = get_brand_price_comparison_report("gasoline_95_e5_price")
+
+    ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
+    # delta -5% -> brand price 1.45, market 1.50 (constant across rows -> weighted mean unchanged)
+    assert ballenoil["brand_avg_price"] == pytest.approx(1.45, abs=1e-6)
+    assert ballenoil["market_avg_price"] == pytest.approx(1.50, abs=1e-6)
+    # 4 geo rows x 50 appearances = 200 -> medium
+    assert ballenoil["confidence"] == "medium"
+
+
 # ---- _validate_zip_code range ------------------------------------------------
 
 

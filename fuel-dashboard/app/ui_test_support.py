@@ -416,17 +416,41 @@ def historical_volatility_response() -> DataFrameResponse:
 
 def reportes_win_rate_response() -> list[BrandWinRateRow]:
     return [
-        BrandWinRateRow(brand="plenoil", win_rate_pct=41.2, appearances=87),
-        BrandWinRateRow(brand="ballenoil", win_rate_pct=18.7, appearances=62),
-        BrandWinRateRow(brand="cepsa", win_rate_pct=14.3, appearances=95),
+        BrandWinRateRow(brand="plenoil", win_rate_pct=41.2, appearances=87, confidence="low"),
+        BrandWinRateRow(brand="ballenoil", win_rate_pct=18.7, appearances=62, confidence="low"),
+        BrandWinRateRow(brand="cepsa", win_rate_pct=14.3, appearances=95, confidence="low"),
     ]
 
 
 def reportes_price_comparison_response() -> list[BrandPriceComparisonRow]:
     return [
-        BrandPriceComparisonRow(brand="plenoil", price_delta_pct=-1.8, days_below_market_pct=72.4, appearances=87),
-        BrandPriceComparisonRow(brand="cepsa", price_delta_pct=-0.4, days_below_market_pct=51.2, appearances=95),
-        BrandPriceComparisonRow(brand="repsol", price_delta_pct=0.7, days_below_market_pct=33.8, appearances=112),
+        BrandPriceComparisonRow(
+            brand="plenoil",
+            price_delta_pct=-1.8,
+            days_below_market_pct=72.4,
+            appearances=420,
+            confidence="high",
+            brand_avg_price=1.5120,
+            market_avg_price=1.5398,
+        ),
+        BrandPriceComparisonRow(
+            brand="cepsa",
+            price_delta_pct=-0.4,
+            days_below_market_pct=51.2,
+            appearances=95,
+            confidence="low",
+            brand_avg_price=1.5337,
+            market_avg_price=1.5398,
+        ),
+        BrandPriceComparisonRow(
+            brand="repsol",
+            price_delta_pct=0.7,
+            days_below_market_pct=33.8,
+            appearances=112,
+            confidence="medium",
+            brand_avg_price=1.5506,
+            market_avg_price=1.5398,
+        ),
     ]
 
 

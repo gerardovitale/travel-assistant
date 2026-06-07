@@ -341,13 +341,16 @@ def test_address_suggestions_graceful_empty(mock_service):
 
 @patch("api.router.get_brand_win_rate_report")
 def test_reportes_win_rate_returns_200_with_data(mock_service):
-    mock_service.return_value = [{"brand": "ballenoil", "win_rate_pct": 64.04, "appearances": 559359}]
+    mock_service.return_value = [
+        {"brand": "ballenoil", "win_rate_pct": 64.04, "appearances": 559359, "confidence": "high"}
+    ]
     client = _get_client()
     response = client.get("/api/v1/reportes/win-rate?fuel_type=gasoline_95_e5_price&direction=cheapest")
     assert response.status_code == 200
     data = response.json()
     assert data[0]["brand"] == "ballenoil"
     assert data[0]["win_rate_pct"] == 64.04
+    assert data[0]["confidence"] == "high"
 
 
 @patch("api.router.get_brand_win_rate_report")
@@ -371,12 +374,24 @@ def test_reportes_win_rate_rejects_invalid_fuel_type():
 @patch("api.router.get_brand_price_comparison_report")
 def test_reportes_price_comparison_returns_200_with_data(mock_service):
     mock_service.return_value = [
-        {"brand": "ballenoil", "price_delta_pct": -5.71, "days_below_market_pct": 92.96, "appearances": 559359}
+        {
+            "brand": "ballenoil",
+            "price_delta_pct": -5.71,
+            "days_below_market_pct": 92.96,
+            "appearances": 559359,
+            "confidence": "high",
+            "brand_avg_price": 1.4520,
+            "market_avg_price": 1.5400,
+        }
     ]
     client = _get_client()
     response = client.get("/api/v1/reportes/price-comparison?fuel_type=gasoline_95_e5_price")
     assert response.status_code == 200
-    assert response.json()[0]["price_delta_pct"] == -5.71
+    data = response.json()
+    assert data[0]["price_delta_pct"] == -5.71
+    assert data[0]["confidence"] == "high"
+    assert data[0]["brand_avg_price"] == 1.4520
+    assert data[0]["market_avg_price"] == 1.5400
 
 
 @patch("api.router.get_brand_price_comparison_report")

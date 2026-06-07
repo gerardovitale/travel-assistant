@@ -236,6 +236,25 @@
       </form>
     </div>
 
+    <!-- Savings estimate (headline — turns the price delta into € per year) -->
+    <div id="sec-reportes-savings" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">Ahorro estimado</h2>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2 w-full sm:w-auto">
+          <label class="flex items-center justify-between gap-2 w-full sm:w-auto">
+            <span class="text-xs font-label font-bold text-on-surface-variant">Litros/repostaje</span>
+            <input id="reportes-tank-liters" data-testid="reportes-tank-liters" type="number" min="1" max="120" step="1" value="{{ default_tank_liters }}" class="w-20 rounded-lg border-outline-variant text-sm">
+          </label>
+          <label class="flex items-center justify-between gap-2 w-full sm:w-auto">
+            <span class="text-xs font-label font-bold text-on-surface-variant">Repostajes/mes</span>
+            <input id="reportes-fills-month" data-testid="reportes-fills-month" type="number" min="1" max="60" step="1" value="{{ default_fills_per_month }}" class="w-20 rounded-lg border-outline-variant text-sm">
+          </label>
+        </div>
+      </div>
+      <p class="text-sm text-on-surface-variant mb-4">Estimación del ahorro anual frente al precio medio del mercado, según tus litros por repostaje y repostajes al mes. Es una estimación basada en precios medios ponderados, no un valor exacto.</p>
+      <div id="reportes-savings-kpis" data-testid="reportes-savings-kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+    </div>
+
     <!-- Coverage (top — context for all charts below) -->
     <div id="sec-reportes-coverage" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <div class="flex items-start justify-between gap-3 mb-1">

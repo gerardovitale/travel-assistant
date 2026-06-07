@@ -177,6 +177,52 @@ test("reportes deep link restores the active tab and its filters", async ({ page
   await expect(page.locator('[data-share="sec-reportes-win-rate"]')).toBeVisible();
 });
 
+test("reportes shows the savings estimate and recomputes on input change", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes");
+
+  const kpis = page.getByTestId("reportes-savings-kpis");
+  await expect(kpis).toContainText("/año");
+
+  // Cheapest brand (largest €/año) headlines first; pricier-than-market brand is clamped.
+  await expect(kpis.locator("> div").first()).toContainText("plenoil");
+  await expect(kpis).toContainText("Sin ahorro vs. mercado");
+
+  const before = (await kpis.innerText()).trim();
+
+  // Doubling litres/repostaje must change the estimate without a refetch.
+  await page.getByTestId("reportes-tank-liters").fill("80");
+  await page.getByTestId("reportes-tank-liters").dispatchEvent("input");
+  await expect(kpis).not.toHaveText(before);
+});
+
+test("reportes savings inputs stay inside the card on a narrow iphone viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 }); // iPhone SE / 8 width
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes");
+
+  const card = page.locator("#sec-reportes-savings");
+  await expect(card).toBeVisible();
+
+  // Card itself must not overflow horizontally, and both inputs must sit within its right edge.
+  const cardBox = await card.boundingBox();
+  const overflow = await card.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1); // allow sub-pixel rounding
+
+  for (const id of ["reportes-tank-liters", "reportes-fills-month"]) {
+    const inputBox = await page.getByTestId(id).boundingBox();
+    expect(inputBox!.x + inputBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1);
+  }
+});
+
+test("reportes coverage table exposes a confidence column", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes");
+
+  const table = page.getByTestId("reportes-coverage-table");
+  await expect(table).toContainText("Confianza");
+});
+
 test("forecast clamps short trend periods to the minimum forecast window of 90 days", async ({ page }) => {
   await setFixture(page, "insights_all");
   const insightsPage = new InsightsPage(page);

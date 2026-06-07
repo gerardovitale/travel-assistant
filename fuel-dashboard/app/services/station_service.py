@@ -67,11 +67,38 @@ def _validate_zip_code(zip_code: str) -> str:
 
 
 def _weighted_mean(g: pd.DataFrame, value_col: str, weight_col: str = "appearances") -> float:
-    """Appearance-weighted mean; NaN when total weight is 0 (avoids 0/0)."""
-    total_weight = g[weight_col].sum()
+    """Appearance-weighted mean over non-null values; NaN when no valid weight (avoids 0/0).
+
+    Rows with a null value are excluded from *both* numerator and denominator — otherwise
+    pandas' skipna sum would drop them from the numerator while their weight inflated the
+    denominator, biasing the mean low. All-null groups return NaN so callers can drop them.
+    """
+    mask = g[value_col].notna()
+    total_weight = g.loc[mask, weight_col].sum()
     if total_weight <= 0:
         return float("nan")
-    return (g[value_col] * g[weight_col]).sum() / total_weight
+    return (g.loc[mask, value_col] * g.loc[mask, weight_col]).sum() / total_weight
+
+
+# Sample-size confidence thresholds. Mirror fuel-ingestor reports/config.py (cross-service
+# duplication — a shared constant would be ideal but is out of scope for a dashboard-only change).
+# 384 ~= n needed for +/-5% margin at 95% confidence on a Bernoulli proportion; 100 = rough floor.
+CONFIDENCE_HIGH_MIN = 384
+CONFIDENCE_MEDIUM_MIN = 100
+
+
+def _confidence_band(appearances: int) -> str:
+    """Band a brand-level estimate by its total appearances.
+
+    Note: this bands the *sum* of per-geo appearances, so it reflects how much data backs the
+    brand's aggregated number, not a per-geo confidence interval — the right question for these
+    brand-collapsed rows.
+    """
+    if appearances >= CONFIDENCE_HIGH_MIN:
+        return "high"
+    if appearances >= CONFIDENCE_MEDIUM_MIN:
+        return "medium"
+    return "low"
 
 
 def _trend_points_from_df(df: pd.DataFrame) -> list[TrendPoint]:
@@ -685,6 +712,7 @@ def get_brand_win_rate_report(fuel_type: str, direction: str) -> list[dict] | No
     grouped = grouped.dropna(subset=["win_rate_pct"])
     grouped["win_rate_pct"] = grouped["win_rate_pct"].round(2)
     grouped["appearances"] = grouped["appearances"].astype(int)
+    grouped["confidence"] = grouped["appearances"].map(_confidence_band)
     return grouped.sort_values("win_rate_pct", ascending=False).to_dict(orient="records")
 
 
@@ -711,6 +739,8 @@ def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
                 {
                     "price_delta_pct": _weighted_mean(g, "price_delta_pct"),
                     "days_below_market_pct": _weighted_mean(g, "days_below_market_pct"),
+                    "brand_avg_price": _weighted_mean(g, "brand_avg_price"),
+                    "market_avg_price": _weighted_mean(g, "market_avg_price"),
                     "appearances": g["appearances"].sum(),
                 }
             ),
@@ -718,10 +748,13 @@ def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
         )
         .reset_index()
     )
-    grouped = grouped.dropna(subset=["price_delta_pct", "days_below_market_pct"])
+    grouped = grouped.dropna(subset=["price_delta_pct", "days_below_market_pct", "brand_avg_price", "market_avg_price"])
     grouped["price_delta_pct"] = grouped["price_delta_pct"].round(2)
     grouped["days_below_market_pct"] = grouped["days_below_market_pct"].round(2)
+    grouped["brand_avg_price"] = grouped["brand_avg_price"].round(4)
+    grouped["market_avg_price"] = grouped["market_avg_price"].round(4)
     grouped["appearances"] = grouped["appearances"].astype(int)
+    grouped["confidence"] = grouped["appearances"].map(_confidence_band)
     return grouped.sort_values("price_delta_pct").to_dict(orient="records")
 
 
