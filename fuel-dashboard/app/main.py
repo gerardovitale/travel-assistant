@@ -212,6 +212,7 @@ def _base_context(current_page: str) -> dict:
             "linkedin": settings.linkedin_url,
             "malt": settings.malt_url,
             "github": settings.github_url,
+            "kofi": settings.kofi_url,
         },
     }
 

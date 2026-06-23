@@ -1,0 +1,11 @@
+{# Reusable Ko-fi support button. Needs brand_links in context.
+   Usage: {% from "_kofi_button.html" import kofi_button with context %} then {{ kofi_button("lg", "solid") }} #}
+{% macro kofi_button(size="md", variant="solid", label="Contribuir al proyecto") %}
+{% set pad = "py-[0.7rem] px-[1.15rem] text-[0.9375rem]" if size == "lg" else "py-2 px-[0.9rem] text-[13px]" %}
+{% set icon_size = "text-[20px]" if size == "lg" else "text-[18px]" %}
+{% set look = "bg-support text-white shadow-md" if variant == "solid" else "bg-support/10 text-support border border-support/[0.28]" %}
+<a href="{{ brand_links.kofi }}" target="_blank" rel="noopener noreferrer"
+  class="inline-flex items-center gap-2 whitespace-nowrap no-underline rounded-lg font-headline font-bold {{ pad }} {{ look }} transition-transform transition-shadow duration-150 ease-out hover:-translate-y-px active:translate-y-0">
+  <span class="material-symbols-outlined filled-icon {{ icon_size }}">volunteer_activism</span>{{ label }}
+</a>
+{% endmacro %}

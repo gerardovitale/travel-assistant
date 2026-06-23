@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     linkedin_url: str = "https://www.linkedin.com/in/gerardo-vitale-errico/"
     malt_url: str = "https://www.malt.es/profile/gerardovitale"
     github_url: str = "https://github.com/gerardovitale/travel-assistant"
+    kofi_url: str = "https://ko-fi.com/fuelprecision"
 
     @classmethod
     def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, **kwargs):

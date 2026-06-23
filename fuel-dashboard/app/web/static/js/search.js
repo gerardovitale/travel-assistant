@@ -7,6 +7,7 @@ import { attachAutocomplete } from "./addressAutocomplete.js";
 import { buildNavUrls, openSmartNav } from "./openInMaps.js";
 
 const APP_CONFIG = window.__APP_CONFIG__ || {};
+const KOFI_URL = "https://ko-fi.com/fuelprecision";
 
 const ADVANCED_FIELDS_BY_MODE = {
   nearest_by_address: [],
@@ -130,6 +131,49 @@ function renderList(results) {
   listEl.innerHTML = rows;
 }
 
+function kofiButtonHtml(size = "md") {
+  const pad = size === "lg" ? "py-[0.7rem] px-[1.15rem] text-[0.9375rem]" : "py-2 px-[0.9rem] text-[13px]";
+  const icon = size === "lg" ? "text-[20px]" : "text-[18px]";
+  return `
+    <a href="${KOFI_URL}" target="_blank" rel="noopener noreferrer"
+      class="inline-flex items-center gap-2 whitespace-nowrap no-underline rounded-lg font-headline font-bold ${pad} bg-support text-white shadow-md transition-transform transition-shadow duration-150 ease-out hover:-translate-y-px active:translate-y-0">
+      <span class="material-symbols-outlined filled-icon ${icon}">volunteer_activism</span>Contribuir al proyecto
+    </a>`;
+}
+
+function renderSupportNudge(results, form) {
+  const el = document.getElementById("support-nudge");
+  if (!results.length) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+
+  const prices = results.map((r) => r.price).filter((p) => p != null);
+  if (prices.length < 2) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const min = Math.min(...prices);
+
+  const isBestMode = state.mode === "best_by_address";
+  const formLiters = form ? parseFloat(form.get("tank_liters")) : NaN;
+  const liters = isBestMode && Number.isFinite(formLiters) && formLiters > 0
+    ? formLiters
+    : (APP_CONFIG.default_refill_liters || 30);
+  const saving = (avg - min) * liters;
+
+  if (!(saving > 0)) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+
+  const tankPhrase = isBestMode ? "este depósito" : `un depósito de ${liters} L`;
+  el.innerHTML = `
+    <div class="bg-support/[0.06] border border-support/[0.22] rounded-2xl shadow-md p-4 mt-3.5 flex items-center gap-4 flex-wrap fade-in">
+      <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-support/[0.14] text-support shrink-0">
+        <span class="material-symbols-outlined filled-icon text-[24px]">savings</span>
+      </span>
+      <div class="flex-1 min-w-[200px]">
+        <p class="m-0 font-bold text-[0.9375rem] text-primary-container">Te ahorras hasta ${formatEur(saving)} en ${tankPhrase}.</p>
+        <p class="mt-[3px] mb-0 text-[13px] text-on-surface-variant leading-relaxed">Fuel Precision es gratuito y sin anuncios. Si te ayuda a repostar más barato, contribuye a mantenerlo — cubre los costes diarios de datos.</p>
+      </div>
+      ${kofiButtonHtml("md")}
+    </div>`;
+  el.classList.remove("hidden");
+}
+
 function renderRecommendation(results) {
   const rec = document.getElementById("recommendation");
   if (!results.length) { rec.classList.add("hidden"); return; }
@@ -156,6 +200,7 @@ function resetResults({ emptyState = null } = {}) {
   state.results = [];
   renderKpis([]);
   renderRecommendation([]);
+  renderSupportNudge([]);
   if (emptyState) {
     document.getElementById("results-list").innerHTML = emptyState;
   } else {
@@ -213,12 +258,14 @@ async function runSearch(form) {
     document.getElementById("results-list").innerHTML = skeletonCards();
     document.getElementById("kpis").classList.add("hidden");
     document.getElementById("recommendation").classList.add("hidden");
+    document.getElementById("support-nudge").classList.add("hidden");
     const resp = await api(`${path}?${qs(params)}`);
     state.results = resp.stations || [];
     hideBanner();
     renderKpis(state.results);
     renderRecommendation(state.results);
     renderList(state.results);
+    renderSupportNudge(state.results, data);
 
     routeCache.clear();
     const isZip = isPostalCodeQuery(location);

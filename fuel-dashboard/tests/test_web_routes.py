@@ -121,6 +121,8 @@ def test_page_acerca_renders():
     assert "Hablemos" in resp.text
     # Acerca nav item is marked active (desktop nav uses text-primary-container).
     assert 'href="/acerca" class="font-bold text-xs tracking-[0.08em] font-label text-primary-container' in resp.text
+    assert "Contribuye al proyecto" in resp.text
+    assert 'href="https://ko-fi.com/fuelprecision"' in resp.text
 
 
 def test_footer_renders_on_every_page():
@@ -130,6 +132,8 @@ def test_footer_renders_on_every_page():
             assert resp.status_code == 200, path
             assert "Datos del Ministerio. Estimaciones, no valores exactos." in resp.text, path
             assert "© 2026 Gerardo Vitale · Fuel Precision" in resp.text, path
+            assert "Contribuir al proyecto" in resp.text, path
+            assert 'href="https://ko-fi.com/fuelprecision"' in resp.text, path
 
 
 def test_trip_page_renders_with_query_params():
