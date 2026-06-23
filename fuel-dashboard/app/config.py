@@ -83,6 +83,12 @@ class Settings(BaseSettings):
     analytics_enabled: bool = False
     analytics_domain: str = ""
 
+    # Brand / profile links (footer + Acerca page). Override via DASHBOARD_*_URL.
+    portfolio_url: str = "https://gerardo-vitale.com"
+    linkedin_url: str = "https://www.linkedin.com/in/gerardo-vitale-errico/"
+    malt_url: str = "https://www.malt.es/profile/gerardovitale"
+    github_url: str = "https://github.com/gerardovitale/travel-assistant"
+
     @classmethod
     def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, **kwargs):
         return (init_settings, _CsvListEnvSource(settings_cls), dotenv_settings) + tuple(kwargs.values())

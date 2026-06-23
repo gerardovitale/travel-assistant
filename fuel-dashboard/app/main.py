@@ -107,6 +107,7 @@ def sitemap_xml():
         f"  <url><loc>{base}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>",
         f"  <url><loc>{base}/trip</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>",
         f"  <url><loc>{base}/insights</loc><changefreq>daily</changefreq><priority>0.9</priority></url>",
+        f"  <url><loc>{base}/acerca</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>",
     ]
     # Distinct, crawlable deep links per enabled insights tab. /insights/trends is omitted because it
     # canonicalises to /insights (identical content).
@@ -206,6 +207,12 @@ def _base_context(current_page: str) -> dict:
         "analytics_enabled": settings.analytics_enabled and not settings.ui_test_mode,
         "analytics_domain": settings.analytics_domain,
         "public_url": settings.public_url,
+        "brand_links": {
+            "portfolio": settings.portfolio_url,
+            "linkedin": settings.linkedin_url,
+            "malt": settings.malt_url,
+            "github": settings.github_url,
+        },
     }
 
 
@@ -230,6 +237,11 @@ def page_search(request: Request):
 @app.get("/trip")
 def page_trip(request: Request):
     return _render_page(request, "trip.html", "trip")
+
+
+@app.get("/acerca")
+def page_acerca(request: Request):
+    return _render_page(request, "about.html", "acerca")
 
 
 INSIGHTS_TABS = ("trends", "zones", "historical", "reportes", "quality")

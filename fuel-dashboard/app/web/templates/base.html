@@ -115,7 +115,7 @@
 </script>
 <link rel="stylesheet" href="/static/css/tokens.css">
 </head>
-<body class="bg-surface text-on-surface selection:bg-primary-container selection:text-white min-h-screen pb-24 md:pb-8">
+<body class="bg-surface text-on-surface selection:bg-primary-container selection:text-white min-h-screen">
 {% if analytics_enabled %}
 <script defer data-domain="{{ analytics_domain }}" src="https://plausible.io/js/script.js"></script>
 {% endif %}
@@ -134,6 +134,7 @@
     <a href="/" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'search' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">BUSCAR</a>
     <a href="/trip" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'trip' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">VIAJE</a>
     <a href="/insights" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'insights' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">INSIGHTS</a>
+    <a href="/acerca" class="font-bold text-xs tracking-[0.08em] font-label {% if nav_current == 'acerca' %}text-primary-container{% else %}text-outline hover:text-on-surface transition-colors{% endif %}">ACERCA</a>
   </nav>
   <div class="flex items-center gap-3">
     <span id="data-status" data-testid="data-status" class="hidden md:inline-flex items-center gap-1 text-[11px] font-label text-outline" title="Estado de los datos"></span>
@@ -143,6 +144,8 @@
 <main class="pt-16 page-enter">
   {% block content %}{% endblock %}
 </main>
+
+{% include "_footer.html" %}
 
 <!-- Bottom tab bar (mobile) -->
 <nav class="md:hidden fixed bottom-0 left-0 w-full bg-surface-container-lowest/95 backdrop-blur-md flex justify-around items-stretch px-2 py-2 shadow-[0_-8px_24px_rgba(0,41,109,0.08)] z-50 rounded-t-2xl border-t border-outline-variant/40">
@@ -157,6 +160,10 @@
   <a href="/insights" class="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl {% if nav_current == 'insights' %}text-primary-container{% else %}text-outline{% endif %}">
     <span class="material-symbols-outlined {% if nav_current == 'insights' %}filled-icon{% endif %}">insights</span>
     <span class="text-[10px] font-bold tracking-wider font-label">INSIGHTS</span>
+  </a>
+  <a href="/acerca" class="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl {% if nav_current == 'acerca' %}text-primary-container{% else %}text-outline{% endif %}">
+    <span class="material-symbols-outlined {% if nav_current == 'acerca' %}filled-icon{% endif %}">info</span>
+    <span class="text-[10px] font-bold tracking-wider font-label">ACERCA</span>
   </a>
 </nav>
 

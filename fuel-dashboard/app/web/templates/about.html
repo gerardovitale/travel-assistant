@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Acerca — Fuel Precision{% endblock %}
+{% block meta_description %}Fuel Precision es la cara pública de travel-assistant: precios oficiales de combustible de España, ingeridos a diario y convertidos en información útil para repostar mejor.{% endblock %}
+{% block og_title %}Acerca de Fuel Precision{% endblock %}
+{% block og_description %}Datos de combustible claros, para decidir mejor cada repostaje. Un proyecto abierto de Gerardo Vitale.{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-5 pt-6 pb-10">
+
+  <!-- Block 1 — Hero band -->
+  <div class="hero-gradient rounded-2xl shadow-lg overflow-hidden text-white p-9 md:p-10">
+    <p class="fp-eyebrow text-white/70">Acerca del proyecto</p>
+    <h1 class="font-headline font-extrabold text-[2.5rem] tracking-[-0.03em] leading-[1.08] max-w-[620px] mt-2">
+      Datos de combustible claros, para decidir mejor cada repostaje.
+    </h1>
+    <p class="text-[1.0625rem] leading-[1.55] text-white/[0.86] max-w-[560px] mt-4">
+      Fuel Precision es un proyecto de codigo abierto que consume a diario los precios oficiales de
+      las estaciones de servicio de España y los convierte en información útil: dónde repostar más
+      barato, cerca de ti o en tu próximo viaje.
+    </p>
+  </div>
+
+  <!-- Block 2 — Narrative + stats -->
+  <div class="grid gap-5 mt-6 md:grid-cols-[3fr_2fr] items-start">
+
+    <!-- Motivación -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md border border-outline-variant/40 p-7">
+      <h2 class="font-headline font-bold text-[1.375rem] tracking-[-0.02em] mb-3">Motivación</h2>
+      <p class="text-base leading-[1.6] text-on-surface mb-3.5">
+        El precio del combustible cambia cada día y entre estaciones cercanas puede variar de forma
+        notable. Esa diferencia, repetida a lo largo del año, es dinero real. Fuel Precision nace para
+        hacer esa diferencia visible y sencilla de aprovechar.
+      </p>
+      <p class="text-base leading-[1.6] text-on-surface mb-3.5">
+        Detrás hay una plataforma de datos completa: pipelines que ingestan diariamente los precios
+        oficiales del Ministerio, los limpian y agregan en métricas, y los sirven a través de una
+        API pública y de este sitio web. Todo el código es abierto y verificable.
+      </p>
+      <p class="text-base leading-[1.6] text-on-surface">
+        Soy <strong class="font-bold">Gerardo Vitale</strong>, Data Engineer, y construyo y
+        mantengo este proyecto. Para mí es a la vez una herramienta práctica para conductores y una
+        muestra abierta de cómo llevar un sistema de datos desde la ingesta hasta el producto final.
+      </p>
+    </div>
+
+    <!-- El proyecto en cifras -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md border border-outline-variant/40 p-7">
+      <p class="fp-eyebrow text-outline">El proyecto en cifras</p>
+      <div class="grid gap-[22px] mt-[18px]">
+        <div>
+          <div class="font-headline font-extrabold text-[1.75rem] tracking-[-0.02em] text-primary-container">11.840</div>
+          <div class="fp-eyebrow text-outline mt-0.5">Estaciones cubiertas</div>
+        </div>
+        <div>
+          <div class="font-headline font-extrabold text-[1.75rem] tracking-[-0.02em] text-primary-container">Diario</div>
+          <div class="fp-eyebrow text-outline mt-0.5">Frecuencia de actualización</div>
+        </div>
+        <div>
+          <div class="font-headline font-extrabold text-[1.75rem] tracking-[-0.02em] text-primary-container">100% abierto</div>
+          <div class="fp-eyebrow text-outline mt-0.5">Código y datos</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Block 3 — Contacto -->
+  <div class="mt-8">
+    <p class="fp-eyebrow text-outline">Contacto</p>
+    <h2 class="font-headline font-bold text-[1.5rem] tracking-[-0.02em] mt-1 mb-4">Hablemos</h2>
+    <div class="grid sm:grid-cols-2 gap-3.5">
+      {% for link in [
+        {"label": "gerardo-vitale.com", "sub": "Portfolio personal", "icon": "language", "href": brand_links.portfolio},
+        {"label": "LinkedIn", "sub": "Trayectoria profesional", "icon": "work", "href": brand_links.linkedin},
+        {"label": "Malt", "sub": "Perfil freelance", "icon": "handshake", "href": brand_links.malt},
+        {"label": "GitHub", "sub": "travel-assistant · open source", "icon": "code", "href": brand_links.github}
+      ] %}
+      <a href="{{ link.href }}" target="_blank" rel="noopener noreferrer" class="no-underline text-inherit">
+        <div class="bg-surface-container-lowest rounded-2xl shadow-md border border-outline-variant/40 p-[18px] flex items-center gap-3.5 hover:shadow-lg transition-shadow">
+          <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-[#eef0f8] text-primary-container shrink-0">
+            <span class="material-symbols-outlined text-[22px]">{{ link.icon }}</span>
+          </span>
+          <span class="flex-1">
+            <span class="block font-bold text-base text-primary-container">{{ link.label }}</span>
+            <span class="block text-[13px] text-outline">{{ link.sub }}</span>
+          </span>
+          <span class="material-symbols-outlined text-lg text-outline">arrow_outward</span>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

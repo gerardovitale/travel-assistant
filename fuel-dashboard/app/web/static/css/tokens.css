@@ -21,6 +21,9 @@ body {
 .hero-gradient { background: linear-gradient(135deg, #00296d 0%, #003d9b 100%); }
 .cta-gradient { background: linear-gradient(90deg, #001642 0%, #00296d 100%); }
 
+/* Eyebrow / overline label (footer + Acerca). Color set per-use. */
+.fp-eyebrow { font-family: Inter, sans-serif; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.1em; }
+
 /* Skeleton shimmer */
 .skeleton {
   background: linear-gradient(90deg, #e7e8ee 25%, #f2f3f9 50%, #e7e8ee 75%);

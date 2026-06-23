@@ -48,6 +48,7 @@ def test_sitemap_xml_returns_xml_with_all_pages():
     assert "<loc>https://fuelprecision.es/</loc>" in resp.text
     assert "<loc>https://fuelprecision.es/trip</loc>" in resp.text
     assert "<loc>https://fuelprecision.es/insights</loc>" in resp.text
+    assert "<loc>https://fuelprecision.es/acerca</loc>" in resp.text
 
 
 def test_sitemap_xml_without_public_url_still_returns_200():
@@ -110,6 +111,25 @@ def test_page_trip_renders():
         resp = _get_client().get("/trip")
     assert resp.status_code == 200
     assert "/static/js/trip.js" in resp.text
+
+
+def test_page_acerca_renders():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/acerca")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert "Hablemos" in resp.text
+    # Acerca nav item is marked active (desktop nav uses text-primary-container).
+    assert 'href="/acerca" class="font-bold text-xs tracking-[0.08em] font-label text-primary-container' in resp.text
+
+
+def test_footer_renders_on_every_page():
+    with patch("main.is_data_ready", return_value=True):
+        for path in ("/", "/trip", "/insights", "/acerca"):
+            resp = _get_client().get(path)
+            assert resp.status_code == 200, path
+            assert "Datos del Ministerio. Estimaciones, no valores exactos." in resp.text, path
+            assert "© 2026 Gerardo Vitale · Fuel Precision" in resp.text, path
 
 
 def test_trip_page_renders_with_query_params():

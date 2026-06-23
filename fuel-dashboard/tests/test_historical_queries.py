@@ -14,7 +14,7 @@ def _make_province_daily_stats():
         for day_offset in range(5):
             rows.append(
                 {
-                    "date": datetime.date(2026, 3, 18) + datetime.timedelta(days=day_offset),
+                    "date": datetime.date.today() - datetime.timedelta(days=4 - day_offset),
                     "province": province,
                     "fuel_type": "gasoline_95_e5_price",
                     "avg_price": avg + day_offset * 0.001,
@@ -100,7 +100,7 @@ def _make_brand_daily_stats():
         for day_offset in range(5):
             rows.append(
                 {
-                    "date": datetime.date(2026, 3, 18) + datetime.timedelta(days=day_offset),
+                    "date": datetime.date.today() - datetime.timedelta(days=4 - day_offset),
                     "brand": brand,
                     "fuel_type": "gasoline_95_e5_price",
                     "avg_price": avg + day_offset * 0.001,
