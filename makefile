@@ -15,7 +15,7 @@ setup:
 test: spain-fuel-fetcher.test fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
 test-local: setup spain-fuel-fetcher.test-local fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
 scan: fuel-dashboard.scan
-done: setup test scan
+done: setup test-local scan
 
 
 # DATA
