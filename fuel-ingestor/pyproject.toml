@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Spanish fuel price ingestion pipeline"
 requires-python = ">=3.13"
 dependencies = [
-    "pandas==2.2.3",
+    "pandas==2.3.3",
     "google-cloud-storage==2.18.2",
     "requests==2.32.3",
     "pytz==2025.2",
