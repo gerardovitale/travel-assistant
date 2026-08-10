@@ -219,9 +219,13 @@ def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
 
 def _build_zip_code_daily_stats_from_raw_files(bucket, parquet_files):
     _log_event(logger.info, "zip_code_daily_stats_build_start", files=len(parquet_files))
+    # province is required: compute_zip_code_daily_stats groups by (zip_code, province) and returns
+    # an empty frame when the column is absent, so omitting it here silently uploads zero rows and
+    # wipes the aggregate rather than raising.
     needed_columns = [
         "timestamp",
         "zip_code",
+        "province",
         *FUEL_PRICE_COLUMNS,
     ]
     all_zip_code_stats = []

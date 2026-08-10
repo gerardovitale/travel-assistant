@@ -675,6 +675,22 @@ class TestHistoricalAggregateBuild(TestCase):
     fixed column list, while the daily path downloads it unprojected. A column that a pipeline
     reads but the projection omits therefore fails only on those paths."""
 
+    @staticmethod
+    def _projecting_download(raw_df):
+        """Mirror the real GCS read: only the requested columns come back.
+
+        Mocks that ignore *columns* hide projection gaps — that is how ccaa_id and province went
+        missing. The fixture carries fewer fuel columns than a real snapshot, so intersect rather
+        than reindex.
+        """
+
+        def _side_effect(_bucket, _blob_name, columns=None):
+            if not columns:
+                return raw_df
+            return raw_df[[c for c in columns if c in raw_df.columns]]
+
+        return _side_effect
+
     @patch("aggregator.main._download_parquet_from_gcs")
     def test_projection_covers_every_column_the_pipelines_read(self, mock_download):
         from aggregator.main import _build_aggregate_dataframes_from_raw_files
@@ -682,16 +698,7 @@ class TestHistoricalAggregateBuild(TestCase):
         # Brand fixture: enough stations per label to clear MIN_STATION_COUNT, so all three
         # pipelines produce rows and a projection gap in any of them surfaces.
         raw_df = _make_brand_raw_df()
-
-        def _projecting_download(_bucket, _blob_name, columns=None):
-            # Mirror the real GCS read: only the requested columns come back. Mocks that ignore
-            # *columns* hide projection gaps, which is how ccaa_id went missing. The fixture
-            # carries fewer fuel columns than a real snapshot, so intersect rather than reindex.
-            if not columns:
-                return raw_df
-            return raw_df[[c for c in columns if c in raw_df.columns]]
-
-        mock_download.side_effect = _projecting_download
+        mock_download.side_effect = self._projecting_download(raw_df)
 
         province_df, _dow_df, ingestion_df, brand_df = _build_aggregate_dataframes_from_raw_files(
             MagicMock(), ["spain_fuel_prices_2026-03-22T05:48:06.parquet"]
@@ -700,3 +707,19 @@ class TestHistoricalAggregateBuild(TestCase):
         self.assertFalse(province_df.empty)
         self.assertFalse(ingestion_df.empty)
         self.assertFalse(brand_df.empty)
+
+    @patch("aggregator.main._download_parquet_from_gcs")
+    def test_zip_code_projection_produces_rows(self, mock_download):
+        # compute_zip_code_daily_stats returns an empty frame when a grouping column is missing
+        # instead of raising, so a projection gap here uploads zero rows and wipes the aggregate.
+        from aggregator.main import _build_zip_code_daily_stats_from_raw_files
+
+        raw_df = _make_brand_raw_df()
+        mock_download.side_effect = self._projecting_download(raw_df)
+
+        zip_df = _build_zip_code_daily_stats_from_raw_files(
+            MagicMock(), ["spain_fuel_prices_2026-03-22T05:48:06.parquet"]
+        )
+
+        self.assertFalse(zip_df.empty)
+        self.assertIn("province", zip_df.columns)
