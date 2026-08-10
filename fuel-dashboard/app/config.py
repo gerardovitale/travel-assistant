@@ -76,8 +76,9 @@ class Settings(BaseSettings):
     insights_zones_enabled: bool = False
     insights_historical_enabled: bool = False
     insights_reportes_enabled: bool = True
-    # Override: DASHBOARD_REPORT_BRANDS=ballenoil,repsol,costco,cepsa  (empty = all brands)
-    report_brands: list[str] = ["ballenoil", "repsol", "costco"]
+    # Default brand pre-selection for the reportes picker (the user can pick up to 4 of any brand).
+    # Override: DASHBOARD_REPORT_BRANDS=cepsa,repsol,ballenoil,costco  (empty = all brands)
+    report_brands: list[str] = ["cepsa", "repsol", "ballenoil", "costco"]
 
     public_url: str = ""
     analytics_enabled: bool = False

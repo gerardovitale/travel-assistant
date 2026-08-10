@@ -27,7 +27,7 @@ def test_report_brands_default_when_env_not_set(monkeypatch):
     from config import Settings
 
     s = Settings()
-    assert set(s.report_brands) == {"ballenoil", "repsol", "costco"}
+    assert set(s.report_brands) == {"cepsa", "repsol", "ballenoil", "costco"}
 
 
 def test_report_brands_list_passthrough():

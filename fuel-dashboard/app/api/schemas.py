@@ -389,5 +389,10 @@ class BrandCoverageRow(BaseModel):
     total_observations: int
 
 
+class BrandOptionsResponse(BaseModel):
+    brands: list[str]  # selectable brands for the fuel type, ordered by coverage desc
+    default: list[str]  # brands to pre-select in the picker
+
+
 class RouteResponse(BaseModel):
     coordinates: list[list[float]]

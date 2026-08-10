@@ -184,8 +184,8 @@ test("reportes shows the savings estimate and recomputes on input change", async
   const kpis = page.getByTestId("reportes-savings-kpis");
   await expect(kpis).toContainText("/año");
 
-  // Cheapest brand (largest €/año) headlines first; pricier-than-market brand is clamped.
-  await expect(kpis.locator("> div").first()).toContainText("plenoil");
+  // Cheapest default brand (largest €/año) headlines first; pricier-than-market brand is clamped.
+  await expect(kpis.locator("> div").first()).toContainText("Costco");
   await expect(kpis).toContainText("Sin ahorro vs. mercado");
 
   const before = (await kpis.innerText()).trim();
@@ -221,6 +221,40 @@ test("reportes coverage table exposes a confidence column", async ({ page }) => 
 
   const table = page.getByTestId("reportes-coverage-table");
   await expect(table).toContainText("Confianza");
+});
+
+test("reportes brand picker defaults to four brands, refreshes charts, and caps at four", async ({ page }) => {
+  await setFixture(page, "insights_all");
+
+  const coverageRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/reportes/coverage")) coverageRequests.push(request.url());
+  });
+
+  await page.goto("/insights/reportes");
+
+  // Picker opens with the four default brands pre-selected.
+  await page.getByTestId("reportes-brand-picker").locator("summary").click();
+  const summary = page.getByTestId("reportes-brand-summary");
+  await expect(summary).toHaveText("Marcas (4/4)");
+  const options = page.getByTestId("reportes-brand-options");
+  await expect(options.locator("input[data-brand-option]:checked")).toHaveCount(4);
+
+  // Cepsa is shown under its Moeve rebrand.
+  await expect(options).toContainText("Moeve (Cepsa)");
+
+  // With four selected, an unchecked brand is disabled (the max-4 cap).
+  await expect(options.locator("input[data-brand-option]:not(:checked)").first()).toBeDisabled();
+
+  // Deselecting a brand re-fetches the charts and frees up the cap.
+  const before = coverageRequests.length;
+  await options.locator("input[data-brand-option]:checked").first().uncheck();
+  await expect(summary).toHaveText("Marcas (3/4)");
+  await expect.poll(() => coverageRequests.length).toBeGreaterThan(before);
+  await expect(options.locator("input[data-brand-option]:not(:checked)").first()).toBeEnabled();
+
+  // Selection is reflected in the shareable URL.
+  await expect(page).toHaveURL(/brands=/);
 });
 
 test("forecast clamps short trend periods to the minimum forecast window of 90 days", async ({ page }) => {

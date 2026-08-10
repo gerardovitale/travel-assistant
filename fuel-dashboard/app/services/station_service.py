@@ -680,8 +680,20 @@ def get_brand_price_trend(fuel_type: FuelType, days_back: int, brands: list) -> 
     return query_brand_price_trend(agg_df, fuel_type.value, days_back, brands)
 
 
-def get_brand_win_rate_report(fuel_type: str, direction: str) -> list[dict] | None:
-    from config import settings
+# Max brands a single report view may show — keeps the picker (and charts) bounded.
+REPORT_BRAND_LIMIT = 4
+
+
+def _resolve_report_brands(brands: list[str] | None) -> list[str]:
+    """Brands to display: the caller's selection (lowercased, capped) or the configured defaults.
+
+    Empty result means "no filter" (all brands), preserving the legacy fallback behaviour.
+    """
+    selected = brands if brands else settings.report_brands
+    return [b.strip().lower() for b in selected if b and b.strip()][:REPORT_BRAND_LIMIT]
+
+
+def get_brand_win_rate_report(fuel_type: str, direction: str, brands: list[str] | None = None) -> list[dict] | None:
     from data.gcs_client import download_aggregate
 
     df = download_aggregate("reports/brand_win_rate.parquet")
@@ -691,8 +703,9 @@ def get_brand_win_rate_report(fuel_type: str, direction: str) -> list[dict] | No
         "_price", ""
     )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
     df = df[(df["fuel_type"] == fuel_type_key) & (df["direction"] == direction)]
-    if settings.report_brands:
-        df = df[df["brand"].isin(settings.report_brands)]
+    selected = _resolve_report_brands(brands)
+    if selected:
+        df = df[df["brand"].isin(selected)]
     df = df.copy()
     if df.empty:
         return []
@@ -716,8 +729,7 @@ def get_brand_win_rate_report(fuel_type: str, direction: str) -> list[dict] | No
     return grouped.sort_values("win_rate_pct", ascending=False).to_dict(orient="records")
 
 
-def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
-    from config import settings
+def get_brand_price_comparison_report(fuel_type: str, brands: list[str] | None = None) -> list[dict] | None:
     from data.gcs_client import download_aggregate
 
     df = download_aggregate("reports/brand_price_comparison.parquet")
@@ -727,8 +739,9 @@ def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
         "_price", ""
     )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
     df = df[df["fuel_type"] == fuel_type_key]
-    if settings.report_brands:
-        df = df[df["brand"].isin(settings.report_brands)]
+    selected = _resolve_report_brands(brands)
+    if selected:
+        df = df[df["brand"].isin(selected)]
     df = df.copy()
     if df.empty:
         return []
@@ -758,8 +771,7 @@ def get_brand_price_comparison_report(fuel_type: str) -> list[dict] | None:
     return grouped.sort_values("price_delta_pct").to_dict(orient="records")
 
 
-def get_brand_coverage_report(fuel_type: str) -> list[dict] | None:
-    from config import settings
+def get_brand_coverage_report(fuel_type: str, brands: list[str] | None = None) -> list[dict] | None:
     from data.gcs_client import download_aggregate
 
     df = download_aggregate("reports/brand_price_comparison.parquet")
@@ -769,8 +781,9 @@ def get_brand_coverage_report(fuel_type: str) -> list[dict] | None:
         "_price", ""
     )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
     df = df[df["fuel_type"] == fuel_type_key]
-    if settings.report_brands:
-        df = df[df["brand"].isin(settings.report_brands)]
+    selected = _resolve_report_brands(brands)
+    if selected:
+        df = df[df["brand"].isin(selected)]
     df = df.copy()
     if df.empty:
         return []
@@ -786,6 +799,34 @@ def get_brand_coverage_report(fuel_type: str) -> list[dict] | None:
             }
         )
     return sorted(result, key=lambda x: x["zip_codes"], reverse=True)
+
+
+# The report covers every brand in the data, which on real data is ~3.5k labels — mostly one-off
+# independent stations. Only brands with a national footprint belong in the picker.
+REPORT_PICKER_MIN_ZIP_CODES = 10
+REPORT_PICKER_MAX_BRANDS = 50
+
+
+def get_report_available_brands(fuel_type: str) -> list[str] | None:
+    """Brands the picker offers for a fuel type, ordered by zip-code coverage descending.
+
+    Gated to brands present in at least REPORT_PICKER_MIN_ZIP_CODES zip codes so the thousands of
+    single-station labels in the report stay out of the list. Configured defaults are always kept,
+    even below the gate — Costco runs ~5 zip codes nationally but is a headline brand.
+    """
+    from data.gcs_client import download_aggregate
+
+    df = download_aggregate("reports/brand_price_comparison.parquet")
+    if df is None:
+        return None
+    fuel_type_key = fuel_type.replace("_price", "")
+    df = df[(df["fuel_type"] == fuel_type_key) & (df["geo_level"] == "zip_code")]
+    if df.empty:
+        return []
+    coverage = df.groupby("brand")["geo_value"].nunique().sort_values(ascending=False)
+    keep = set(coverage[coverage >= REPORT_PICKER_MIN_ZIP_CODES].index[:REPORT_PICKER_MAX_BRANDS])
+    keep |= {b.strip().lower() for b in settings.report_brands if b and b.strip()}
+    return [b for b in coverage.index if b in keep]
 
 
 def get_zone_volatility_ranking(fuel_type: FuelType, days_back: int, mainland_only: bool = True) -> pd.DataFrame:

@@ -45,11 +45,11 @@ export function multiLine(el, seriesMap, { labels = {} } = {}) {
   Plotly.newPlot(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
 }
 
-export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15, colorFn = null, tickSuffix = "" } = {}) {
+export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15, colorFn = null, tickSuffix = "", labelFn = null } = {}) {
   if (!rows || !rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";
   const slice = rows.slice(0, maxRows);
-  const y = slice.map((r) => r[labelKey]);
+  const y = slice.map((r) => (labelFn ? labelFn(r[labelKey]) : r[labelKey]));
   const x = slice.map((r) => r[valueKey]);
   const markerColor = colorFn ? slice.map(colorFn) : color;
   Plotly.newPlot(

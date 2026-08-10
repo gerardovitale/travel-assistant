@@ -8,6 +8,7 @@ from typing import Optional
 from api.schemas import AlternativePlan
 from api.schemas import BrandCoverageRow
 from api.schemas import BrandHistoricalResponse
+from api.schemas import BrandOptionsResponse
 from api.schemas import BrandPriceComparisonRow
 from api.schemas import BrandWinRateRow
 from api.schemas import DataFrameResponse
@@ -414,18 +415,48 @@ def historical_volatility_response() -> DataFrameResponse:
     )
 
 
-def reportes_win_rate_response() -> list[BrandWinRateRow]:
-    return [
-        BrandWinRateRow(brand="plenoil", win_rate_pct=41.2, appearances=87, confidence="low"),
-        BrandWinRateRow(brand="ballenoil", win_rate_pct=18.7, appearances=62, confidence="low"),
+# Selectable brand universe for the reportes picker fixture (larger than 4 so the cap is testable).
+_REPORTES_BRAND_UNIVERSE = ["repsol", "cepsa", "ballenoil", "costco", "plenoil", "bp"]
+_REPORTES_DEFAULT_BRANDS = ["cepsa", "repsol", "ballenoil", "costco"]
+
+
+def _filter_by_brands(rows: list, brands: Optional[Iterable[str]]):
+    """Filter fixture rows to the requested brands (lowercased); no filter when None/empty."""
+    if not brands:
+        return rows
+    wanted = {b.strip().lower() for b in brands if b and b.strip()}
+    return [r for r in rows if r.brand in wanted]
+
+
+def reportes_brands_response() -> BrandOptionsResponse:
+    return BrandOptionsResponse(brands=list(_REPORTES_BRAND_UNIVERSE), default=list(_REPORTES_DEFAULT_BRANDS))
+
+
+def reportes_win_rate_response(brands: Optional[Iterable[str]] = None) -> list[BrandWinRateRow]:
+    rows = [
+        BrandWinRateRow(brand="ballenoil", win_rate_pct=41.2, appearances=87, confidence="low"),
+        BrandWinRateRow(brand="costco", win_rate_pct=33.5, appearances=58, confidence="low"),
         BrandWinRateRow(brand="cepsa", win_rate_pct=14.3, appearances=95, confidence="low"),
+        BrandWinRateRow(brand="repsol", win_rate_pct=9.8, appearances=112, confidence="medium"),
+        BrandWinRateRow(brand="plenoil", win_rate_pct=44.6, appearances=87, confidence="low"),
+        BrandWinRateRow(brand="bp", win_rate_pct=6.1, appearances=73, confidence="low"),
     ]
+    return _filter_by_brands(rows, brands)
 
 
-def reportes_price_comparison_response() -> list[BrandPriceComparisonRow]:
-    return [
+def reportes_price_comparison_response(brands: Optional[Iterable[str]] = None) -> list[BrandPriceComparisonRow]:
+    rows = [
         BrandPriceComparisonRow(
-            brand="plenoil",
+            brand="costco",
+            price_delta_pct=-2.6,
+            days_below_market_pct=81.0,
+            appearances=58,
+            confidence="low",
+            brand_avg_price=1.5000,
+            market_avg_price=1.5398,
+        ),
+        BrandPriceComparisonRow(
+            brand="ballenoil",
             price_delta_pct=-1.8,
             days_below_market_pct=72.4,
             appearances=420,
@@ -451,15 +482,38 @@ def reportes_price_comparison_response() -> list[BrandPriceComparisonRow]:
             brand_avg_price=1.5506,
             market_avg_price=1.5398,
         ),
+        BrandPriceComparisonRow(
+            brand="plenoil",
+            price_delta_pct=-1.5,
+            days_below_market_pct=68.9,
+            appearances=305,
+            confidence="medium",
+            brand_avg_price=1.5167,
+            market_avg_price=1.5398,
+        ),
+        BrandPriceComparisonRow(
+            brand="bp",
+            price_delta_pct=1.4,
+            days_below_market_pct=22.1,
+            appearances=143,
+            confidence="medium",
+            brand_avg_price=1.5614,
+            market_avg_price=1.5398,
+        ),
     ]
+    return _filter_by_brands(rows, brands)
 
 
-def reportes_coverage_response() -> list[BrandCoverageRow]:
-    return [
+def reportes_coverage_response(brands: Optional[Iterable[str]] = None) -> list[BrandCoverageRow]:
+    rows = [
         BrandCoverageRow(brand="repsol", zip_codes=892, localities=1247, municipalities=634, total_observations=38421),
         BrandCoverageRow(brand="cepsa", zip_codes=743, localities=1089, municipalities=512, total_observations=31287),
+        BrandCoverageRow(brand="ballenoil", zip_codes=210, localities=298, municipalities=176, total_observations=9120),
         BrandCoverageRow(brand="bp", zip_codes=412, localities=587, municipalities=298, total_observations=17843),
+        BrandCoverageRow(brand="plenoil", zip_codes=156, localities=221, municipalities=132, total_observations=6740),
+        BrandCoverageRow(brand="costco", zip_codes=14, localities=14, municipalities=13, total_observations=720),
     ]
+    return _filter_by_brands(rows, brands)
 
 
 def quality_response() -> QualityResponse:

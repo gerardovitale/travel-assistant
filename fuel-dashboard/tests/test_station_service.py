@@ -845,6 +845,148 @@ def test_get_brand_coverage_report_respects_config_brands(mock_agg, monkeypatch)
     assert rows[0]["brand"] == "ballenoil"
 
 
+# ---- brand selection (picker) -----------------------------------------------
+
+
+def _make_comparison_df_from_coverage(coverage: dict[str, int]):
+    """Zip-level comparison rows realizing a {brand: distinct zip codes} coverage map."""
+    rows = []
+    for brand, n_zips in coverage.items():
+        for i in range(n_zips):
+            rows.append(
+                {
+                    "brand": brand,
+                    "geo_level": "zip_code",
+                    "geo_value": f"{brand}-{i:04d}",
+                    "fuel_type": "gasoline_95_e5",
+                    "brand_avg_price": 1.50,
+                    "market_avg_price": 1.50,
+                    "price_delta_pct": 0.0,
+                    "days_below_market_pct": 50.0,
+                    "appearances": 50,
+                    "last_updated": "2026-05-23",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def _make_multi_brand_comparison_df():
+    """Counts straddle REPORT_PICKER_MIN_ZIP_CODES: costco is a configured default below the gate,
+    randomstation is an ungated one-off station label that must not reach the picker."""
+    return _make_comparison_df_from_coverage(
+        {"repsol": 50, "cepsa": 40, "ballenoil": 30, "plenoil": 20, "costco": 5, "bp": 60, "randomstation": 2}
+    )
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_filters_by_requested_brands(mock_agg):
+    from services.station_service import get_brand_price_comparison_report
+
+    mock_agg.return_value = _make_comparison_df()
+    rows = get_brand_price_comparison_report("gasoline_95_e5_price", brands=["repsol"])
+
+    assert len(rows) == 1
+    assert rows[0]["brand"] == "repsol"
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_price_comparison_report_caps_at_four_brands(mock_agg):
+    from services.station_service import get_brand_price_comparison_report
+
+    mock_agg.return_value = _make_multi_brand_comparison_df()
+    rows = get_brand_price_comparison_report(
+        "gasoline_95_e5_price", brands=["repsol", "cepsa", "ballenoil", "costco", "plenoil", "bp"]
+    )
+
+    assert len(rows) == 4  # only the first four selected brands are honoured
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_brands_param_overrides_config_default(mock_agg, monkeypatch):
+    from services.station_service import get_brand_win_rate_report
+
+    mock_agg.return_value = _make_win_rate_df()
+    monkeypatch.setattr(settings, "report_brands", ["ballenoil"])  # default would show only ballenoil
+    rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest", brands=["repsol"])
+
+    assert len(rows) == 1
+    assert rows[0]["brand"] == "repsol"
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_report_available_brands_ordered_by_coverage(mock_agg):
+    from services.station_service import get_report_available_brands
+
+    mock_agg.return_value = _make_multi_brand_comparison_df()
+    brands = get_report_available_brands("gasoline_95_e5_price")
+
+    # bp(60) > repsol(50) > cepsa(40) > ballenoil(30) > plenoil(20) > costco(5, kept as a default)
+    assert brands == ["bp", "repsol", "cepsa", "ballenoil", "plenoil", "costco"]
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_report_available_brands_gates_out_low_coverage_brands(mock_agg):
+    from services.station_service import get_report_available_brands
+
+    mock_agg.return_value = _make_multi_brand_comparison_df()
+    brands = get_report_available_brands("gasoline_95_e5_price")
+
+    # randomstation (2 zip codes, not a configured default) is a one-off station label, not a brand
+    assert "randomstation" not in brands
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_report_available_brands_keeps_configured_defaults_below_the_gate(mock_agg, monkeypatch):
+    from services.station_service import get_report_available_brands
+
+    mock_agg.return_value = _make_multi_brand_comparison_df()
+    monkeypatch.setattr(settings, "report_brands", ["randomstation"])
+    brands = get_report_available_brands("gasoline_95_e5_price")
+
+    # a configured default stays selectable even with coverage below the gate
+    assert "randomstation" in brands
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_report_available_brands_stays_bounded_on_realistic_label_volume(mock_agg):
+    from services.station_service import REPORT_PICKER_MAX_BRANDS
+    from services.station_service import get_report_available_brands
+
+    # The report covers every label in the data. Real data is ~3.5k labels, almost all one-off
+    # independent stations serving a single zip code — they must never reach the picker.
+    coverage = {f"station{i:04d}": 1 for i in range(3000)}
+    coverage.update({"repsol": 1900, "cepsa": 550, "ballenoil": 300, "costco": 5})
+    mock_agg.return_value = _make_comparison_df_from_coverage(coverage)
+
+    brands = get_report_available_brands("gasoline_95_e5_price")
+
+    assert not [b for b in brands if b.startswith("station")]
+    assert len(brands) <= REPORT_PICKER_MAX_BRANDS + len(settings.report_brands)
+    assert brands[:3] == ["repsol", "cepsa", "ballenoil"]
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_report_available_brands_caps_picker_size_when_many_brands_clear_the_gate(mock_agg, monkeypatch):
+    from services.station_service import REPORT_PICKER_MAX_BRANDS
+    from services.station_service import get_report_available_brands
+
+    # 80 brands all comfortably above the coverage gate — the hard cap is the only thing bounding this.
+    mock_agg.return_value = _make_comparison_df_from_coverage({f"brand{i:03d}": 100 + i for i in range(80)})
+    monkeypatch.setattr(settings, "report_brands", [])
+
+    brands = get_report_available_brands("gasoline_95_e5_price")
+
+    assert len(brands) == REPORT_PICKER_MAX_BRANDS
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_report_available_brands_returns_none_when_aggregate_missing(mock_agg):
+    from services.station_service import get_report_available_brands
+
+    mock_agg.return_value = None
+    assert get_report_available_brands("gasoline_95_e5_price") is None
+
+
 # ---- confidence band + savings inputs ---------------------------------------
 
 

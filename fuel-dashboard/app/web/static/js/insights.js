@@ -15,6 +15,12 @@ let initialTab = "trends";
 let pendingParams = null; // URLSearchParams parsed once from the initial URL
 const tabDefaults = {}; // baseline (pristine) filter values captured per tab after populate
 
+// Reportes brand picker state (up to 4 brands; see initReportes / loadBrandOptions below).
+let reportesBrandUniverse = []; // selectable brands for the current fuel type, coverage-ordered
+let selectedBrands = []; // currently selected brands (<=4)
+let reportesPickerReady = false; // true once the picker has loaded its first option set
+const MAX_REPORT_BRANDS = 4;
+
 function ctrl(sel) {
   return document.querySelector(sel);
 }
@@ -41,6 +47,8 @@ const PARAMS = {
   reportes: () => ({
     fuel: ctrl('#reportes-filter select[name="fuel_type"]')?.value || "",
     dir: ctrl("#reportes-direction-select")?.value || "",
+    // Sorted CSV so URL state is order-independent; empty until the picker has loaded.
+    brands: reportesPickerReady ? selectedBrands.slice().sort().join(",") : "",
   }),
   zones: () => ({
     fuel: ctrl("#zones-fuel")?.value || "",
@@ -855,7 +863,7 @@ function renderConfidenceLegend(chartEl, rows) {
   }
   if (!rows || !rows.length) { legend.innerHTML = ""; return; }
   legend.innerHTML = `<span class="font-label font-bold uppercase tracking-wide">Confianza</span>` +
-    rows.map((r) => `<span class="inline-flex items-center gap-1"><span class="capitalize">${escapeHtml(r.brand)}</span>${confidenceBadge(r.confidence)}</span>`).join("");
+    rows.map((r) => `<span class="inline-flex items-center gap-1"><span>${escapeHtml(brandLabel(r.brand))}</span>${confidenceBadge(r.confidence)}</span>`).join("");
 }
 
 let lastComparisonRows = [];
@@ -888,7 +896,7 @@ function renderSavings(rows) {
         : "Sin ahorro vs. mercado";
       const valueCls = positive ? "text-on-surface" : "text-on-surface-variant";
       return `<div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm">
-        <p class="text-[11px] font-label font-bold tracking-wider uppercase text-outline capitalize">${escapeHtml(c.brand)}</p>
+        <p class="text-[11px] font-label font-bold tracking-wider uppercase text-outline">${escapeHtml(brandLabel(c.brand))}</p>
         <p class="mt-2 font-headline font-extrabold text-2xl ${valueCls}">${value}</p>
         <p class="mt-1 text-xs text-on-surface-variant">${positive ? `${eurFmt(c.savingsPerL, 3)}/L vs. mercado` : ""}</p></div>`;
     })
@@ -899,6 +907,104 @@ function eurFmt(n, decimals = 2) {
   return `${(n || 0).toLocaleString("es-ES", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} €`;
 }
 
+// Cepsa rebranded to Moeve; display the new name (with the old one for recognition) everywhere a
+// brand label is shown. Data key stays "cepsa". Other brands are simply capitalized.
+const BRAND_DISPLAY = { cepsa: "Moeve (Cepsa)" };
+function brandLabel(brand) {
+  if (!brand) return "";
+  return BRAND_DISPLAY[brand] || brand.charAt(0).toUpperCase() + brand.slice(1);
+}
+
+// Selected brands as repeated query params: "&brands=a&brands=b".
+function brandsQuery() {
+  return selectedBrands.map((b) => `&brands=${encodeURIComponent(b)}`).join("");
+}
+
+// Build the checkbox list from scratch (universe changed). Toggling a single brand uses
+// updateBrandOptionStates() instead, so the just-clicked input is not detached mid-action.
+function renderBrandOptions() {
+  const panel = document.querySelector('[data-testid="reportes-brand-options"]');
+  if (!panel) { updateBrandOptionStates(); return; }
+  if (!reportesBrandUniverse.length) { panel.innerHTML = emptyMsg("Sin marcas"); updateBrandOptionStates(); return; }
+  panel.innerHTML = reportesBrandUniverse
+    .map((b) => {
+      const checked = selectedBrands.includes(b);
+      return `<label class="flex items-center gap-2 px-2 py-1 rounded" data-brand-row="${escapeHtml(b)}">
+        <input type="checkbox" value="${escapeHtml(b)}" ${checked ? "checked" : ""}
+          data-brand-option class="rounded border-outline-variant">
+        <span class="text-sm">${escapeHtml(brandLabel(b))}</span>
+      </label>`;
+    })
+    .join("");
+  updateBrandOptionStates();
+}
+
+// Reflect the current selection without rebuilding the DOM: disable unchecked boxes at the cap,
+// dim their rows, and refresh the count in the summary.
+function updateBrandOptionStates() {
+  const summary = document.querySelector('[data-testid="reportes-brand-summary"]');
+  if (summary) summary.textContent = `Marcas (${selectedBrands.length}/${MAX_REPORT_BRANDS})`;
+  const atMax = selectedBrands.length >= MAX_REPORT_BRANDS;
+  document.querySelectorAll('[data-testid="reportes-brand-options"] input[data-brand-option]').forEach((cb) => {
+    const disabled = !cb.checked && atMax;
+    cb.disabled = disabled;
+    const row = cb.closest("[data-brand-row]");
+    if (row) row.classList.toggle("opacity-40", disabled);
+  });
+}
+
+function onBrandChange(e) {
+  const cb = e.target.closest("input[data-brand-option]");
+  if (!cb) return;
+  if (cb.checked && !selectedBrands.includes(cb.value)) selectedBrands.push(cb.value);
+  else if (!cb.checked) selectedBrands = selectedBrands.filter((b) => b !== cb.value);
+  if (selectedBrands.length > MAX_REPORT_BRANDS) selectedBrands = selectedBrands.slice(0, MAX_REPORT_BRANDS);
+  updateBrandOptionStates(); // refresh the cap without detaching the clicked input
+  reportesReload();
+  syncUrl("reportes");
+}
+
+// Fetch the selectable brand universe for the current fuel type and reconcile the selection.
+// First load honors ?brands= from the URL, else the server-provided defaults; on fuel change we
+// keep whatever still exists and fall back to defaults if nothing remains.
+async function loadBrandOptions() {
+  const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
+  let data = { brands: [], default: [] };
+  try {
+    data = await api(`/reportes/brands?fuel_type=${encodeURIComponent(fuelType)}`);
+  } catch (err) {
+    /* leave universe empty; charts will show "Sin datos" */
+  }
+  reportesBrandUniverse = data.brands || [];
+  const defaults = (data.default || []).filter((b) => reportesBrandUniverse.includes(b)).slice(0, MAX_REPORT_BRANDS);
+  // Record the default set so the URL omits ?brands= while the selection equals it.
+  if (tabDefaults.reportes) tabDefaults.reportes.brands = defaults.slice().sort().join(",");
+
+  if (!reportesPickerReady) {
+    const fromUrl =
+      pendingParams && pendingParams.has("brands")
+        ? pendingParams
+            .get("brands")
+            .split(",")
+            .map((b) => b.trim().toLowerCase())
+            .filter(Boolean)
+            .filter((b) => reportesBrandUniverse.includes(b))
+        : null;
+    selectedBrands = ((fromUrl && fromUrl.length ? fromUrl : defaults) || []).slice(0, MAX_REPORT_BRANDS);
+    reportesPickerReady = true;
+  } else {
+    selectedBrands = selectedBrands.filter((b) => reportesBrandUniverse.includes(b));
+    if (!selectedBrands.length) selectedBrands = defaults;
+  }
+  renderBrandOptions();
+}
+
+function reportesReload() {
+  loadWinRate();
+  loadPriceComparison();
+  loadCoverage();
+}
+
 async function loadWinRate() {
   const el = document.getElementById("reportes-win-rate-chart");
   if (!el) return;
@@ -906,9 +1012,9 @@ async function loadWinRate() {
   const direction = document.getElementById("reportes-direction-select").value;
   el.innerHTML = emptyMsg("Cargando…");
   try {
-    const url = `/reportes/win-rate?fuel_type=${encodeURIComponent(fuelType)}&direction=${encodeURIComponent(direction)}`;
+    const url = `/reportes/win-rate?fuel_type=${encodeURIComponent(fuelType)}&direction=${encodeURIComponent(direction)}${brandsQuery()}`;
     const rows = await api(url);
-    horizontalBar(el, rows, { labelKey: "brand", valueKey: "win_rate_pct", color: "#0453cd", tickSuffix: " %" });
+    horizontalBar(el, rows, { labelKey: "brand", valueKey: "win_rate_pct", color: "#0453cd", tickSuffix: " %", labelFn: brandLabel });
     renderConfidenceLegend(el, rows);
   } catch (err) { el.innerHTML = emptyMsg(err.message); renderConfidenceLegend(el, []); }
 }
@@ -921,15 +1027,15 @@ async function loadPriceComparison() {
   deltaEl.innerHTML = emptyMsg("Cargando…");
   daysEl.innerHTML = emptyMsg("Cargando…");
   try {
-    const rows = await api(`/reportes/price-comparison?fuel_type=${encodeURIComponent(fuelType)}`);
+    const rows = await api(`/reportes/price-comparison?fuel_type=${encodeURIComponent(fuelType)}${brandsQuery()}`);
     horizontalBar(deltaEl, rows, {
       labelKey: "brand", valueKey: "price_delta_pct",
       colorFn: (r) => r.price_delta_pct >= 0 ? "#a33d3d" : "#1b5e20",
-      tickSuffix: " %",
+      tickSuffix: " %", labelFn: brandLabel,
     });
     renderConfidenceLegend(deltaEl, rows);
     const byDays = rows.slice().sort((a, b) => b.days_below_market_pct - a.days_below_market_pct);
-    horizontalBar(daysEl, byDays, { labelKey: "brand", valueKey: "days_below_market_pct", color: "#0453cd", tickSuffix: " %" });
+    horizontalBar(daysEl, byDays, { labelKey: "brand", valueKey: "days_below_market_pct", color: "#0453cd", tickSuffix: " %", labelFn: brandLabel });
     renderConfidenceLegend(daysEl, byDays);
     lastComparisonRows = rows;
     renderSavings(rows);
@@ -947,7 +1053,7 @@ async function loadCoverage() {
   const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
   el.innerHTML = emptyMsg("Cargando…");
   try {
-    const rows = await api(`/reportes/coverage?fuel_type=${encodeURIComponent(fuelType)}`);
+    const rows = await api(`/reportes/coverage?fuel_type=${encodeURIComponent(fuelType)}${brandsQuery()}`);
     if (!rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
     el.innerHTML = `<table class="min-w-full text-sm">
       <thead><tr class="text-left text-xs font-label font-bold text-on-surface-variant uppercase tracking-wide">
@@ -960,7 +1066,7 @@ async function loadCoverage() {
       </tr></thead>
       <tbody class="divide-y divide-outline-variant/30">${rows.map((r) => `
         <tr>
-          <td class="py-2 pr-6 font-medium capitalize whitespace-nowrap">${escapeHtml(r.brand)}</td>
+          <td class="py-2 pr-6 font-medium whitespace-nowrap">${escapeHtml(brandLabel(r.brand))}</td>
           <td class="py-2 pr-6 text-right whitespace-nowrap">${r.zip_codes.toLocaleString("es-ES")}</td>
           <td class="py-2 pr-6 text-right whitespace-nowrap">${r.municipalities.toLocaleString("es-ES")}</td>
           <td class="py-2 pr-6 text-right whitespace-nowrap">${r.localities.toLocaleString("es-ES")}</td>
@@ -972,17 +1078,21 @@ async function loadCoverage() {
 }
 
 async function initReportes() {
-  const reload = () => { loadWinRate(); loadPriceComparison(); loadCoverage(); };
-  document.querySelector('#reportes-filter select[name="fuel_type"]').addEventListener("change", reload);
+  // Fuel change reloads the brand universe (brands can differ per fuel) then refreshes all charts.
+  document.querySelector('#reportes-filter select[name="fuel_type"]').addEventListener("change", async () => {
+    await loadBrandOptions();
+    reportesReload();
+    syncUrl("reportes");
+  });
   document.getElementById("reportes-direction-select").addEventListener("change", loadWinRate);
+  document.querySelector('[data-testid="reportes-brand-options"]')?.addEventListener("change", onBrandChange);
   // Recompute the savings estimate from cached rows on input change — no refetch needed.
   const recomputeSavings = () => renderSavings(lastComparisonRows);
   document.getElementById("reportes-tank-liters")?.addEventListener("input", recomputeSavings);
   document.getElementById("reportes-fills-month")?.addEventListener("input", recomputeSavings);
   captureAndRestore("reportes");
-  loadWinRate();
-  loadPriceComparison();
-  loadCoverage();
+  await loadBrandOptions(); // resolves selectedBrands before the first chart fetch
+  reportesReload();
 }
 
 loaders.trends = initTrends;

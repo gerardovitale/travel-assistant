@@ -223,16 +223,26 @@
   {% if insights_reportes_enabled %}
   <section data-panel="reportes" class="hidden space-y-6">
 
-    <!-- Shared filter: fuel type (affects all charts below) -->
+    <!-- Shared filters: fuel type + brand picker (affect all charts below) -->
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <form id="reportes-filter" data-testid="reportes-filter">
-        <label class="block max-w-xs">
+      <form id="reportes-filter" data-testid="reportes-filter" class="flex flex-wrap items-end gap-4">
+        <label class="block w-full sm:w-auto sm:max-w-xs">
           <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
           <select name="fuel_type" data-testid="reportes-fuel-select" class="w-full rounded-lg border-outline-variant">
             <option value="gasoline_95_e5_price">Gasolina 95 E5</option>
             <option value="diesel_a_price">Diésel A</option>
           </select>
         </label>
+        <div class="w-full sm:w-64">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Marcas (máx. 4)</span>
+          <details id="reportes-brand-picker" data-testid="reportes-brand-picker" class="relative">
+            <summary class="list-none cursor-pointer flex items-center justify-between gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm">
+              <span data-testid="reportes-brand-summary">Marcas (0/4)</span>
+              <svg class="w-4 h-4 text-on-surface-variant" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg>
+            </summary>
+            <div data-testid="reportes-brand-options" class="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-outline-variant bg-surface-container-lowest shadow-lg p-2 space-y-0.5"></div>
+          </details>
+        </div>
       </form>
     </div>
 

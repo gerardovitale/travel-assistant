@@ -419,3 +419,40 @@ def test_reportes_coverage_returns_404_when_aggregate_missing(mock_service):
     mock_service.return_value = None
     response = _get_client().get("/api/v1/reportes/coverage?fuel_type=gasoline_95_e5_price")
     assert response.status_code == 404
+
+
+@patch("api.router.get_brand_win_rate_report")
+def test_reportes_win_rate_passes_selected_brands_to_service(mock_service):
+    mock_service.return_value = []
+    client = _get_client()
+    response = client.get(
+        "/api/v1/reportes/win-rate?fuel_type=gasoline_95_e5_price&direction=cheapest&brands=repsol&brands=cepsa"
+    )
+    assert response.status_code == 200
+    # service receives the selected brands (3rd positional arg)
+    assert mock_service.call_args.args[2] == ["repsol", "cepsa"]
+
+
+def test_reportes_win_rate_rejects_more_than_four_brands():
+    response = _get_client().get(
+        "/api/v1/reportes/win-rate?fuel_type=gasoline_95_e5_price&direction=cheapest"
+        "&brands=a&brands=b&brands=c&brands=d&brands=e"
+    )
+    assert response.status_code == 422
+
+
+@patch("api.router.get_report_available_brands")
+def test_reportes_brands_returns_200_with_options(mock_service):
+    mock_service.return_value = ["bp", "repsol", "cepsa"]
+    response = _get_client().get("/api/v1/reportes/brands?fuel_type=gasoline_95_e5_price")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["brands"] == ["bp", "repsol", "cepsa"]
+    assert isinstance(data["default"], list)
+
+
+@patch("api.router.get_report_available_brands")
+def test_reportes_brands_returns_404_when_aggregate_missing(mock_service):
+    mock_service.return_value = None
+    response = _get_client().get("/api/v1/reportes/brands?fuel_type=gasoline_95_e5_price")
+    assert response.status_code == 404
