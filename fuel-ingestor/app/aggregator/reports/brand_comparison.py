@@ -3,6 +3,7 @@ from typing import Any
 from typing import List
 
 import pandas as pd
+from aggregator.brand_utils import register_normalize_brand
 from aggregator.pipeline.base import TaskConfig
 from aggregator.pipeline.gcs import CallableSource
 from aggregator.pipeline.gcs import GCSParquetSink
@@ -38,18 +39,22 @@ BRAND_COMPARISON_COLUMNS = [
 
 def _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appearances):
     fuel_type = fuel_col.replace("_price", "")
-    brand_list = ", ".join(f"'{b}'" for b in brands)
+    # brands None/empty -> compute for all brands present in the data (gated below by min_appearances)
+    brand_filter = ""
+    if brands:
+        brand_list = ", ".join(f"'{b}'" for b in brands)
+        brand_filter = f"where label in ({brand_list})"
 
     return con.execute(
         f"""
         with base as (
             select dt, {geo_col}, label, {fuel_col}
             from _brand_comparison_work
-            where {fuel_col} is not null and {fuel_col} > 0
+            where {fuel_col} is not null and {fuel_col} > 0 and label is not null
         ),
         brand_daily as (
             select dt, {geo_col}, label as brand, avg({fuel_col}) as brand_avg_price
-            from base where label in ({brand_list})
+            from base {brand_filter}
             group by dt, {geo_col}, label
         ),
         market_daily as (
@@ -104,8 +109,7 @@ def compute_brand_price_comparison(
     geo_cols: List[str] = None,
     min_appearances: int = MIN_APPEARANCES,
 ) -> pd.DataFrame:
-    if brands is None:
-        brands = BRANDS
+    # brands left as None means "all brands" — the report now covers every brand with enough data.
     if fuel_cols is None:
         fuel_cols = FUEL_COLS
     if geo_cols is None:
@@ -113,6 +117,9 @@ def compute_brand_price_comparison(
 
     price_cols_sql = ", ".join(fuel_cols)
     geo_cols_sql = ", ".join(geo_cols)
+
+    # Normalize brand labels (collapse aliases, drop non-brand junk) via the shared Python helper.
+    register_normalize_brand(con)
 
     # Materialize once to avoid one full fuel_prices scan per (geo_col x fuel_col) combination.
     con.execute("DROP TABLE IF EXISTS _brand_comparison_work")
@@ -122,7 +129,7 @@ def compute_brand_price_comparison(
         SELECT
             cast(timestamp as date) as dt,
             {geo_cols_sql},
-            lower(cast(label as varchar)) as label,
+            normalize_brand(cast(label as varchar)) as label,
             {price_cols_sql}
         FROM fuel_prices
         """

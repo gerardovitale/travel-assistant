@@ -454,6 +454,179 @@ class TestComputeBrandPriceComparison(TestCase):
         finally:
             con2.close()
 
+    def test_all_brands_computed_when_brands_none(self):
+        # brands=None → every brand with enough data is included (no whitelist).
+        rows = []
+        for i in range(12):
+            dt = f"2026-01-{i + 1:02d}T05:00:00"
+            rows += [
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "Centro",
+                    "municipality": "Madrid",
+                    "label": "brandalpha",
+                    "gasoline_95_e5_price": 1.40,
+                },
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "Centro",
+                    "municipality": "Madrid",
+                    "label": "brandbeta",
+                    "gasoline_95_e5_price": 1.60,
+                },
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "Centro",
+                    "municipality": "Madrid",
+                    "label": "brandgamma",
+                    "gasoline_95_e5_price": 1.50,
+                },
+            ]
+        con = _make_duckdb_con_with_data(rows)
+        try:
+            result = compute_brand_price_comparison(
+                con,
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                min_appearances=10,
+            )
+            brands_in_result = set(result["brand"].unique())
+            self.assertEqual(brands_in_result, {"brandalpha", "brandbeta", "brandgamma"})
+        finally:
+            con.close()
+
+    def test_non_brand_labels_dropped_without_udf_error(self):
+        # normalize_brand returns None for these; the UDF must be registered with
+        # null_handling="special" or DuckDB rejects the NULL return and the task fails.
+        rows = []
+        for i in range(12):
+            dt = f"2026-01-{i + 1:02d}T05:00:00"
+            for label in ("Nº 10.935", "E.S. 123", "4571", "realbrand", "other"):
+                rows.append(
+                    {
+                        "timestamp": dt,
+                        "zip_code": "28001",
+                        "locality": "C",
+                        "municipality": "M",
+                        "label": label,
+                        "gasoline_95_e5_price": 1.50,
+                    }
+                )
+        con = _make_duckdb_con_with_data(rows)
+        try:
+            result = compute_brand_price_comparison(
+                con,
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                min_appearances=10,
+            )
+            brands_in_result = set(result["brand"].unique())
+            self.assertEqual(brands_in_result, {"realbrand", "other"})
+        finally:
+            con.close()
+
+    def test_brand_aliases_normalized(self):
+        # Raw alias label collapses to its canonical brand key.
+        rows = []
+        for i in range(12):
+            dt = f"2026-01-{i + 1:02d}T05:00:00"
+            rows += [
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "C",
+                    "municipality": "M",
+                    "label": "CEPSA Estaciones de Servicio",
+                    "gasoline_95_e5_price": 1.40,
+                },
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "C",
+                    "municipality": "M",
+                    "label": "other",
+                    "gasoline_95_e5_price": 1.60,
+                },
+            ]
+        con = _make_duckdb_con_with_data(rows)
+        try:
+            result = compute_brand_price_comparison(
+                con,
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                min_appearances=10,
+            )
+            brands_in_result = set(result["brand"].unique())
+            self.assertIn("cepsa", brands_in_result)
+            self.assertNotIn("cepsa estaciones de servicio", brands_in_result)
+        finally:
+            con.close()
+
+    def test_sparse_brand_suppressed_under_min_appearances(self):
+        # A brand below min_appearances is absent even with brands=None.
+        rows = []
+        for i in range(12):
+            dt = f"2026-01-{i + 1:02d}T05:00:00"
+            rows.append(
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "C",
+                    "municipality": "M",
+                    "label": "frequentbrand",
+                    "gasoline_95_e5_price": 1.40,
+                }
+            )
+            rows.append(
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "C",
+                    "municipality": "M",
+                    "label": "other",
+                    "gasoline_95_e5_price": 1.60,
+                }
+            )
+        # sparse brand appears on only 2 days
+        for i in range(2):
+            dt = f"2026-02-{i + 1:02d}T05:00:00"
+            rows.append(
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "C",
+                    "municipality": "M",
+                    "label": "sparsebrand",
+                    "gasoline_95_e5_price": 1.45,
+                }
+            )
+            rows.append(
+                {
+                    "timestamp": dt,
+                    "zip_code": "28001",
+                    "locality": "C",
+                    "municipality": "M",
+                    "label": "other",
+                    "gasoline_95_e5_price": 1.60,
+                }
+            )
+        con = _make_duckdb_con_with_data(rows)
+        try:
+            result = compute_brand_price_comparison(
+                con,
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                min_appearances=10,
+            )
+            brands_in_result = set(result["brand"].unique())
+            self.assertIn("frequentbrand", brands_in_result)
+            self.assertNotIn("sparsebrand", brands_in_result)
+        finally:
+            con.close()
+
     def test_price_delta_null_when_all_prices_filtered(self):
         # All brand prices are zero → filtered out → brand_daily empty → no output rows.
         # This verifies the zero-filter + NULLIF path does not crash.

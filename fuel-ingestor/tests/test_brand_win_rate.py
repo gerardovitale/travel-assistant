@@ -361,6 +361,90 @@ class TestComputeBrandWinRate(TestCase):
         finally:
             con.close()
 
+    def test_all_brands_computed_when_brands_none(self):
+        # brands=None → every brand with enough data is included (no whitelist).
+        result = compute_brand_win_rate(
+            self.con,
+            fuel_cols=["gasoline_95_e5_price"],
+            geo_cols=["zip_code"],
+            directions=["cheapest"],
+            min_appearances=1,
+        )
+        brands_in_result = set(result["brand"].unique())
+        self.assertIn("ballenoil", brands_in_result)
+        self.assertIn("repsol", brands_in_result)
+        self.assertIn("other", brands_in_result)
+
+    def test_non_brand_labels_dropped_without_udf_error(self):
+        # normalize_brand returns None for these; the UDF must be registered with
+        # null_handling="special" or DuckDB rejects the NULL return and the task fails.
+        rows = []
+        for d in range(1, 6):
+            for label in ("Nº 10.935", "E.S. 123", "4571", "realbrand", "other"):
+                rows.append(
+                    {
+                        "timestamp": f"2026-01-0{d}T05:00:00",
+                        "zip_code": "44002",
+                        "locality": "NonBrand",
+                        "municipality": "NonBrand",
+                        "label": label,
+                        "gasoline_95_e5_price": 1.50,
+                    }
+                )
+        con = duckdb.connect()
+        con.register("fuel_prices", pd.DataFrame(rows))
+        con.execute("create table fuel_prices as select * from fuel_prices")
+        try:
+            result = compute_brand_win_rate(
+                con,
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                directions=["cheapest"],
+                min_appearances=1,
+            )
+            self.assertEqual(set(result["brand"].unique()), {"realbrand", "other"})
+        finally:
+            con.close()
+
+    def test_brand_aliases_normalized(self):
+        # Raw alias label collapses to its canonical brand key.
+        rows = []
+        for d in range(1, 6):
+            rows += [
+                {
+                    "timestamp": f"2026-01-0{d}T05:00:00",
+                    "zip_code": "44001",
+                    "locality": "Alias",
+                    "municipality": "Alias",
+                    "label": "CEPSA Estaciones de Servicio",
+                    "gasoline_95_e5_price": 1.40,
+                },
+                {
+                    "timestamp": f"2026-01-0{d}T05:00:00",
+                    "zip_code": "44001",
+                    "locality": "Alias",
+                    "municipality": "Alias",
+                    "label": "other",
+                    "gasoline_95_e5_price": 1.60,
+                },
+            ]
+        con = duckdb.connect()
+        con.register("fuel_prices", pd.DataFrame(rows))
+        con.execute("create table fuel_prices as select * from fuel_prices")
+        try:
+            result = compute_brand_win_rate(
+                con,
+                fuel_cols=["gasoline_95_e5_price"],
+                geo_cols=["zip_code"],
+                directions=["cheapest"],
+                min_appearances=1,
+            )
+            brands_in_result = set(result["brand"].unique())
+            self.assertIn("cepsa", brands_in_result)
+            self.assertNotIn("cepsa estaciones de servicio", brands_in_result)
+        finally:
+            con.close()
+
     def test_confidence_level_column_present_and_low_for_small_sample(self):
         # With only 2 appearances, confidence_level must be 'low'
         result = compute_brand_win_rate(

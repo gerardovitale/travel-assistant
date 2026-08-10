@@ -3,6 +3,7 @@ from typing import Any
 from typing import List
 
 import pandas as pd
+from aggregator.brand_utils import register_normalize_brand
 from aggregator.pipeline.base import TaskConfig
 from aggregator.pipeline.gcs import CallableSource
 from aggregator.pipeline.gcs import GCSParquetSink
@@ -41,7 +42,11 @@ _DIRECTION_AGG = {"cheapest": "min", "priciest": "max"}
 def _compute_win_rate_for_combination(con, geo_col, fuel_col, brands, direction, min_appearances):
     agg_fn = _DIRECTION_AGG[direction]
     fuel_type = fuel_col.replace("_price", "")
-    brand_list = ", ".join(f"'{b}'" for b in brands)
+    # brands None/empty -> compute for all brands present in the data (gated below by min_appearances)
+    brand_filter = ""
+    if brands:
+        brand_list = ", ".join(f"'{b}'" for b in brands)
+        brand_filter = f"where label in ({brand_list})"
 
     return con.execute(
         f"""
@@ -52,10 +57,10 @@ def _compute_win_rate_for_combination(con, geo_col, fuel_col, brands, direction,
                 label,
                 {fuel_col}
             from _brand_win_rate_work
-            where {fuel_col} is not null and {fuel_col} > 0
+            where {fuel_col} is not null and {fuel_col} > 0 and label is not null
         ),
         brands_of_interest as (
-            select * from base where label in ({brand_list})
+            select * from base {brand_filter}
         ),
         boundary as (
             select dt, {geo_col}, {agg_fn}({fuel_col}) as boundary_price
@@ -126,8 +131,7 @@ def compute_brand_win_rate(
     directions: List[str] = None,
     min_appearances: int = MIN_APPEARANCES,
 ) -> pd.DataFrame:
-    if brands is None:
-        brands = BRANDS
+    # brands left as None means "all brands" — the report now covers every brand with enough data.
     if fuel_cols is None:
         fuel_cols = FUEL_COLS
     if geo_cols is None:
@@ -141,6 +145,9 @@ def compute_brand_win_rate(
     price_cols_sql = ", ".join(fuel_cols)
     geo_cols_sql = ", ".join(geo_cols)
 
+    # Normalize brand labels (collapse aliases, drop non-brand junk) via the shared Python helper.
+    register_normalize_brand(con)
+
     # Materialize once to avoid one full fuel_prices scan per (direction × geo_col × fuel_col).
     con.execute("DROP TABLE IF EXISTS _brand_win_rate_work")
     con.execute(
@@ -149,7 +156,7 @@ def compute_brand_win_rate(
         SELECT
             timestamp,
             {geo_cols_sql},
-            lower(cast(label as varchar)) as label,
+            normalize_brand(cast(label as varchar)) as label,
             {price_cols_sql}
         FROM fuel_prices
         """
