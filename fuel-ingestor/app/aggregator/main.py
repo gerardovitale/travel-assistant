@@ -144,11 +144,15 @@ def _get_latest_raw_file(bucket):
 
 def _build_aggregate_dataframes_from_raw_files(bucket, parquet_files):
     _log_event(logger.info, "historical_aggregate_build_start", files=len(parquet_files))
+    # Must cover every column the three pipelines below read: the daily path downloads the raw file
+    # unprojected, so a column missing here only fails on the historical paths (backfill, bootstrap,
+    # brand backfill). ccaa_id is read by compute_daily_ingestion_stats.
     needed_columns = [
         "timestamp",
         "eess_id",
         "municipality_id",
         "province_id",
+        "ccaa_id",
         "label",
         "province",
         "municipality",

@@ -668,3 +668,35 @@ class TestComputeDailyIngestionStats(TestCase):
         raw_df = _make_ingestion_stats_raw_df()
         result = compute_daily_ingestion_stats(raw_df)
         self.assertEqual(result.iloc[0]["date"], datetime.date(2026, 3, 22))
+
+
+class TestHistoricalAggregateBuild(TestCase):
+    """The historical paths (backfill, bootstrap, brand backfill) project the raw file down to a
+    fixed column list, while the daily path downloads it unprojected. A column that a pipeline
+    reads but the projection omits therefore fails only on those paths."""
+
+    @patch("aggregator.main._download_parquet_from_gcs")
+    def test_projection_covers_every_column_the_pipelines_read(self, mock_download):
+        from aggregator.main import _build_aggregate_dataframes_from_raw_files
+
+        # Brand fixture: enough stations per label to clear MIN_STATION_COUNT, so all three
+        # pipelines produce rows and a projection gap in any of them surfaces.
+        raw_df = _make_brand_raw_df()
+
+        def _projecting_download(_bucket, _blob_name, columns=None):
+            # Mirror the real GCS read: only the requested columns come back. Mocks that ignore
+            # *columns* hide projection gaps, which is how ccaa_id went missing. The fixture
+            # carries fewer fuel columns than a real snapshot, so intersect rather than reindex.
+            if not columns:
+                return raw_df
+            return raw_df[[c for c in columns if c in raw_df.columns]]
+
+        mock_download.side_effect = _projecting_download
+
+        province_df, _dow_df, ingestion_df, brand_df = _build_aggregate_dataframes_from_raw_files(
+            MagicMock(), ["spain_fuel_prices_2026-03-22T05:48:06.parquet"]
+        )
+
+        self.assertFalse(province_df.empty)
+        self.assertFalse(ingestion_df.empty)
+        self.assertFalse(brand_df.empty)
