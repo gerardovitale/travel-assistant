@@ -7,4 +7,6 @@ exclude = ["ingest-fuel-prices"]
 # latest. cryptography 48.x crashes ("Illegal instruction") on arm64 Docker; pin
 # back to the version both services shipped on main (known-good in CI + on the
 # Raspberry Pi). This keeps the refactor dependency-neutral.
-constraint-dependencies = ["cryptography==46.0.5"]
+# pyasn1 >=0.6.4 clears CVE-2026-59884/59885/59886 (DoS via crafted BER / OBJECT
+# IDENTIFIER / REAL). Transitive via google-auth -> pyasn1-modules.
+constraint-dependencies = ["cryptography==46.0.5", "pyasn1>=0.6.4"]

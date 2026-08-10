@@ -64,3 +64,55 @@ CVE-2026-11824
 # used only by google-auth for GCS token signing over HTTPS, no untrusted TLS input.
 # Reviewed: 2026-06-23. Re-review by: 2026-09-30.
 GHSA-537c-gmf6-5ccf
+
+# ---------------------------------------------------------------------------
+# Debian 13.6 base-image CVEs with no upstream fix (Status: affected, Fixed
+# Version: none). Reviewed against fuel-dashboard: a FastAPI app that reads
+# Parquet from GCS over HTTPS and queries DuckDB in memory.
+# Reviewed: 2026-08-10. Re-review by: 2026-11-10.
+
+# curl / libcurl4t64 — SSH host verification bypass via schemeless SFTP/SCP URLs
+# (12064), insecure connection establishment on TLS config mismatch (8286),
+# unauthorized connection reuse (8458), and information disclosure via uncleared
+# proxy credentials (8927).
+# curl IS invoked here: spain_fuel_api.fetch shells out to it (realtime_client).
+# Exposure is bounded by how it is called — one hardcoded https:// constant
+# (DATA_SOURCE_URL), TLS pinned with --tlsv1.2/--tls-max 1.2, no proxy flags, no
+# credentials, and a one-shot subprocess per fetch so no connection pool is
+# reused across hosts. No user-supplied URL ever reaches curl.
+CVE-2026-12064
+CVE-2026-8286
+CVE-2026-8458
+CVE-2026-8927
+
+# perl-base — regex engine returning silently incorrect results (13221,
+# CRITICAL), information disclosure via integer overflow in pack/unpack (57432),
+# and Storable signed integer overflow (57433). Perl is a transitive dependency
+# of python:3.13-slim and is never invoked; the app is Python-only.
+CVE-2026-13221
+CVE-2026-57432
+CVE-2026-57433
+
+# gzip — global buffer overflow in the LZH decoder. The app never shells out to
+# gzip and never handles .lzh archives; Parquet is read via pyarrow (snappy).
+CVE-2026-41992
+
+# libacl1 — symlink traversal privilege escalation via libacl functions. The
+# container runs a single non-interactive app process and performs no ACL
+# operations on attacker-controlled paths.
+CVE-2026-54369
+
+# util-linux family (bsdutils, libblkid1, liblastlog2-2, util-linux) — integer
+# overflow in libblkid DOS partition parsing. The app never inspects block
+# devices or partition tables; libblkid is a base-image transitive dep.
+CVE-2026-53615
+
+# cryptography 46.0.5 — CVE-2026-69247 (fix 50.0.0) and CVE-2026-69249 (fix
+# 49.0.0). Held at 46.0.5 by constraint-dependencies in the root pyproject.toml
+# because 48.x+ crashes ("Illegal instruction") on arm64, the Raspberry Pi 5 the
+# dashboard runs on. Used only by google-auth to sign GCS tokens over HTTPS — no
+# untrusted key or certificate input. Bumping needs an arm64 container test
+# first; tracked separately from this suppression.
+# Reviewed: 2026-08-10. Re-review by: 2026-11-10.
+CVE-2026-69247
+CVE-2026-69249

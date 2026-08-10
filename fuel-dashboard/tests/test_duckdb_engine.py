@@ -1,3 +1,5 @@
+from datetime import date
+from datetime import timedelta
 from unittest.mock import patch
 
 import duckdb
@@ -40,10 +42,21 @@ def _setup_test_table(conn):
     conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
 
 
+def _recent_dates(count: int) -> list[date]:
+    """`count` consecutive dates ending yesterday, oldest first.
+
+    The trend queries filter on `date >= CURRENT_DATE - INTERVAL (days_back) DAY`, so fixture
+    dates pinned to literals silently fall out of the window as wall-clock advances — the tests
+    pass when written and start returning zero rows months later.
+    """
+    today = date.today()
+    return [today - timedelta(days=count - offset) for offset in range(count)]
+
+
 def _make_zip_trend_df():
     return pd.DataFrame(
         {
-            "date": pd.to_datetime(["2026-03-29", "2026-03-30", "2026-03-31"]).date,
+            "date": _recent_dates(3),
             "zip_code": ["28001", "28001", "08001"],
             "province": ["madrid", "madrid", "barcelona"],
             "fuel_type": ["diesel_a_price", "diesel_a_price", "diesel_a_price"],
@@ -247,7 +260,7 @@ def test_query_cached_group_price_trend_returns_multiple_fuel_types(mock_conn):
     mock_conn.return_value = conn
     df = pd.DataFrame(  # noqa: F841
         {
-            "date": pd.to_datetime(["2026-03-29", "2026-03-30", "2026-03-29", "2026-03-30"]).date,
+            "date": _recent_dates(2) * 2,
             "zip_code": ["28001"] * 4,
             "province": ["madrid"] * 4,
             "fuel_type": ["diesel_a_price", "diesel_a_price", "diesel_premium_price", "diesel_premium_price"],
@@ -564,7 +577,7 @@ def test_query_national_group_price_trend_with_province_filters_rows(mock_conn):
     mock_conn.return_value = conn
     df = pd.DataFrame(  # noqa: F841
         {
-            "date": pd.to_datetime(["2026-03-29", "2026-03-30", "2026-03-29", "2026-03-30"]).date,
+            "date": _recent_dates(2) * 2,
             "zip_code": ["28001", "28001", "08001", "08001"],
             "province": ["madrid", "madrid", "barcelona", "barcelona"],
             "fuel_type": ["diesel_a_price"] * 4,
