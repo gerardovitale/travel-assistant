@@ -4,12 +4,13 @@ FastAPI + NiceGUI web dashboard for exploring Spanish fuel station prices, with 
 
 ## Architecture
 
-| Layer        | Directory       | Description                                                                |
-| ------------ | --------------- | -------------------------------------------------------------------------- |
-| **API**      | `app/api/`      | FastAPI router, Pydantic request/response schemas, rate limiting (slowapi) |
-| **Services** | `app/services/` | Station queries, trip planner, OSRM routing, geocoding                     |
-| **Data**     | `app/data/`     | DuckDB engine over Parquet from GCS, caching, GeoJSON loader               |
-| **UI**       | `app/ui/`       | NiceGUI pages, Plotly charts, view models, reusable components             |
+| Layer        | Directory        | Description                                                                                   |
+| ------------ | ---------------- | --------------------------------------------------------------------------------------------- |
+| **API**      | `app/api/`       | FastAPI router, Pydantic request/response schemas, rate limiting (slowapi)                    |
+| **MCP**      | `app/mcp_layer/` | MCP tool layer at `/mcp` for LLM/agent clients — wraps a curated subset of the services below |
+| **Services** | `app/services/`  | Station queries, trip planner, OSRM routing, geocoding                                        |
+| **Data**     | `app/data/`      | DuckDB engine over Parquet from GCS, caching, GeoJSON loader                                  |
+| **UI**       | `app/ui/`        | NiceGUI pages, Plotly charts, view models, reusable components                                |
 
 ## Project Structure
 
@@ -20,6 +21,10 @@ app/
   api/
     router.py          API routes
     schemas.py         Pydantic request/response models
+  mcp_layer/
+    server.py          MCP tools (curated wrappers over services/), mounted at /mcp
+    auth.py            Shared-secret header auth, scoped to /mcp
+    rate_limit.py      In-memory rate limit, scoped to /mcp
   services/
     station_service.py Station queries and filtering
     trip_planner.py    Fuel stop optimization
@@ -53,16 +58,27 @@ Or from the project root: `make setup`
 
 All settings use the `DASHBOARD_` env prefix. Key variables:
 
-| Variable                      | Default                              | Description         |
-| ----------------------------- | ------------------------------------ | ------------------- |
-| `DASHBOARD_GCP_PROJECT_ID`    | `travel-assistant-417315`            | GCP project         |
-| `DASHBOARD_GCS_BUCKET_NAME`   | `travel-assistant-spain-fuel-prices` | Source bucket       |
-| `DASHBOARD_PORT`              | `8080`                               | Server port         |
-| `DASHBOARD_CACHE_TTL_SECONDS` | `86400`                              | Cache TTL           |
-| `DASHBOARD_OSRM_ENABLED`      | `true`                               | Enable OSRM routing |
-| `DASHBOARD_RATE_LIMIT`        | `60/minute`                          | API rate limit      |
+| Variable                      | Default                              | Description                                                                                                                                                                           |
+| ----------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DASHBOARD_GCP_PROJECT_ID`    | `travel-assistant-417315`            | GCP project                                                                                                                                                                           |
+| `DASHBOARD_GCS_BUCKET_NAME`   | `travel-assistant-spain-fuel-prices` | Source bucket                                                                                                                                                                         |
+| `DASHBOARD_PORT`              | `8080`                               | Server port                                                                                                                                                                           |
+| `DASHBOARD_CACHE_TTL_SECONDS` | `86400`                              | Cache TTL                                                                                                                                                                             |
+| `DASHBOARD_OSRM_ENABLED`      | `true`                               | Enable OSRM routing                                                                                                                                                                   |
+| `DASHBOARD_RATE_LIMIT`        | `60/minute`                          | API rate limit                                                                                                                                                                        |
+| `DASHBOARD_MCP_ENABLED`       | `true`                               | Enable the `/mcp` layer (still requires `DASHBOARD_MCP_API_KEY` to actually mount — see below)                                                                                        |
+| `DASHBOARD_MCP_API_KEY`       | unset                                | Shared secret required in the `X-MCP-API-Key` header on every `/mcp` request. **Fails closed:** `/mcp` is not mounted at all if this is unset, even when `DASHBOARD_MCP_ENABLED=true` |
+| `DASHBOARD_MCP_RATE_LIMIT`    | `30/minute`                          | Rate limit for `/mcp`, enforced separately from `DASHBOARD_RATE_LIMIT` (see `app/mcp_layer/rate_limit.py`)                                                                            |
 
 See `app/config.py` for the full list and defaults.
+
+## MCP layer
+
+`/mcp` exposes a curated subset of the REST API as MCP tools (streamable-HTTP transport) so LLM/agent
+clients can query cheapest stations, price trends, the Markov-chain price forecast, brand win-rate/
+price-comparison reports, and data-quality status — see `app/mcp_layer/server.py` for the full tool
+list and docstrings. Every tool is a thin wrapper over an existing `services/` function; no separate
+business logic. Requires `DASHBOARD_MCP_API_KEY` to be set (see Configuration above).
 
 ## Usage
 

@@ -50,7 +50,7 @@ class Settings(BaseSettings):
 
     default_consumption_lper100km: float = 7.0
     default_tank_liters: float = 40.0
-    default_fills_per_month: int = 4  # assumption for the reportes savings estimate
+    default_fills_per_month: int = 2  # assumption for the reportes savings estimate
     default_refill_liters: float = 30.0
     default_fuel_level_pct: float = 25.0
     default_max_detour_minutes: float = 5.0
@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     osrm_enabled: bool = True
 
     rate_limit: str = "60/minute"
+
+    # MCP layer (see app/mcp_layer/). Off by default in effect: mcp_enabled=True but the server
+    # refuses to mount without a configured shared secret, so a fresh deploy stays closed.
+    mcp_enabled: bool = True
+    mcp_api_key: str | None = None
+    mcp_rate_limit: str = "30/minute"
 
     realtime_enabled: bool = True
     realtime_refresh_seconds: int = 600

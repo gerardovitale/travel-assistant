@@ -1,5 +1,4 @@
 import json
-from datetime import date
 from typing import Any
 
 import ui_test_support as ui_test
@@ -12,7 +11,6 @@ from api.schemas import BrandPriceComparisonRow
 from api.schemas import BrandReportFuelType
 from api.schemas import BrandWinRateRow
 from api.schemas import DataFrameResponse
-from api.schemas import DataInventory
 from api.schemas import Direction
 from api.schemas import DistrictMapResponse
 from api.schemas import FUEL_GROUP_MEMBERS
@@ -28,13 +26,11 @@ from api.schemas import HISTORICAL_PERIOD_DAYS
 from api.schemas import HistoricalForecastResponse
 from api.schemas import HistoricalPeriod
 from api.schemas import LabelsResponse
-from api.schemas import LatestDayStats
 from api.schemas import MunicipalitiesResponse
 from api.schemas import NationalAvgResponse
 from api.schemas import ProvinceMapResponse
 from api.schemas import ProvincesResponse
 from api.schemas import QualityResponse
-from api.schemas import RealtimeStatus
 from api.schemas import RouteResponse
 from api.schemas import SearchLocation
 from api.schemas import StationListResponse
@@ -49,10 +45,8 @@ from fastapi import Body
 from fastapi import HTTPException
 from fastapi import Query
 from fastapi import Request
-from services.data_quality_service import get_data_inventory
-from services.data_quality_service import get_ingestion_stats
-from services.data_quality_service import get_latest_day_stats
-from services.data_quality_service import get_missing_days
+from net_utils import get_real_client_ip
+from services.data_quality_service import get_quality_report
 from services.forecast_service import get_historical_forecast
 from services.geocoding import geocode_address
 from services.geocoding import get_address_suggestions
@@ -87,18 +81,8 @@ from services.station_service import get_zone_volatility_ranking
 from services.trip_planner import plan_trip
 from slowapi import Limiter
 
-from data.cache import get_realtime_status
 from data.geojson_loader import load_postal_code_boundary
 from data.geojson_loader import load_postal_codes_for_zip_list
-
-
-def get_real_client_ip(request: Request) -> str:
-    return (
-        request.headers.get("CF-Connecting-IP")
-        or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or request.client.host
-    )
-
 
 limiter = Limiter(key_func=get_real_client_ip)
 router = APIRouter()
@@ -553,33 +537,7 @@ def historical_volatility(
 def quality_inventory(request: Request):
     if settings.ui_test_mode:
         return ui_test.quality_response()
-    stats = get_ingestion_stats()
-    inventory = get_data_inventory(stats)
-    max_date: date | None = inventory.get("max_date")
-    min_date: date | None = inventory.get("min_date")
-    latest = get_latest_day_stats(stats, max_date) if max_date else {}
-    available: set[date] = inventory.get("available_dates") or set()
-    missing = get_missing_days(available, min_date, max_date) if (min_date and max_date) else []
-    return QualityResponse(
-        inventory=DataInventory(
-            num_days=inventory.get("num_days", 0),
-            num_months=inventory.get("num_months", 0),
-            num_years=inventory.get("num_years", 0),
-            total_size_bytes=inventory.get("total_size_bytes", 0),
-            min_date=min_date.isoformat() if min_date else None,
-            max_date=max_date.isoformat() if max_date else None,
-        ),
-        latest_day=LatestDayStats(
-            max_date=latest["max_date"].isoformat() if latest.get("max_date") else None,
-            unique_stations=latest.get("unique_stations", 0),
-            unique_provinces=latest.get("unique_provinces", 0),
-            unique_communities=latest.get("unique_communities", 0),
-            unique_localities=latest.get("unique_localities", 0),
-            unique_fuel_types=latest.get("unique_fuel_types", 0),
-        ),
-        missing_days=missing,
-        realtime=RealtimeStatus(**get_realtime_status()),
-    )
+    return get_quality_report()
 
 
 @router.get("/reportes/brands", response_model=BrandOptionsResponse)

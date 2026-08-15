@@ -107,6 +107,7 @@ fuel-dashboard.run:
 	docker run --rm -p 8080:8080 \
 		-v $(DASHBOARD_CREDENTIALS_PATH):/app/credentials.json:ro \
 		-e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json \
+		-e DASHBOARD_MCP_API_KEY=$(DASHBOARD_MCP_API_KEY) \
 		fuel-dashboard
 
 fuel-dashboard.ui-test:

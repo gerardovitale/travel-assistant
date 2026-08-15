@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
@@ -14,6 +15,10 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from mcp_layer.auth import mcp_auth_middleware
+from mcp_layer.rate_limit import mcp_rate_limit_middleware
+from mcp_layer.server import build_mcp_route
+from mcp_layer.server import mcp as mcp_server
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from ui_test_support import health_data_response as ui_test_health_data_response
@@ -37,6 +42,17 @@ logger = logging.getLogger(__name__)
 
 _WEB_DIR = Path(__file__).parent / "web"
 
+# MCP layer is fail-closed: without a configured shared secret it stays unmounted entirely
+# (404 on /mcp) rather than running without auth. See app/mcp_layer/.
+# Also skipped in ui_test_mode: that mode's whole contract is "no live GCS/DuckDB calls" (see
+# lifespan() below and ui_test_support.py), and the MCP tools — unlike every REST route — have no
+# fixture-backed path, so mounting there would either 500 (session manager never starts, since
+# lifespan's ui_test_mode branch returns before starting it) or hit real data with no cache warmed.
+_mcp_ready = settings.mcp_enabled and bool(settings.mcp_api_key) and not settings.ui_test_mode
+if settings.mcp_enabled and not settings.mcp_api_key and not settings.ui_test_mode:
+    logger.warning("DASHBOARD_MCP_API_KEY not set; /mcp will not be mounted")
+_mcp_route = build_mcp_route("/mcp") if _mcp_ready else None
+
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
@@ -45,23 +61,39 @@ async def lifespan(application: FastAPI):
         yield
         return
 
-    logger.info("Preloading zip-code trend cache")
-    trend_preloaded = False
-    try:
-        trend_preloaded = refresh_zip_code_trend_snapshot()
-    except Exception:
-        logger.exception("Failed to preload zip-code trend cache")
-    logger.info("Starting cache refresh background task")
-    start_cache_refresh(skip_initial_trend_refresh=trend_preloaded)
-    logger.info("Preloading GeoJSON data")
-    load_provinces_geojson()
-    yield
+    async with AsyncExitStack() as stack:
+        if _mcp_route is not None:
+            logger.info("Starting MCP session manager")
+            await stack.enter_async_context(mcp_server.session_manager.run())
+
+        logger.info("Preloading zip-code trend cache")
+        trend_preloaded = False
+        try:
+            trend_preloaded = refresh_zip_code_trend_snapshot()
+        except Exception:
+            logger.exception("Failed to preload zip-code trend cache")
+
+        logger.info("Starting cache refresh background task")
+        start_cache_refresh(skip_initial_trend_refresh=trend_preloaded)
+        logger.info("Preloading GeoJSON data")
+        load_provinces_geojson()
+        yield
 
 
 app = FastAPI(title="Spain Fuel Prices Dashboard", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(router, prefix="/api/v1")
+
+if _mcp_route is not None:
+    # Registered after include_router so these apply to /mcp only — REST's rate limiting stays
+    # slowapi's per-route decorators, untouched. Rate limit checked before auth (cheap key lookup
+    # first); order between the two middleware doesn't affect correctness, only which 4xx fires
+    # first under simultaneous abuse.
+    app.middleware("http")(mcp_auth_middleware)
+    app.middleware("http")(mcp_rate_limit_middleware)
+    app.router.routes.append(_mcp_route)
+    logger.info("MCP layer mounted at /mcp")
 
 
 @app.middleware("http")

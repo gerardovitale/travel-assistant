@@ -509,11 +509,11 @@ def test_trip_plan_bad_request(mock_service):
     assert resp.status_code == 400
 
 
-@patch("api.router.get_realtime_status")
-@patch("api.router.get_missing_days")
-@patch("api.router.get_latest_day_stats")
-@patch("api.router.get_data_inventory")
-@patch("api.router.get_ingestion_stats")
+@patch("services.data_quality_service.get_realtime_status")
+@patch("services.data_quality_service.get_missing_days")
+@patch("services.data_quality_service.get_latest_day_stats")
+@patch("services.data_quality_service.get_data_inventory")
+@patch("services.data_quality_service.get_ingestion_stats")
 def test_quality_inventory_endpoint(mock_stats, mock_inv, mock_latest, mock_missing, mock_rt):
     mock_stats.return_value = {}
     mock_inv.return_value = {
@@ -538,11 +538,11 @@ def test_quality_inventory_endpoint(mock_stats, mock_inv, mock_latest, mock_miss
     assert data["realtime"]["realtime_active"] is True
 
 
-@patch("api.router.get_realtime_status")
-@patch("api.router.get_missing_days")
-@patch("api.router.get_latest_day_stats")
-@patch("api.router.get_data_inventory")
-@patch("api.router.get_ingestion_stats")
+@patch("services.data_quality_service.get_realtime_status")
+@patch("services.data_quality_service.get_missing_days")
+@patch("services.data_quality_service.get_latest_day_stats")
+@patch("services.data_quality_service.get_data_inventory")
+@patch("services.data_quality_service.get_ingestion_stats")
 def test_quality_inventory_endpoint_no_dates(mock_stats, mock_inv, mock_latest, mock_missing, mock_rt):
     mock_stats.return_value = {}
     mock_inv.return_value = {

@@ -9,6 +9,8 @@ services:
       - DASHBOARD_GCP_PROJECT_ID=travel-assistant-417315
       - DASHBOARD_GCS_BUCKET_NAME=travel-assistant-spain-fuel-prices
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcs-fuel-dashboard-credentials.json
+      # /mcp stays unmounted (fail-closed) unless this is set — see README.md#mcp-layer.
+      - DASHBOARD_MCP_API_KEY=${DASHBOARD_MCP_API_KEY}
     volumes:
       - ./gcs-fuel-dashboard-credentials.json:/secrets/gcs-fuel-dashboard-credentials.json:ro
     deploy:
