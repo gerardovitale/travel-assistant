@@ -28,6 +28,10 @@ PY
 
 FROM python:3.13-slim
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# Runtime never invokes pip (deps are already synced into the venv copied below); strip the
+# base image's ensurepip install to drop its vendored msgpack/setuptools CVEs (unused attack surface).
+RUN python3 -m pip uninstall --yes --break-system-packages pip setuptools 2>/dev/null; \
+    rm -rf /usr/local/lib/python3.13/ensurepip
 WORKDIR /app
 RUN useradd -r -u 1000 -s /usr/sbin/nologin appuser
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
