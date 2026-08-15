@@ -82,6 +82,10 @@ class Settings(BaseSettings):
     insights_zones_enabled: bool = False
     insights_historical_enabled: bool = False
     insights_reportes_enabled: bool = True
+    # Default Tendencias tab filters. Province is the raw DB key (e.g. "madrid"); empty means "Todas".
+    # Period must be one of week/month/quarter/half_year/year.
+    trends_default_province: str = "madrid"
+    trends_default_period: str = "half_year"
     # Default brand pre-selection for the reportes picker (the user can pick up to 4 of any brand).
     # Override: DASHBOARD_REPORT_BRANDS=cepsa,repsol,ballenoil,costco  (empty = all brands)
     report_brands: list[str] = ["cepsa", "repsol", "ballenoil", "costco"]

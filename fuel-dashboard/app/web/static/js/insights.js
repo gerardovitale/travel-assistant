@@ -775,13 +775,27 @@ function switchTab(name, opts = {}) {
 
 async function initTrends() {
   await populateGroupSelect(document.querySelector('#trends-filter select[name="fuel_group"]'));
+  const formEl = document.getElementById("trends-filter");
   const provSel = document.querySelector('#trends-filter select[name="province"]');
   try {
     const provs = await getProvinces();
     for (const [raw, pretty] of Object.entries(provs)) {
       const opt = document.createElement("option"); opt.value = raw; opt.textContent = pretty; provSel.appendChild(opt);
     }
+    // Server-configured default province (DASHBOARD_TRENDS_DEFAULT_PROVINCE); falls back to "Todas"
+    // if unset or absent from the option list.
+    const defaultProvince = (formEl.dataset.defaultProvince || "").trim().toLowerCase();
+    const provOpt = defaultProvince && [...provSel.options].find((o) => o.value.toLowerCase() === defaultProvince);
+    if (provOpt) provSel.value = provOpt.value;
   } catch {}
+
+  // Server-configured default period (DASHBOARD_TRENDS_DEFAULT_PERIOD); ignored if it doesn't match
+  // one of the static period options.
+  const periodSel = document.querySelector('#trends-filter select[name="period"]');
+  const defaultPeriod = (formEl.dataset.defaultPeriod || "").trim();
+  if (defaultPeriod && [...periodSel.options].some((o) => o.value === defaultPeriod)) {
+    periodSel.value = defaultPeriod;
+  }
 
   document.getElementById("trends-filter").addEventListener("submit", (e) => e.preventDefault());
 

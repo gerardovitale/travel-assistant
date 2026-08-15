@@ -306,6 +306,9 @@ def _render_insights(request: Request, active_tab: str):
     ctx["insights_historical_enabled"] = insights_historical_enabled
     ctx["insights_reportes_enabled"] = insights_reportes_enabled
     ctx["active_tab"] = active_tab
+    # Defaults for the Tendencias tab filters (province/period).
+    ctx["trends_default_province"] = settings.trends_default_province
+    ctx["trends_default_period"] = settings.trends_default_period
     # Defaults for the reportes savings estimate (user-editable inputs).
     ctx["default_tank_liters"] = int(settings.default_tank_liters)
     ctx["default_fills_per_month"] = settings.default_fills_per_month
