@@ -21,3 +21,19 @@ pythonpath = ["app"]
 
 [dependency-groups]
 dev = ["pytest"]
+
+[tool.ty.environment]
+root = ["./app", "."]
+python = "../.venv"
+
+[tool.ty.rules]
+# See fuel-dashboard/pyproject.toml: upstream pandas/typeshed protocol mismatch on
+# `pd.DataFrame(columns=[...])`. Demoted so it stays visible without failing the build.
+invalid-argument-type = "warn"
+
+[[tool.ty.overrides]]
+include = ["tests/**"]
+
+[tool.ty.overrides.rules]
+not-subscriptable = "ignore"
+not-iterable = "ignore"

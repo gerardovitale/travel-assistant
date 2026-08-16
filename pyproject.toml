@@ -10,3 +10,8 @@ exclude = ["ingest-fuel-prices"]
 # pyasn1 >=0.6.4 clears CVE-2026-59884/59885/59886 (DoS via crafted BER / OBJECT
 # IDENTIFIER / REAL). Transitive via google-auth -> pyasn1-modules.
 constraint-dependencies = ["cryptography==46.0.5", "pyasn1>=0.6.4"]
+
+# Workspace-wide dev tooling. Lives on the virtual root so `uv sync --all-packages --dev`
+# installs it once rather than duplicating it in each member.
+[dependency-groups]
+dev = ["ty>=0.0.72"]

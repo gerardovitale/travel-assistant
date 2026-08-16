@@ -2,6 +2,7 @@ import io
 import logging
 import re
 from datetime import datetime
+from datetime import timedelta
 from datetime import timezone
 
 import pandas as pd
@@ -123,7 +124,8 @@ def _get_latest_raw_file(bucket):
     """Find the latest raw parquet file in the bucket."""
     now = datetime.now(timezone.utc)
     for days_ago in range(3):
-        date_str = (now - pd.Timedelta(days=days_ago)).strftime("%Y-%m-%d")
+        # timedelta, not pd.Timedelta: the pandas variant widens the result to include NaT.
+        date_str = (now - timedelta(days=days_ago)).strftime("%Y-%m-%d")
         prefix = f"spain_fuel_prices_{date_str}"
         blobs = list(bucket.list_blobs(prefix=prefix))
         parquets = sorted([b.name for b in blobs if b.name.endswith(".parquet")])

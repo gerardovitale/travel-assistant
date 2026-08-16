@@ -20,3 +20,7 @@ pythonpath = ["src"]
 
 [dependency-groups]
 dev = ["pytest"]
+
+[tool.ty.environment]
+root = ["./src", "."]
+python = "../.venv"

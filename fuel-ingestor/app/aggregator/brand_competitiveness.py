@@ -80,7 +80,8 @@ def _load_duckdb(parquet_dir):
     con.execute(
         f"create table fuel_prices as select * from read_parquet('{parquet_dir}/*.parquet', union_by_name=true)"
     )
-    row_count = con.execute("select count(*) from fuel_prices").fetchone()[0]
+    count_row = con.execute("select count(*) from fuel_prices").fetchone()
+    row_count = count_row[0] if count_row else 0
     _log_event(logger.info, "duckdb_table_loaded", rows=row_count)
     return con
 

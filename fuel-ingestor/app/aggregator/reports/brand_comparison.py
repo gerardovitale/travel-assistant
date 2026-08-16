@@ -1,6 +1,5 @@
 import logging
 from typing import Any
-from typing import List
 
 import pandas as pd
 from aggregator.brand_utils import register_normalize_brand
@@ -104,9 +103,9 @@ def _compute_comparison_for_combination(con, geo_col, fuel_col, brands, min_appe
 
 def compute_brand_price_comparison(
     con,
-    brands: List[str] = None,
-    fuel_cols: List[str] = None,
-    geo_cols: List[str] = None,
+    brands: list[str] | None = None,
+    fuel_cols: list[str] | None = None,
+    geo_cols: list[str] | None = None,
     min_appearances: int = MIN_APPEARANCES,
 ) -> pd.DataFrame:
     # brands left as None means "all brands" — the report now covers every brand with enough data.

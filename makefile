@@ -5,6 +5,9 @@ ENV := $(PWD)/.env
 # Trivy version must match aquasecurity/trivy-action in .github/workflows/deploy.yaml
 TRIVY_VERSION := 0.69.3
 DASHBOARD_CREDENTIALS_PATH ?= $(PWD)/fuel-dashboard/gcs-fuel-dashboard-credentials.json
+# Comparador tab ships dark (see app/config.py). Override to preview it locally:
+#   make fuel-dashboard.run DASHBOARD_INSIGHTS_COMPARADOR_ENABLED=true
+DASHBOARD_INSIGHTS_COMPARADOR_ENABLED ?= false
 
 include $(ENV)
 export
@@ -13,7 +16,7 @@ setup:
 	uv sync --all-packages --dev
 
 test: spain-fuel-fetcher.test fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
-test-local: setup spain-fuel-fetcher.test-local fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
+test-local: setup typecheck spain-fuel-fetcher.test-local fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
 scan: fuel-dashboard.scan
 done: setup test-local scan
 
@@ -58,6 +61,24 @@ fuel-dashboard.test-local:
 
 fuel-dashboard.ui-test-local:
 	cd fuel-dashboard && npx playwright install chromium && npm run ui:test
+
+
+# TYPE CHECKING (ty)
+# --exit-zero-on-warning: ty fails on any diagnostic by default. Warnings here are demoted rules
+# for known upstream stub bugs (see each service's [tool.ty.rules]) — they stay visible in the
+# output but must not fail the build. Error-level diagnostics still do.
+TY := ../.venv/bin/ty check --exit-zero-on-warning
+
+typecheck: spain-fuel-fetcher.typecheck fuel-ingestor.typecheck fuel-dashboard.typecheck
+
+spain-fuel-fetcher.typecheck:
+	cd spain-fuel-fetcher && $(TY)
+
+fuel-ingestor.typecheck:
+	cd fuel-ingestor && $(TY)
+
+fuel-dashboard.typecheck:
+	cd fuel-dashboard && $(TY)
 
 
 # IMAGE SCANNING
@@ -108,6 +129,7 @@ fuel-dashboard.run:
 		-v $(DASHBOARD_CREDENTIALS_PATH):/app/credentials.json:ro \
 		-e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json \
 		-e DASHBOARD_MCP_API_KEY=$(DASHBOARD_MCP_API_KEY) \
+		-e DASHBOARD_INSIGHTS_COMPARADOR_ENABLED=$(DASHBOARD_INSIGHTS_COMPARADOR_ENABLED) \
 		fuel-dashboard
 
 fuel-dashboard.ui-test:

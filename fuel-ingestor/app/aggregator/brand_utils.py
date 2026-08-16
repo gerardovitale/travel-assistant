@@ -1,5 +1,4 @@
 import re
-from typing import Optional
 
 import duckdb
 
@@ -40,7 +39,7 @@ BRAND_FAMILIES = [
 ]
 
 
-def normalize_brand(label: str) -> Optional[str]:
+def normalize_brand(label: str | None) -> str | None:
     """Return normalized brand name, or None if not a real brand."""
     if not label or not isinstance(label, str):
         return None
