@@ -5,9 +5,9 @@ ENV := $(PWD)/.env
 # Trivy version must match aquasecurity/trivy-action in .github/workflows/deploy.yaml
 TRIVY_VERSION := 0.69.3
 DASHBOARD_CREDENTIALS_PATH ?= $(PWD)/fuel-dashboard/gcs-fuel-dashboard-credentials.json
-# Comparador tab ships dark (see app/config.py). Override to preview it locally:
-#   make fuel-dashboard.run DASHBOARD_INSIGHTS_COMPARADOR_ENABLED=true
-DASHBOARD_INSIGHTS_COMPARADOR_ENABLED ?= false
+# The fuel-type report inside the Reportes tab ships dark (see app/config.py). Preview it with:
+#   make fuel-dashboard.run DASHBOARD_REPORT_FUEL_TYPE_ENABLED=true
+DASHBOARD_REPORT_FUEL_TYPE_ENABLED ?= false
 
 include $(ENV)
 export
@@ -129,7 +129,7 @@ fuel-dashboard.run:
 		-v $(DASHBOARD_CREDENTIALS_PATH):/app/credentials.json:ro \
 		-e GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json \
 		-e DASHBOARD_MCP_API_KEY=$(DASHBOARD_MCP_API_KEY) \
-		-e DASHBOARD_INSIGHTS_COMPARADOR_ENABLED=$(DASHBOARD_INSIGHTS_COMPARADOR_ENABLED) \
+		-e DASHBOARD_REPORT_FUEL_TYPE_ENABLED=$(DASHBOARD_REPORT_FUEL_TYPE_ENABLED) \
 		fuel-dashboard
 
 fuel-dashboard.ui-test:

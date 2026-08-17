@@ -1,7 +1,9 @@
 from unittest.mock import patch
 
+import pytest
 from api.schemas import HistoricalForecastResponse
 from api.schemas import StationResult
+from config import settings
 from fastapi.testclient import TestClient
 
 # Patch start_cache_refresh for all tests so the lifespan startup doesn't hit GCS
@@ -456,3 +458,196 @@ def test_reportes_brands_returns_404_when_aggregate_missing(mock_service):
     mock_service.return_value = None
     response = _get_client().get("/api/v1/reportes/brands?fuel_type=gasoline_95_e5_price")
     assert response.status_code == 404
+
+
+# ---- /reportes/fuel-type endpoints ----
+# These routes are gated on report_fuel_type_enabled, which ships False.
+
+
+@pytest.fixture
+def fuel_type_on():
+    with patch.object(settings, "report_fuel_type_enabled", True):
+        yield
+
+
+def _cost_row(vehicle_id="vw-golf-tsi", energy_type="gasoline", consumption=5.7, price=1.509):
+    return {
+        "vehicle_id": vehicle_id,
+        "pair_id": "vw-golf",
+        "label": "Volkswagen Golf 1.5 TSI 130 CV",
+        "model": "Volkswagen Golf",
+        "variant": "1.5 TSI 130 CV",
+        "segment": "compacto",
+        "energy_type": energy_type,
+        "consumption": consumption,
+        "consumption_unit": "l/100km",
+        "price_per_unit": price,
+        "price_date": "2026-08-14",
+        "cost_per_100km": round(consumption * price, 2),
+    }
+
+
+def test_fuel_type_report_vehicles_returns_200_from_the_committed_catalog(fuel_type_on):
+    # No service patch: the catalog is shipped in the repo, so this endpoint never depends on GCS.
+    response = _get_client().get("/api/v1/reportes/fuel-type/vehicles")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pairs"]
+    # source_url is empty while the catalog holds unverified estimates; the endpoint still serves it.
+    assert "source_url" in data
+    # Electricity has no price source yet and must be declared as such rather than hidden.
+    assert "electric" in data["unpriceable_energy_types"]
+
+
+@patch("api.router.get_vehicle_costs")
+def test_fuel_type_report_cost_returns_200_with_data(mock_service, fuel_type_on):
+    mock_service.return_value = [_cost_row()]
+    response = _get_client().get("/api/v1/reportes/fuel-type/cost?vehicle_ids=vw-golf-tsi&province=madrid")
+    assert response.status_code == 200
+    assert response.json()[0]["cost_per_100km"] == 8.6
+
+
+@patch("api.router.get_vehicle_costs")
+def test_fuel_type_report_cost_returns_404_when_aggregate_missing(mock_service, fuel_type_on):
+    mock_service.return_value = None
+    response = _get_client().get("/api/v1/reportes/fuel-type/cost?vehicle_ids=vw-golf-tsi")
+    assert response.status_code == 404
+
+
+@patch("api.router.get_vehicle_costs")
+def test_fuel_type_report_cost_passes_vehicle_ids_and_province(mock_service, fuel_type_on):
+    mock_service.return_value = []
+    _get_client().get("/api/v1/reportes/fuel-type/cost?vehicle_ids=a&vehicle_ids=b&province=madrid")
+    assert mock_service.call_args.args[0] == ["a", "b"]
+    assert mock_service.call_args.args[1] == "madrid"
+
+
+def test_fuel_type_report_cost_rejects_more_than_six_vehicles(fuel_type_on):
+    query = "&".join(f"vehicle_ids={i}" for i in range(7))
+    response = _get_client().get(f"/api/v1/reportes/fuel-type/cost?{query}")
+    assert response.status_code == 422
+
+
+def test_fuel_type_report_cost_requires_vehicle_ids(fuel_type_on):
+    assert _get_client().get("/api/v1/reportes/fuel-type/cost").status_code == 422
+
+
+@patch("api.router.get_pair_breakeven")
+def test_fuel_type_report_breakeven_returns_200_with_data(mock_service, fuel_type_on):
+    mock_service.return_value = {
+        "pair_id": "vw-golf",
+        "model": "Volkswagen Golf",
+        "segment": "compacto",
+        "province": "madrid",
+        "gasoline": _cost_row(),
+        "diesel": _cost_row("vw-golf-tdi", "diesel", 4.6, 1.449),
+        "price_ratio": 0.96,
+        "breakeven_ratio": 1.2391,
+        "breakeven_diesel_price": 1.87,
+        "diesel_headroom_eur_l": 0.421,
+        "breakeven_diesel_consumption": 5.94,
+        "margin_pct": 22.5,
+        "winner": "diesel",
+        "cost_gasoline_per_100km": 8.6,
+        "cost_diesel_per_100km": 6.67,
+        "cost_gap_per_100km": 1.94,
+        "price_date": "2026-08-14",
+    }
+    response = _get_client().get("/api/v1/reportes/fuel-type/breakeven?pair_id=vw-golf&province=madrid")
+    assert response.status_code == 200
+    assert response.json()["winner"] == "diesel"
+
+
+@patch("api.router.get_pair_breakeven")
+def test_fuel_type_report_breakeven_returns_404_for_unknown_pair(mock_service, fuel_type_on):
+    mock_service.return_value = None
+    response = _get_client().get("/api/v1/reportes/fuel-type/breakeven?pair_id=does-not-exist")
+    assert response.status_code == 404
+
+
+def test_fuel_type_report_breakeven_rejects_overlong_pair_id(fuel_type_on):
+    response = _get_client().get(f"/api/v1/reportes/fuel-type/breakeven?pair_id={'x' * 65}")
+    assert response.status_code == 422
+
+
+@patch("api.router.get_breakeven_by_province")
+def test_fuel_type_report_provinces_returns_200_with_data(mock_service, fuel_type_on):
+    mock_service.return_value = {
+        "pair_id": "vw-golf",
+        "model": "Volkswagen Golf",
+        "breakeven_ratio": 1.2391,
+        "rows": [],
+        "provinces_dropped": 2,
+    }
+    response = _get_client().get("/api/v1/reportes/fuel-type/provinces?pair_id=vw-golf")
+    assert response.status_code == 200
+    assert response.json()["provinces_dropped"] == 2
+
+
+@patch("api.router.get_breakeven_by_province")
+def test_fuel_type_report_provinces_defaults_to_mainland_only(mock_service, fuel_type_on):
+    mock_service.return_value = {
+        "pair_id": "vw-golf",
+        "model": "Volkswagen Golf",
+        "breakeven_ratio": 1.2391,
+        "rows": [],
+        "provinces_dropped": 0,
+    }
+    _get_client().get("/api/v1/reportes/fuel-type/provinces?pair_id=vw-golf")
+    assert mock_service.call_args.args[1] is True
+
+
+@patch("api.router.get_breakeven_history")
+def test_fuel_type_report_history_returns_200_with_data(mock_service, fuel_type_on):
+    mock_service.return_value = {
+        "pair_id": "vw-golf",
+        "model": "Volkswagen Golf",
+        "province": None,
+        "breakeven_ratio": 1.2391,
+        "pct_days_diesel_wins": 100.0,
+        "pct_days_tie": 0.0,
+        "days": 365,
+        "flips": 0,
+        "crossovers": [],
+        "series": [],
+    }
+    response = _get_client().get("/api/v1/reportes/fuel-type/history?pair_id=vw-golf&period=year")
+    assert response.status_code == 200
+    assert response.json()["flips"] == 0
+
+
+@patch("api.router.get_breakeven_history")
+def test_fuel_type_report_history_maps_period_to_days(mock_service, fuel_type_on):
+    mock_service.return_value = None
+    _get_client().get("/api/v1/reportes/fuel-type/history?pair_id=vw-golf&period=quarter")
+    assert mock_service.call_args.args[2] == 90
+
+
+def test_fuel_type_report_history_rejects_invalid_period(fuel_type_on):
+    response = _get_client().get("/api/v1/reportes/fuel-type/history?pair_id=vw-golf&period=decade")
+    assert response.status_code == 422
+
+
+# ---- fuel-type report feature gate ----
+
+
+def test_fuel_type_report_endpoints_404_while_the_flag_is_off():
+    # Hiding the tab is not enough: the catalog this serves declares itself unverified, so "off"
+    # has to mean off at the API too.
+    client = _get_client()
+    paths = [
+        "/api/v1/reportes/fuel-type/vehicles",
+        "/api/v1/reportes/fuel-type/cost?vehicle_ids=vw-golf-tsi",
+        "/api/v1/reportes/fuel-type/breakeven?pair_id=vw-golf",
+        "/api/v1/reportes/fuel-type/provinces?pair_id=vw-golf",
+        "/api/v1/reportes/fuel-type/history?pair_id=vw-golf",
+    ]
+    for path in paths:
+        assert client.get(path).status_code == 404, path
+
+
+def test_fuel_type_report_vehicles_serves_once_the_flag_is_on():
+    with patch.object(settings, "report_fuel_type_enabled", True):
+        response = _get_client().get("/api/v1/reportes/fuel-type/vehicles")
+    assert response.status_code == 200
+    assert response.json()["pairs"]

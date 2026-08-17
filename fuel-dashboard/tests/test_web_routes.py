@@ -749,3 +749,57 @@ def test_health_data_no_file_no_realtime_returns_error(mock_rt, mock_file):
     assert resp.status_code == 503
     data = resp.json()
     assert data["status"] == "error"
+
+
+def test_insights_comparador_tab_no_longer_exists():
+    # The fuel-type comparison is a report inside Reportes, not a tab of its own.
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/comparador")
+    assert resp.status_code == 404
+
+
+def test_reportes_lists_only_the_brand_report_while_fuel_type_is_disabled():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/reportes")
+    assert resp.status_code == 200
+    assert 'data-testid="report-option-marcas"' in resp.text
+    assert 'data-testid="report-option-combustible"' not in resp.text
+    assert 'data-testid="fuel-type-pair-select"' not in resp.text
+
+
+def test_reportes_lists_both_reports_when_fuel_type_is_enabled():
+    with patch.object(settings, "report_fuel_type_enabled", True), patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/reportes")
+    assert resp.status_code == 200
+    assert 'data-active-tab="reportes"' in resp.text
+    assert 'data-testid="report-option-marcas"' in resp.text
+    assert 'data-testid="report-option-combustible"' in resp.text
+    assert 'data-testid="fuel-type-pair-select"' in resp.text
+    # Both reports' share anchors now live under the one tab.
+    assert 'data-share="sec-reportes-win-rate"' in resp.text
+    assert 'data-share="sec-reportes-fuel-cost"' in resp.text
+
+
+def test_fuel_type_report_states_its_methodology_limits():
+    with patch.object(settings, "report_fuel_type_enabled", True), patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/reportes")
+    # The WLTP caveat and the "coste de uso, no de compra" limit must be on the page itself.
+    assert "WLTP" in resp.text
+    assert "coste de uso" in resp.text
+
+
+def test_sitemap_has_no_comparador_entry():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"), patch.object(
+        settings, "report_fuel_type_enabled", True
+    ):
+        sitemap = _get_client().get("/sitemap.xml").text
+    assert "/insights/comparador" not in sitemap
+    assert "/insights/reportes" in sitemap
+
+
+def test_fuel_type_report_names_every_excluded_province():
+    # is_mainland_province also drops Illes Balears; the copy must not claim otherwise.
+    with patch.object(settings, "report_fuel_type_enabled", True), patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/reportes")
+    for excluded in ("Canarias", "Baleares", "Ceuta", "Melilla"):
+        assert excluded in resp.text

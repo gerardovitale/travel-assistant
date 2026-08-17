@@ -354,6 +354,20 @@ class QualityResponse(BaseModel):
     realtime: RealtimeStatus
 
 
+class EnergyType(str, Enum):
+    """Energy source a vehicle runs on.
+
+    ``electric`` is declared but not yet priceable: the repo has no electricity price source, so the
+    cost service has no resolver for it. Adding one resolver (plus catalog rows) is the whole EV
+    extension — the cost/breakeven math is unit-agnostic and does not change.
+    """
+
+    gasoline = "gasoline"
+    diesel = "diesel"
+    lpg = "lpg"
+    electric = "electric"
+
+
 class BrandReportFuelType(str, Enum):
     gasoline_95_e5_price = "gasoline_95_e5_price"
     diesel_a_price = "diesel_a_price"
@@ -396,3 +410,128 @@ class BrandOptionsResponse(BaseModel):
 
 class RouteResponse(BaseModel):
     coordinates: list[list[float]]
+
+
+# --- Fuel-type report: gasolina vs diésel running cost ----------------------------------
+
+
+class SegmentOption(BaseModel):
+    id: str
+    label: str
+
+
+class VehicleOption(BaseModel):
+    vehicle_id: str
+    label: str
+    variant: str
+    energy_type: str
+    consumption: float  # units per 100 km
+    consumption_unit: str  # "l/100km" | "kWh/100km"
+    price_available: bool  # False when no price source exists for this energy type yet
+
+
+class VehiclePairOption(BaseModel):
+    pair_id: str
+    model: str
+    segment: str
+    segment_label: str
+    model_year: int
+    # consumption_gasoline / consumption_diesel; None when the pair has no gasoline/diesel couple
+    breakeven_ratio: float | None
+    vehicles: list[VehicleOption]
+
+
+class VehicleCatalogResponse(BaseModel):
+    version: str
+    source: str
+    source_url: str
+    notes: str
+    segments: list[SegmentOption]
+    pairs: list[VehiclePairOption]
+    unpriceable_energy_types: list[str]
+
+
+class VehicleCostRow(BaseModel):
+    vehicle_id: str
+    pair_id: str
+    label: str
+    model: str
+    variant: str
+    segment: str
+    energy_type: str
+    consumption: float
+    consumption_unit: str
+    price_per_unit: float | None  # None when the energy type has no price source or no local data
+    price_date: str | None
+    cost_per_100km: float | None
+
+
+class BreakevenResponse(BaseModel):
+    pair_id: str
+    model: str
+    segment: str
+    province: str | None  # None = national
+    gasoline: VehicleCostRow
+    diesel: VehicleCostRow
+    price_ratio: float  # diesel EUR/L over gasoline EUR/L
+    breakeven_ratio: float  # the ratio at which both cost the same per 100 km
+    breakeven_diesel_price: float  # EUR/L at which diesel stops being cheaper
+    diesel_headroom_eur_l: float  # breakeven_diesel_price - current diesel price
+    breakeven_diesel_consumption: float  # real-world l/100km at which the verdict flips
+    margin_pct: float
+    winner: str  # "diesel" | "gasoline" | "tie"
+    cost_gasoline_per_100km: float
+    cost_diesel_per_100km: float
+    cost_gap_per_100km: float
+    price_date: str  # the single day both prices come from
+
+
+class ProvinceBreakevenRow(BaseModel):
+    province: str
+    gasoline_price: float
+    diesel_price: float
+    price_ratio: float
+    breakeven_ratio: float
+    breakeven_diesel_price: float
+    diesel_headroom_eur_l: float
+    breakeven_diesel_consumption: float
+    margin_pct: float
+    winner: str
+    cost_gasoline_per_100km: float
+    cost_diesel_per_100km: float
+    cost_gap_per_100km: float
+    station_count: int
+    price_date: str
+
+
+class ProvinceBreakevenResponse(BaseModel):
+    pair_id: str
+    model: str
+    breakeven_ratio: float
+    rows: list[ProvinceBreakevenRow]
+    provinces_dropped: int  # missing one of the two fuels; never interpolated
+
+
+class BreakevenHistoryPoint(BaseModel):
+    date: str
+    price_ratio: float
+    cost_gasoline_per_100km: float
+    cost_diesel_per_100km: float
+
+
+class BreakevenCrossover(BaseModel):
+    date: str
+    winner: str
+
+
+class BreakevenHistoryResponse(BaseModel):
+    pair_id: str
+    model: str
+    province: str | None
+    breakeven_ratio: float
+    pct_days_diesel_wins: float
+    pct_days_tie: float  # diesel + gasoline + tie = 100
+    days: int
+    flips: int
+    crossovers: list[BreakevenCrossover]
+    series: list[BreakevenHistoryPoint]

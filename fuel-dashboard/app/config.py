@@ -3,6 +3,7 @@ from typing import Any
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings
 from pydantic_settings import EnvSettingsSource
+from pydantic_settings import PydanticBaseSettingsSource
 from pydantic_settings import SettingsConfigDict
 
 # Fields where a plain comma-separated env var is accepted instead of JSON.
@@ -82,6 +83,16 @@ class Settings(BaseSettings):
     insights_zones_enabled: bool = False
     insights_historical_enabled: bool = False
     insights_reportes_enabled: bool = True
+
+    # Reports listed inside the Reportes tab. The brand report (marcas) is always on with the tab;
+    # the fuel-type one ships dark until the catalog's WLTP figures have been verified against
+    # manufacturer spec sheets. See app/data/vehicle_catalog.json.
+    report_fuel_type_enabled: bool = False
+    # Default annual mileage for the fuel-type report. Only scales the euro gap — it never changes
+    # which engine wins, because fuel-only cost is linear in km.
+    report_fuel_type_default_km_year: int = 15000
+    report_fuel_type_default_pair: str = "vw-golf"
+
     # Default Tendencias tab filters. Province is the raw DB key (e.g. "madrid"); empty means "Todas".
     # Period must be one of week/month/quarter/half_year/year.
     trends_default_province: str = "madrid"
@@ -102,8 +113,15 @@ class Settings(BaseSettings):
     kofi_url: str = "https://ko-fi.com/fuelprecision"
 
     @classmethod
-    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, **kwargs):
-        return (init_settings, _CsvListEnvSource(settings_cls), dotenv_settings) + tuple(kwargs.values())
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings, _CsvListEnvSource(settings_cls), dotenv_settings, file_secret_settings)
 
 
 settings = Settings()

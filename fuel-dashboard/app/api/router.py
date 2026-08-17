@@ -10,6 +10,8 @@ from api.schemas import BrandOptionsResponse
 from api.schemas import BrandPriceComparisonRow
 from api.schemas import BrandReportFuelType
 from api.schemas import BrandWinRateRow
+from api.schemas import BreakevenHistoryResponse
+from api.schemas import BreakevenResponse
 from api.schemas import DataFrameResponse
 from api.schemas import Direction
 from api.schemas import DistrictMapResponse
@@ -28,6 +30,7 @@ from api.schemas import HistoricalPeriod
 from api.schemas import LabelsResponse
 from api.schemas import MunicipalitiesResponse
 from api.schemas import NationalAvgResponse
+from api.schemas import ProvinceBreakevenResponse
 from api.schemas import ProvinceMapResponse
 from api.schemas import ProvincesResponse
 from api.schemas import QualityResponse
@@ -38,6 +41,8 @@ from api.schemas import TrendPeriod
 from api.schemas import TrendResponse
 from api.schemas import TripPlanRequest
 from api.schemas import TripPlanResponse
+from api.schemas import VehicleCatalogResponse
+from api.schemas import VehicleCostRow
 from api.schemas import ZoneListResponse
 from config import settings
 from fastapi import APIRouter
@@ -79,6 +84,11 @@ from services.station_service import get_zip_code_price_map_for_zips
 from services.station_service import get_zip_codes_for_district
 from services.station_service import get_zone_volatility_ranking
 from services.trip_planner import plan_trip
+from services.vehicle_cost_service import get_breakeven_by_province
+from services.vehicle_cost_service import get_breakeven_history
+from services.vehicle_cost_service import get_pair_breakeven
+from services.vehicle_cost_service import get_vehicle_costs
+from services.vehicle_cost_service import get_vehicle_options
 from slowapi import Limiter
 
 from data.geojson_loader import load_postal_code_boundary
@@ -598,3 +608,91 @@ def reportes_coverage(
     if rows is None:
         raise HTTPException(status_code=404, detail="Aggregate report not available")
     return rows
+
+
+def _require_fuel_type_report() -> None:
+    """Gate the fuel-type report's endpoints on its feature flag.
+
+    Hiding the tab is not enough: without this the API publishes the consumption catalog and the
+    verdicts derived from it while the flag is off. That catalog currently declares itself
+    unverified (see app/data/vehicle_catalog.json), so "off" has to mean off at the API too.
+    """
+    enabled = ui_test.insights_flags()[3] if settings.ui_test_mode else settings.report_fuel_type_enabled
+    if not enabled:
+        raise HTTPException(status_code=404, detail="Report not available")
+
+
+@router.get("/reportes/fuel-type/vehicles", response_model=VehicleCatalogResponse)
+@limiter.limit(settings.rate_limit)
+def reportes_fuel_type_vehicles(request: Request):
+    _require_fuel_type_report()
+    # No aggregate-missing 404 branch: the catalog is a committed asset, so the picker keeps working
+    # even when the price parquet is unavailable. Only cost/breakeven depend on downloaded data.
+    if settings.ui_test_mode:
+        return ui_test.fuel_type_vehicles_response()
+    return get_vehicle_options()
+
+
+@router.get("/reportes/fuel-type/cost", response_model=list[VehicleCostRow])
+@limiter.limit(settings.rate_limit)
+def reportes_fuel_type_cost(
+    request: Request,
+    vehicle_ids: list[str] = Query(..., max_length=6),
+    province: str | None = Query(default=None, max_length=64),
+):
+    _require_fuel_type_report()
+    if settings.ui_test_mode:
+        return ui_test.fuel_type_cost_response(vehicle_ids, province)
+    rows = get_vehicle_costs(vehicle_ids, province)
+    if rows is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return rows
+
+
+@router.get("/reportes/fuel-type/breakeven", response_model=BreakevenResponse)
+@limiter.limit(settings.rate_limit)
+def reportes_fuel_type_breakeven(
+    request: Request,
+    pair_id: str = Query(..., min_length=2, max_length=64),
+    province: str | None = Query(default=None, max_length=64),
+):
+    _require_fuel_type_report()
+    if settings.ui_test_mode:
+        return ui_test.fuel_type_breakeven_response(pair_id, province)
+    result = get_pair_breakeven(pair_id, province)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return result
+
+
+@router.get("/reportes/fuel-type/provinces", response_model=ProvinceBreakevenResponse)
+@limiter.limit(settings.rate_limit)
+def reportes_fuel_type_provinces(
+    request: Request,
+    pair_id: str = Query(..., min_length=2, max_length=64),
+    mainland_only: bool = Query(default=True),
+):
+    _require_fuel_type_report()
+    if settings.ui_test_mode:
+        return ui_test.fuel_type_provinces_response(pair_id)
+    result = get_breakeven_by_province(pair_id, mainland_only)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return result
+
+
+@router.get("/reportes/fuel-type/history", response_model=BreakevenHistoryResponse)
+@limiter.limit(settings.rate_limit)
+def reportes_fuel_type_history(
+    request: Request,
+    pair_id: str = Query(..., min_length=2, max_length=64),
+    province: str | None = Query(default=None, max_length=64),
+    period: HistoricalPeriod = Query(default=HistoricalPeriod.year),
+):
+    _require_fuel_type_report()
+    if settings.ui_test_mode:
+        return ui_test.fuel_type_history_response(pair_id, province)
+    result = get_breakeven_history(pair_id, province, _period_days(period))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return result

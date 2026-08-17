@@ -277,3 +277,179 @@ test("forecast clamps short trend periods to the minimum forecast window of 90 d
   const lastRequest = forecastRequests.at(-1) || "";
   expect(lastRequest).toContain("window_days=90");
 });
+
+test("fuel-type report tab renders the verdict, both charts and the methodology disclosure", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible");
+
+  await expect(page.getByTestId("insight-tabs")).toHaveAttribute("data-active-tab", "reportes");
+  await expect(page.getByTestId("fuel-type-cost-chart")).toHaveAttribute("data-plot-ready", "true");
+  await expect(page.getByTestId("fuel-type-history-chart")).toHaveAttribute("data-plot-ready", "true");
+  await expect(page.getByTestId("fuel-type-provinces-table")).toContainText("Provincia");
+
+  await expect(page.getByTestId("fuel-type-verdict-summary")).toContainText("100 km");
+  await expect(page.getByTestId("fuel-type-verdict-kpis")).toContainText("Consumo de equilibrio");
+  await expect(page.getByTestId("fuel-type-provinces-note")).toContainText("provincias");
+
+  // The figures behind the verdict must be on screen, not implied.
+  const inputs = page.getByTestId("fuel-type-inputs");
+  await expect(inputs).toContainText("l/100 km");
+  await expect(inputs).toContainText("/100 km");
+  await expect(inputs).toContainText("Consumo WLTP del fabricante");
+
+  // The WLTP caveat and the buy-vs-run limit must be visible, not hidden behind a tooltip.
+  const disclosure = page.getByTestId("fuel-type-disclosure");
+  await expect(disclosure).toContainText("WLTP");
+  await expect(disclosure).toContainText("coste de uso");
+  await expect(page.getByTestId("fuel-type-catalog-version")).not.toBeEmpty();
+});
+
+test("fuel-type report annual km recomputes the yearly cost without refetching", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible");
+  await expect(page.getByTestId("fuel-type-cost-chart")).toHaveAttribute("data-plot-ready", "true");
+
+  const before = await page.getByTestId("fuel-type-annual-kpis").innerText();
+
+  const costRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/reportes/fuel-type/")) costRequests.push(request.url());
+  });
+
+  await page.getByTestId("fuel-type-annual-km").fill("30000");
+  await expect(page.getByTestId("fuel-type-annual-kpis")).not.toHaveText(before);
+
+  // Annual km is pure client-side rescaling of cached rows.
+  expect(costRequests).toHaveLength(0);
+});
+
+test("fuel-type report deep link restores the selected pair and province", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible&pair=nissan-qashqai&prov=madrid");
+
+  await expect(page.getByTestId("fuel-type-pair-select")).toHaveValue("nissan-qashqai");
+  await expect(page.getByTestId("fuel-type-province-select")).toHaveValue("madrid");
+  await expect(page.getByTestId("fuel-type-cost-chart")).toHaveAttribute("data-plot-ready", "true");
+});
+
+test("fuel-type report cards fit a 375px viewport and the wide table scrolls inside its own box", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible");
+  await expect(page.getByTestId("fuel-type-cost-chart")).toHaveAttribute("data-plot-ready", "true");
+
+  // Cards with no intentionally-wide content must not overflow at all.
+  for (const id of ["sec-reportes-fuel-verdict", "sec-reportes-fuel-cost"]) {
+    const overflow = await page.locator(`#${id}`).evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(overflow, id).toBeLessThanOrEqual(1);
+  }
+
+  // The province table is wider than a phone by design, so it must sit in a scroll container
+  // rather than push the page. Asserted structurally: Tailwind is CDN-loaded and blocked here, so
+  // overflow-x-auto has no effect on measured layout in this environment.
+  const wrapperClass = await page
+    .getByTestId("fuel-type-provinces-table")
+    .evaluate((el) => (el.parentElement as HTMLElement).className);
+  expect(wrapperClass).toContain("overflow-x-auto");
+});
+
+test("fuel-type report clears the previous verdict when a pair has no data", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible");
+  await expect(page.getByTestId("fuel-type-verdict-summary")).not.toBeEmpty();
+
+  // Next breakeven call 404s, as it does for a pair or province with no overlapping day.
+  await page.route("**/api/v1/reportes/fuel-type/breakeven*", (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: '{"detail":"Aggregate report not available"}' }),
+  );
+  await page.getByTestId("fuel-type-pair-select").selectOption("nissan-qashqai");
+
+  // The old model's verdict must not survive next to the empty state.
+  await expect(page.getByTestId("fuel-type-verdict-summary")).toBeEmpty();
+  await expect(page.getByTestId("fuel-type-verdict-kpis")).toContainText("Sin datos");
+});
+
+test("reportes picker switches between reports and syncs the choice to the URL", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes");
+
+  // Assert on the report wrappers, not the chart divs: Tailwind is CDN-loaded and blocked in UI
+  // test mode, so `h-48` never applies and a chart div has no height of its own to be "visible".
+  const marcas = page.locator('[data-report="marcas"]');
+  const combustible = page.locator('[data-report="combustible"]');
+
+  // Brand report is the default; the fuel-type one is listed but not shown.
+  await expect(page.getByTestId("reportes-win-rate-chart")).toHaveAttribute("data-plot-ready", "true");
+  await expect(marcas).toBeVisible();
+  await expect(combustible).toBeHidden();
+
+  await page.getByTestId("report-option-combustible").click();
+  await expect(page).toHaveURL(/[?&]report=combustible/);
+  await expect(page.getByTestId("fuel-type-cost-chart")).toHaveAttribute("data-plot-ready", "true");
+  await expect(combustible).toBeVisible();
+  await expect(marcas).toBeHidden();
+
+  // And back, without a reload. marcas is the default, so it drops out of the URL again.
+  await page.getByTestId("report-option-marcas").click();
+  await expect(marcas).toBeVisible();
+  await expect(combustible).toBeHidden();
+  await expect(page).not.toHaveURL(/[?&]report=combustible/);
+});
+
+test("reportes does not fetch the fuel-type report until it is opened", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const fuelRequests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/v1/reportes/fuel-type/")) fuelRequests.push(r.url());
+  });
+
+  await page.goto("/insights/reportes");
+  await expect(page.getByTestId("reportes-win-rate-chart")).toHaveAttribute("data-plot-ready", "true");
+  expect(fuelRequests).toHaveLength(0);
+
+  await page.getByTestId("report-option-combustible").click();
+  await expect(page.getByTestId("fuel-type-cost-chart")).toHaveAttribute("data-plot-ready", "true");
+  expect(fuelRequests.length).toBeGreaterThan(0);
+});
+
+test("fuel-type province table sorts by column and flips direction on re-click", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible");
+
+  const table = page.getByTestId("fuel-type-provinces-table");
+  await expect(table).toContainText("Provincia");
+  const firstCell = () => table.locator("tbody tr").first().locator("td").first();
+
+  // Default sort is by the gap, widest first.
+  const byGapDesc = await firstCell().innerText();
+
+  await page.getByTestId("province-sort-province").click();
+  const byNameAsc = await firstCell().innerText();
+  expect(byNameAsc).not.toBe(byGapDesc);
+
+  // Re-clicking the active column reverses it.
+  await page.getByTestId("province-sort-province").click();
+  const byNameDesc = await firstCell().innerText();
+  expect(byNameDesc).not.toBe(byNameAsc);
+  expect(byNameAsc.localeCompare(byNameDesc, "es")).toBeLessThan(0);
+});
+
+test("fuel-type report clears every stale note when a reload fails", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible");
+  await expect(page.getByTestId("fuel-type-provinces-note")).toContainText("provincias");
+  await expect(page.getByTestId("fuel-type-history-note")).not.toBeEmpty();
+  await expect(page.getByTestId("fuel-type-inputs")).toContainText("l/100 km");
+
+  // Every fuel-type call now fails, as it does for a pair with no overlapping price day.
+  await page.route("**/api/v1/reportes/fuel-type/{breakeven,provinces,history}*", (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: '{"detail":"not available"}' }),
+  );
+  await page.getByTestId("fuel-type-pair-select").selectOption("nissan-qashqai");
+
+  // No prose from the previous model may survive next to the empty states.
+  await expect(page.getByTestId("fuel-type-verdict-summary")).toBeEmpty();
+  await expect(page.getByTestId("fuel-type-inputs")).toBeEmpty();
+  await expect(page.getByTestId("fuel-type-provinces-note")).toBeEmpty();
+  await expect(page.getByTestId("fuel-type-history-note")).toBeEmpty();
+});

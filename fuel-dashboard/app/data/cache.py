@@ -13,9 +13,9 @@ from data.realtime_client import fetch_realtime_stations
 
 logger = logging.getLogger(__name__)
 
-_snapshot_refresh_thread: threading.Thread = None
-_trend_refresh_thread: threading.Thread = None
-_realtime_refresh_thread: threading.Thread = None
+_snapshot_refresh_thread: threading.Thread | None = None
+_trend_refresh_thread: threading.Thread | None = None
+_realtime_refresh_thread: threading.Thread | None = None
 _data_ready = threading.Event()
 
 _last_realtime_refresh: float | None = None

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from contextvars import ContextVar
+from datetime import date
+from datetime import timedelta
 from typing import Any
 from typing import Iterable
 from typing import Optional
@@ -11,10 +13,14 @@ from api.schemas import BrandHistoricalResponse
 from api.schemas import BrandOptionsResponse
 from api.schemas import BrandPriceComparisonRow
 from api.schemas import BrandWinRateRow
+from api.schemas import BreakevenHistoryPoint
+from api.schemas import BreakevenHistoryResponse
+from api.schemas import BreakevenResponse
 from api.schemas import DataFrameResponse
 from api.schemas import DataInventory
 from api.schemas import DistrictMapResponse
 from api.schemas import DistrictPriceResult
+from api.schemas import EnergyType
 from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import GeoJSONResponse
@@ -23,6 +29,8 @@ from api.schemas import HistoricalForecastResponse
 from api.schemas import LabelsResponse
 from api.schemas import LatestDayStats
 from api.schemas import MunicipalitiesResponse
+from api.schemas import ProvinceBreakevenResponse
+from api.schemas import ProvinceBreakevenRow
 from api.schemas import ProvinceMapResponse
 from api.schemas import ProvincePriceResult
 from api.schemas import ProvincesResponse
@@ -39,11 +47,18 @@ from api.schemas import TripPlan
 from api.schemas import TripPlanRequest
 from api.schemas import TripPlanResponse
 from api.schemas import TripStop
+from api.schemas import VehicleCatalogResponse
+from api.schemas import VehicleCostRow
 from api.schemas import ZoneListResponse
 from api.schemas import ZoneResult
 from config import settings
 from fastapi import HTTPException
 from fastapi import Request
+from services.vehicle_catalog import get_pair
+from services.vehicle_catalog import get_vehicle
+from services.vehicle_catalog import list_pairs
+from services.vehicle_cost_service import _breakeven_metrics
+from services.vehicle_cost_service import get_vehicle_options
 
 
 _CURRENT_FIXTURE_SET: ContextVar[str] = ContextVar("dashboard_ui_fixture_set", default=settings.ui_fixture_set)
@@ -71,7 +86,7 @@ def is_data_ready() -> bool:
     return current_fixture_set() != "loading"
 
 
-def insights_flags() -> tuple[bool, bool, bool]:
+def insights_flags() -> tuple[bool, bool, bool, bool]:
     fixture = current_fixture_set()
     zones = settings.insights_zones_enabled or fixture in {"zones_enabled", "insights_all"}
     historical = settings.insights_historical_enabled or fixture in {
@@ -80,7 +95,8 @@ def insights_flags() -> tuple[bool, bool, bool]:
         "insights_all",
     }
     reportes = settings.insights_reportes_enabled or fixture in {"insights_all"}
-    return zones, historical, reportes
+    fuel_type_report = settings.report_fuel_type_enabled or fixture in {"insights_all"}
+    return zones, historical, reportes, fuel_type_report
 
 
 def health_data_response() -> tuple[int, dict[str, Any]]:
@@ -514,6 +530,145 @@ def reportes_coverage_response(brands: Optional[Iterable[str]] = None) -> list[B
         BrandCoverageRow(brand="costco", zip_codes=14, localities=14, municipalities=13, total_observations=720),
     ]
     return _filter_by_brands(rows, brands)
+
+
+# --- Fuel-type report fixtures ------------------------------------------------------
+# The catalog is a committed asset, so these fixtures use the real one and only fake the prices.
+# That keeps the UI tests exercising the actual picker contents.
+
+_FUEL_TYPE_GASOLINE_PRICE = 1.509
+_FUEL_TYPE_DIESEL_PRICE = 1.449
+_FUEL_TYPE_DATE = "2026-08-14"
+_FUEL_TYPE_PROVINCES = [
+    ("madrid", 1.499, 1.429, 1180),
+    ("barcelona", 1.529, 1.469, 940),
+    ("valencia", 1.512, 1.455, 610),
+    ("sevilla", 1.505, 1.472, 520),
+    ("burgos", 1.541, 1.531, 140),
+]
+
+
+def _fuel_type_price(energy_type: str) -> float:
+    return _FUEL_TYPE_GASOLINE_PRICE if energy_type == "gasoline" else _FUEL_TYPE_DIESEL_PRICE
+
+
+def _fuel_type_cost_row(vehicle, price: float) -> VehicleCostRow:
+    return VehicleCostRow(
+        vehicle_id=vehicle.id,
+        pair_id=vehicle.pair_id,
+        label=vehicle.label,
+        model=vehicle.model,
+        variant=vehicle.variant,
+        segment=vehicle.segment,
+        energy_type=vehicle.energy_type.value,
+        consumption=vehicle.consumption,
+        consumption_unit=vehicle.consumption_unit,
+        price_per_unit=price,
+        price_date=_FUEL_TYPE_DATE,
+        cost_per_100km=round(vehicle.consumption * price, 2),
+    )
+
+
+def _fuel_type_pair(pair_id: str):
+    """Resolve a pair from the real catalog, falling back to the first pair for unknown ids."""
+    pair = get_pair(pair_id)
+    if not pair:
+        pair = get_pair(list_pairs()[0].pair_id)
+    return pair[EnergyType.gasoline], pair[EnergyType.diesel]
+
+
+def fuel_type_vehicles_response() -> VehicleCatalogResponse:
+    return VehicleCatalogResponse(**get_vehicle_options())
+
+
+def fuel_type_cost_response(
+    vehicle_ids: Optional[Iterable[str]] = None, province: Optional[str] = None
+) -> list[VehicleCostRow]:
+    ids = list(vehicle_ids or [])
+    if not ids:
+        gasoline, diesel = _fuel_type_pair("")
+        ids = [gasoline.id, diesel.id]
+    rows = []
+    for vehicle_id in ids:
+        vehicle = get_vehicle(vehicle_id)
+        if vehicle is None:
+            continue
+        rows.append(_fuel_type_cost_row(vehicle, _fuel_type_price(vehicle.energy_type.value)))
+    return rows
+
+
+def fuel_type_breakeven_response(pair_id: str = "", province: Optional[str] = None) -> BreakevenResponse:
+    gasoline, diesel = _fuel_type_pair(pair_id)
+    metrics = _breakeven_metrics(gasoline, diesel, _FUEL_TYPE_GASOLINE_PRICE, _FUEL_TYPE_DIESEL_PRICE)
+    return BreakevenResponse(
+        pair_id=gasoline.pair_id,
+        model=gasoline.model,
+        segment=gasoline.segment,
+        province=province,
+        gasoline=_fuel_type_cost_row(gasoline, _FUEL_TYPE_GASOLINE_PRICE),
+        diesel=_fuel_type_cost_row(diesel, _FUEL_TYPE_DIESEL_PRICE),
+        # Spread, don't enumerate: a new metric must reach the fixture without a second edit here.
+        **metrics,
+        price_date=_FUEL_TYPE_DATE,
+    )
+
+
+def fuel_type_provinces_response(pair_id: str = "") -> ProvinceBreakevenResponse:
+    gasoline, diesel = _fuel_type_pair(pair_id)
+    rows = []
+    for province, gasoline_price, diesel_price, station_count in _FUEL_TYPE_PROVINCES:
+        metrics = _breakeven_metrics(gasoline, diesel, gasoline_price, diesel_price)
+        rows.append(
+            ProvinceBreakevenRow(
+                province=province,
+                gasoline_price=gasoline_price,
+                diesel_price=diesel_price,
+                station_count=station_count,
+                price_date=_FUEL_TYPE_DATE,
+                **metrics,
+            )
+        )
+    rows.sort(key=lambda r: r.margin_pct, reverse=True)
+    return ProvinceBreakevenResponse(
+        pair_id=gasoline.pair_id,
+        model=gasoline.model,
+        breakeven_ratio=rows[0].breakeven_ratio,
+        rows=rows,
+        provinces_dropped=1,
+    )
+
+
+def fuel_type_history_response(pair_id: str = "", province: Optional[str] = None) -> BreakevenHistoryResponse:
+    gasoline, diesel = _fuel_type_pair(pair_id)
+    breakeven_ratio = round(gasoline.consumption / diesel.consumption, 4)
+    series = []
+    diesel_wins = 0
+    for offset in range(12):
+        day = date(2026, 8, 14) - timedelta(days=(11 - offset) * 7)
+        gasoline_price = 1.489 + 0.004 * offset
+        diesel_price = 1.409 + 0.011 * offset
+        price_ratio = diesel_price / gasoline_price
+        diesel_wins += price_ratio < breakeven_ratio
+        series.append(
+            BreakevenHistoryPoint(
+                date=day.isoformat(),
+                price_ratio=round(price_ratio, 4),
+                cost_gasoline_per_100km=round(gasoline.consumption * gasoline_price, 2),
+                cost_diesel_per_100km=round(diesel.consumption * diesel_price, 2),
+            )
+        )
+    return BreakevenHistoryResponse(
+        pair_id=gasoline.pair_id,
+        model=gasoline.model,
+        province=province,
+        breakeven_ratio=breakeven_ratio,
+        pct_days_diesel_wins=round(diesel_wins / len(series) * 100, 1),
+        pct_days_tie=0.0,
+        days=len(series),
+        flips=0,
+        crossovers=[],
+        series=series,
+    )
 
 
 def quality_response() -> QualityResponse:

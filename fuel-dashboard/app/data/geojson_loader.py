@@ -65,7 +65,10 @@ def load_provinces_geojson() -> dict:
 
 def get_geojson_province_name(data_province: str) -> str | None:
     load_provinces_geojson()
-    return _provinces_name_lookup.get(data_province.lower())
+    # load_provinces_geojson() populates the lookup, but the module-global stays Optional to the
+    # type checker; read it into a local so the None case is explicit rather than assumed.
+    lookup = _provinces_name_lookup
+    return lookup.get(data_province.lower()) if lookup else None
 
 
 def normalize_data_province_name(province_name: str | None) -> str | None:

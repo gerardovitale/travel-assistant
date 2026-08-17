@@ -44,11 +44,18 @@ const PARAMS = {
     period: ctrl('#historical-form select[name="period"]')?.value || "",
     prov: ctrl('#historical-form select[name="province"]')?.value || "",
   }),
+  // The reportes tab hosts several reports; `report` selects which one, and each report's own
+  // filters ride along in the same query string.
   reportes: () => ({
+    report: activeReport,
     fuel: ctrl('#reportes-filter select[name="fuel_type"]')?.value || "",
     dir: ctrl("#reportes-direction-select")?.value || "",
     // Sorted CSV so URL state is order-independent; empty until the picker has loaded.
     brands: reportesPickerReady ? selectedBrands.slice().sort().join(",") : "",
+    pair: ctrl('#fuel-type-filter select[name="pair"]')?.value || "",
+    prov: ctrl('#fuel-type-filter select[name="province"]')?.value || "",
+    km: ctrl("#fuel-type-annual-km")?.value || "",
+    period: ctrl("#fuel-type-period-select")?.value || "",
   }),
   zones: () => ({
     fuel: ctrl("#zones-fuel")?.value || "",
@@ -76,6 +83,10 @@ function restoreFilters(tab) {
   } else if (tab === "reportes") {
     set('#reportes-filter select[name="fuel_type"]', "fuel");
     set("#reportes-direction-select", "dir");
+    set('#fuel-type-filter select[name="pair"]', "pair");
+    set('#fuel-type-filter select[name="province"]', "prov");
+    set("#fuel-type-annual-km", "km");
+    set("#fuel-type-period-select", "period");
   } else if (tab === "zones") {
     set("#zones-fuel", "fuel");
     const m = ctrl("#zones-mainland");
@@ -127,6 +138,10 @@ const SECTION_TAB = {
   "sec-reportes-win-rate": "reportes",
   "sec-reportes-price-delta": "reportes",
   "sec-reportes-days-below": "reportes",
+  "sec-reportes-fuel-verdict": "reportes",
+  "sec-reportes-fuel-cost": "reportes",
+  "sec-reportes-fuel-provinces": "reportes",
+  "sec-reportes-fuel-history": "reportes",
   "sec-quality": "quality",
 };
 const SECTION_TITLE = {
@@ -143,6 +158,10 @@ const SECTION_TITLE = {
   "sec-reportes-win-rate": "Tasa de éxito por marca",
   "sec-reportes-price-delta": "Diferencial de precio vs. mercado",
   "sec-reportes-days-below": "Días por debajo del precio de mercado",
+  "sec-reportes-fuel-verdict": "¿Gasolina o diésel?",
+  "sec-reportes-fuel-cost": "Coste por 100 km",
+  "sec-reportes-fuel-provinces": "Dónde compensa más",
+  "sec-reportes-fuel-history": "¿Ha cambiado la respuesta?",
   "sec-quality": "Calidad de datos",
 };
 
@@ -161,6 +180,12 @@ function tabContext(tab) {
     const prov = ctrl('#historical-form select[name="province"]');
     if (prov?.value) parts.push(optText(prov));
     parts.push(optText('#historical-form select[name="period"]'));
+  } else if (tab === "reportes" && activeReport === "combustible") {
+    parts.push(optText('#fuel-type-filter select[name="pair"]'));
+    const prov = ctrl('#fuel-type-filter select[name="province"]');
+    parts.push(prov?.value ? optText(prov) : "Nacional");
+    const km = (ctrl("#fuel-type-annual-km")?.value || "").trim();
+    if (km) parts.push(`${km} km/año`);
   } else if (tab === "reportes") {
     parts.push(optText('#reportes-filter select[name="fuel_type"]'));
     parts.push(optText("#reportes-direction-select"));
@@ -195,7 +220,8 @@ function registerShareBuilders() {
 // Selects/checkboxes (`change`) sync immediately; text inputs (`input`) are debounced so typing a
 // zip doesn't replaceState on every keystroke.
 const TRACKED_FILTERS =
-  '#trends-filter [name], #historical-form [name], #reportes-filter [name], #reportes-direction-select, #zones-fuel, #zones-mainland';
+  '#trends-filter [name], #historical-form [name], #reportes-filter [name], #reportes-direction-select, ' +
+  '#fuel-type-filter [name], #fuel-type-period-select, #zones-fuel, #zones-mainland';
 const debouncedUrlSync = debounce(() => syncUrl(activeTab, true), 600);
 function onFilterChange(e) {
   if (e.target.matches?.(TRACKED_FILTERS)) syncUrl(activeTab, true);
@@ -1091,7 +1117,36 @@ async function loadCoverage() {
   } catch (err) { el.innerHTML = emptyMsg(err.message); }
 }
 
+// Reports available inside the Reportes tab. Each is lazily initialised the first time it is shown,
+// so opening the tab only fetches the report actually being read.
+let activeReport = "marcas";
+const reportInitialised = {};
+const reportInit = { combustible: () => initFuelTypeReport() };
+
+function showReport(report) {
+  activeReport = report;
+  for (const panel of document.querySelectorAll("#report-picker ~ [data-report], [data-report]")) {
+    panel.classList.toggle("hidden", panel.dataset.report !== report);
+  }
+  for (const option of document.querySelectorAll("[data-report-option]")) {
+    const selected = option.dataset.reportOption === report;
+    option.classList.toggle("ring-2", selected);
+    option.classList.toggle("ring-primary-container", selected);
+    option.setAttribute("aria-current", selected ? "true" : "false");
+  }
+  if (!reportInitialised[report] && reportInit[report]) {
+    reportInitialised[report] = true;
+    reportInit[report]();
+  }
+}
+
 async function initReportes() {
+  document.querySelectorAll("[data-report-option]").forEach((option) => {
+    option.addEventListener("click", () => {
+      showReport(option.dataset.reportOption);
+      syncUrl("reportes");
+    });
+  });
   // Fuel change reloads the brand universe (brands can differ per fuel) then refreshes all charts.
   document.querySelector('#reportes-filter select[name="fuel_type"]').addEventListener("change", async () => {
     await loadBrandOptions();
@@ -1105,8 +1160,360 @@ async function initReportes() {
   document.getElementById("reportes-tank-liters")?.addEventListener("input", recomputeSavings);
   document.getElementById("reportes-fills-month")?.addEventListener("input", recomputeSavings);
   captureAndRestore("reportes");
+  // The deep link may target a report that the flags left out of the page; fall back to marcas.
+  const requested = pendingParams?.get("report");
+  const available = [...document.querySelectorAll("[data-report-option]")].map((o) => o.dataset.reportOption);
+  showReport(available.includes(requested) ? requested : "marcas");
   await loadBrandOptions(); // resolves selectedBrands before the first chart fetch
   reportesReload();
+}
+
+// ----------------------------- COMPARADOR -----------------------------
+// Fuel-only running cost: consumption (catalog) x EUR/L (our own prices). Annual km is applied
+// client-side from the cached rows — it scales the euro gap and never changes the winner, because
+// fuel-only cost is linear in km. Same cache-and-recompute pattern as the reportes savings block.
+
+let fuelTypeCostRows = [];
+let fuelTypePairs = {}; // pair_id -> catalog pair, so the cost call knows which vehicles to ask for
+const ENERGY_LABELS = { gasoline: "Gasolina 95", diesel: "Diésel A", lpg: "GLP", electric: "Eléctrico" };
+const ENERGY_COLORS = { gasoline: "#0453cd", diesel: "#b3923a", lpg: "#0e7b52", electric: "#6f42c1" };
+
+function fuelTypeFilters() {
+  return {
+    pair: ctrl('#fuel-type-filter select[name="pair"]')?.value || "",
+    province: ctrl('#fuel-type-filter select[name="province"]')?.value || "",
+    km: parseFloat(ctrl("#fuel-type-annual-km")?.value) || 0,
+    period: ctrl("#fuel-type-period-select")?.value || "year",
+  };
+}
+
+async function loadFuelTypeOptions() {
+  const pairSel = ctrl('#fuel-type-filter select[name="pair"]');
+  const provSel = ctrl('#fuel-type-filter select[name="province"]');
+  const catalog = await api("/reportes/fuel-type/vehicles");
+  fuelTypePairs = Object.fromEntries(catalog.pairs.map((p) => [p.pair_id, p]));
+
+  const bySegment = {};
+  for (const pair of catalog.pairs) (bySegment[pair.segment_label] ||= []).push(pair);
+  for (const [segmentLabel, pairs] of Object.entries(bySegment)) {
+    const group = document.createElement("optgroup");
+    group.label = segmentLabel;
+    for (const pair of pairs) {
+      const opt = document.createElement("option");
+      opt.value = pair.pair_id;
+      opt.textContent = `${pair.model} (${pair.model_year})`;
+      group.appendChild(opt);
+    }
+    pairSel.appendChild(group);
+  }
+  const defaultPair = (ctrl("#fuel-type-filter")?.dataset.defaultPair || "").trim();
+  if (defaultPair && [...pairSel.options].some((o) => o.value === defaultPair)) pairSel.value = defaultPair;
+
+  const versionEl = document.querySelector('[data-testid="fuel-type-catalog-version"]');
+  if (versionEl) versionEl.textContent = catalog.version;
+  // Render the source as a link only when the catalog actually carries one. A citation that leads
+  // nowhere is worse than no citation.
+  const sourceEl = document.querySelector('[data-testid="fuel-type-catalog-source"]');
+  if (sourceEl) {
+    if (catalog.source_url) {
+      sourceEl.innerHTML = `<a class="underline" target="_blank" rel="noopener" href="${escapeHtml(catalog.source_url)}">${escapeHtml(catalog.source)}</a>`;
+    } else {
+      sourceEl.textContent = catalog.source;
+    }
+  }
+
+  try {
+    const provs = await getProvinces();
+    for (const [raw, pretty] of Object.entries(provs)) {
+      const opt = document.createElement("option"); opt.value = raw; opt.textContent = pretty; provSel.appendChild(opt);
+    }
+  } catch {}
+}
+
+function renderFuelTypeAnnual() {
+  const el = document.getElementById("fuel-type-annual-kpis");
+  if (!el) return;
+  const priced = fuelTypeCostRows.filter((r) => r.cost_per_100km != null);
+  if (!priced.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
+  const { km } = fuelTypeFilters();
+  const cards = priced
+    .map((r) => ({ label: r.label, energy: r.energy_type, eurPerYear: (r.cost_per_100km * km) / 100 }))
+    .sort((a, b) => a.eurPerYear - b.eurPerYear);
+  const cheapest = cards[0];
+  const gapCards = cards.map((c) => ({ ...c, gap: c.eurPerYear - cheapest.eurPerYear }));
+  el.innerHTML = gapCards
+    .map(
+      (c) => `<div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm">
+        <p class="text-[11px] font-label font-bold tracking-wider uppercase text-outline">${escapeHtml(ENERGY_LABELS[c.energy] || c.energy)}</p>
+        <p class="mt-2 font-headline font-extrabold text-2xl">${eurFmt(c.eurPerYear, 0)}/año</p>
+        <p class="mt-1 text-xs text-on-surface-variant">${c.gap > 0 ? `+${eurFmt(c.gap, 0)} frente a la opción más barata` : "La más barata"}</p></div>`,
+    )
+    .join("");
+}
+
+// Every fuel-report card carries prose (a verdict sentence, a note, the input figures) alongside its
+// chart. On a failed reload the chart is replaced but the prose is not, leaving the previous model's
+// conclusion attributed to the newly selected one. Clearing is easy to forget per-card, so each
+// loader's catch routes through here.
+function clearFuelTypeText(...testIds) {
+  for (const id of testIds) {
+    const el = document.querySelector(`[data-testid="${id}"]`);
+    if (el) el.textContent = "";
+  }
+}
+
+// Spell out the arithmetic behind the verdict. The consumption figures are the weakest input in the
+// whole report (manufacturer WLTP, see the disclosure block), so they are shown rather than implied.
+function renderFuelTypeInputs(data) {
+  const el = document.getElementById("fuel-type-inputs");
+  if (!el) return;
+  const numFmt = (n, d) => n.toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const rows = [data.gasoline, data.diesel].map((v) => {
+    const unit = v.consumption_unit.replace("/100km", "/100 km");
+    return `<tr>
+      <td class="py-1.5 pr-4">${escapeHtml(v.label)}</td>
+      <td class="py-1.5 pr-4 text-right whitespace-nowrap">${numFmt(v.consumption, 1)} ${escapeHtml(unit)}</td>
+      <td class="py-1.5 pr-4 text-right whitespace-nowrap text-on-surface-variant">×</td>
+      <td class="py-1.5 pr-4 text-right whitespace-nowrap">${eurFmt(v.price_per_unit, 3)}/l</td>
+      <td class="py-1.5 pr-4 text-right whitespace-nowrap text-on-surface-variant">=</td>
+      <td class="py-1.5 text-right whitespace-nowrap font-medium">${eurFmt(v.cost_per_100km)}/100 km</td>
+    </tr>`;
+  });
+  // Prefer the select's display label ("Madrid") over the raw data key ("madrid").
+  const provSel = ctrl('#fuel-type-filter select[name="province"]');
+  const where = data.province ? optText(provSel) || data.province : "media nacional";
+  el.innerHTML = `
+    <p class="text-xs font-label font-bold text-on-surface-variant uppercase tracking-wide mb-2">Datos usados en el cálculo</p>
+    <div class="overflow-x-auto"><table class="min-w-full text-sm"><tbody>${rows.join("")}</tbody></table></div>
+    <p class="mt-2 text-xs text-on-surface-variant">
+      Consumo WLTP del fabricante · Precios de ${escapeHtml(where)} a ${escapeHtml(data.price_date)} ·
+      Punto de equilibrio ${numFmt(data.breakeven_ratio, 2)} (el diésel gana mientras cueste menos de
+      ${eurFmt(data.breakeven_diesel_price, 3)}/l)
+    </p>`;
+}
+
+function renderFuelTypeVerdict(data) {
+  const summaryEl = document.getElementById("fuel-type-verdict-summary");
+  const kpiEl = document.getElementById("fuel-type-verdict-kpis");
+  if (!summaryEl || !kpiEl) return;
+  renderFuelTypeInputs(data);
+  const winnerText = {
+    diesel: `El diésel sale más barato: ${eurFmt(data.cost_gap_per_100km)} menos cada 100 km.`,
+    gasoline: `La gasolina sale más barata: ${eurFmt(data.cost_gap_per_100km)} menos cada 100 km.`,
+    tie: "Empate técnico: la diferencia es demasiado pequeña para declarar un ganador.",
+  }[data.winner];
+  summaryEl.textContent = `${data.model} · ${winnerText}`;
+  const kpis = [
+    { label: "Diésel hasta", value: `${eurFmt(data.breakeven_diesel_price, 3)}/L`, note: `Por encima gana la gasolina (hoy ${eurFmt(data.diesel.price_per_unit, 3)}/L)` },
+    { label: "Margen", value: `${eurFmt(data.diesel_headroom_eur_l, 3)}/L`, note: "Lo que puede subir el diésel antes de perder" },
+    { label: "Consumo de equilibrio", value: `${data.breakeven_diesel_consumption} l/100 km`, note: `El diésel gana mientras consuma menos en real (WLTP: ${data.diesel.consumption})` },
+    { label: "Datos de", value: data.price_date, note: "Último día con precios de ambos combustibles" },
+  ];
+  kpiEl.innerHTML = kpis
+    .map(
+      (k) => `<div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm">
+        <p class="text-[11px] font-label font-bold tracking-wider uppercase text-outline">${escapeHtml(k.label)}</p>
+        <p class="mt-2 font-headline font-extrabold text-xl">${escapeHtml(k.value)}</p>
+        <p class="mt-1 text-xs text-on-surface-variant">${escapeHtml(k.note)}</p></div>`,
+    )
+    .join("");
+}
+
+async function loadFuelTypeVerdict() {
+  const { pair, province } = fuelTypeFilters();
+  if (!pair) return;
+  const query = qs({ pair_id: pair, province: province || undefined });
+  try {
+    renderFuelTypeVerdict(await api(`/reportes/fuel-type/breakeven?${query}`));
+  } catch {
+    clearFuelTypeText("fuel-type-verdict-summary", "fuel-type-inputs");
+    document.getElementById("fuel-type-verdict-kpis").innerHTML = emptyMsg("Sin datos");
+  }
+}
+
+async function loadFuelTypeCost() {
+  const el = document.getElementById("fuel-type-cost-chart");
+  const { pair, province } = fuelTypeFilters();
+  if (!pair || !el) return;
+  const params = new URLSearchParams();
+  for (const v of (fuelTypePairs[pair] || {}).vehicles || []) params.append("vehicle_ids", v.vehicle_id);
+  if (province) params.set("province", province);
+  try {
+    fuelTypeCostRows = await api(`/reportes/fuel-type/cost?${params.toString()}`);
+  } catch {
+    fuelTypeCostRows = [];
+  }
+  const priced = fuelTypeCostRows.filter((r) => r.cost_per_100km != null);
+  horizontalBar(el, priced, {
+    labelKey: "label",
+    valueKey: "cost_per_100km", // gitleaks:allow — generic-api-key entropy match on a chart field name
+    tickSuffix: " €",
+    colorFn: (r) => ENERGY_COLORS[r.energy_type] || "#001642",
+  });
+  renderFuelTypeAnnual();
+}
+
+// A 50-bar chart carried no signal once diesel wins nearly everywhere — the useful question is
+// "how much, and on how many stations". A table shows the per-province arithmetic and the sample
+// size the verdict rests on, which bars cannot.
+let provinceRows = [];
+let provinceSort = { key: "signed_gap", dir: "desc" };
+
+const PROVINCE_COLUMNS = [
+  { key: "province", label: "Provincia", align: "left" },
+  { key: "gasoline_price", label: "Gasolina", fmt: (r) => `${eurFmt(r.gasoline_price, 3)}/l` },
+  { key: "diesel_price", label: "Diésel", fmt: (r) => `${eurFmt(r.diesel_price, 3)}/l` },
+  { key: "cost_gasoline_per_100km", label: "Gasolina €/100 km", fmt: (r) => eurFmt(r.cost_gasoline_per_100km) },
+  { key: "cost_diesel_per_100km", label: "Diésel €/100 km", fmt: (r) => eurFmt(r.cost_diesel_per_100km) },
+  { key: "signed_gap", label: "Dif.", fmt: (r) => eurFmt(r.signed_gap) },
+  { key: "station_count", label: "Est.", fmt: (r) => r.station_count.toLocaleString("es-ES") },
+];
+
+function provinceName(raw) {
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function renderProvinceTable() {
+  const el = document.getElementById("fuel-type-provinces-table");
+  if (!el) return;
+  if (!provinceRows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
+
+  const { key, dir } = provinceSort;
+  const sorted = [...provinceRows].sort((a, b) => {
+    const [x, y] = [a[key], b[key]];
+    const cmp = typeof x === "string" ? x.localeCompare(y, "es") : x - y;
+    return dir === "asc" ? cmp : -cmp;
+  });
+
+  const head = PROVINCE_COLUMNS.map((c) => {
+    const active = c.key === key;
+    const arrow = active ? (dir === "asc" ? " ▲" : " ▼") : "";
+    const align = c.align === "left" ? "text-left" : "text-right";
+    return `<th class="pb-2 pr-4 ${align} whitespace-nowrap">
+      <button type="button" data-sort-key="${c.key}" data-testid="province-sort-${c.key}"
+              class="font-label font-bold uppercase tracking-wide ${active ? "text-on-surface" : ""}"
+              aria-sort="${active ? (dir === "asc" ? "ascending" : "descending") : "none"}"
+      >${escapeHtml(c.label)}${arrow}</button></th>`;
+  }).join("");
+
+  const body = sorted.map((r) => {
+    const cells = PROVINCE_COLUMNS.map((c) => {
+      const align = c.align === "left" ? "" : "text-right";
+      const value = c.key === "province" ? escapeHtml(provinceName(r.province)) : c.fmt(r);
+      // The gap column carries the verdict, so colour it by which fuel won.
+      const tint = c.key === "signed_gap" ? (r.signed_gap > 0 ? "text-primary-container font-medium" : "font-medium") : "";
+      return `<td class="py-2 pr-4 ${align} whitespace-nowrap ${tint}">${value}</td>`;
+    }).join("");
+    return `<tr>${cells}</tr>`;
+  }).join("");
+
+  el.innerHTML = `<table class="min-w-full text-sm">
+    <thead><tr class="text-xs text-on-surface-variant">${head}</tr></thead>
+    <tbody class="divide-y divide-outline-variant/30">${body}</tbody></table>`;
+
+  el.querySelectorAll("[data-sort-key]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const nextKey = btn.dataset.sortKey;
+      // Re-clicking the active column flips direction; a new column starts on its natural order
+      // (names A→Z, numbers high→low).
+      provinceSort = provinceSort.key === nextKey
+        ? { key: nextKey, dir: provinceSort.dir === "asc" ? "desc" : "asc" }
+        : { key: nextKey, dir: nextKey === "province" ? "asc" : "desc" };
+      renderProvinceTable();
+    });
+  });
+}
+
+async function loadFuelTypeProvinces() {
+  const el = document.getElementById("fuel-type-provinces-table");
+  const noteEl = document.getElementById("fuel-type-provinces-note");
+  const { pair } = fuelTypeFilters();
+  if (!pair || !el) return;
+  try {
+    const data = await api(`/reportes/fuel-type/provinces?${qs({ pair_id: pair })}`);
+    // Signed gap: positive = diesel cheaper.
+    provinceRows = data.rows.map((r) => ({
+      ...r,
+      signed_gap: +(r.cost_gasoline_per_100km - r.cost_diesel_per_100km).toFixed(2),
+    }));
+    renderProvinceTable();
+    const dieselWins = provinceRows.filter((r) => r.winner === "diesel").length;
+    const dropped = data.provinces_dropped
+      ? ` ${data.provinces_dropped} provincia(s) sin datos de uno de los dos combustibles quedan fuera.`
+      : "";
+    if (noteEl) noteEl.textContent = `El diésel gana en ${dieselWins} de ${provinceRows.length} provincias.${dropped}`;
+  } catch {
+    provinceRows = [];
+    clearFuelTypeText("fuel-type-provinces-note");
+    el.innerHTML = emptyMsg("Sin datos");
+  }
+}
+
+async function loadFuelTypeHistory() {
+  const el = document.getElementById("fuel-type-history-chart");
+  const noteEl = document.getElementById("fuel-type-history-note");
+  const { pair, province, period } = fuelTypeFilters();
+  if (!pair || !el) return;
+  try {
+    const data = await api(`/reportes/fuel-type/history?${qs({ pair_id: pair, province: province || undefined, period })}`);
+    // multiLine keys off {date, avg_price}, so map each cost series onto that shape and reuse it.
+    multiLine(
+      el,
+      {
+        gasoline: data.series.map((p) => ({ date: p.date, avg_price: p.cost_gasoline_per_100km })),
+        diesel: data.series.map((p) => ({ date: p.date, avg_price: p.cost_diesel_per_100km })),
+      },
+      { labels: { gasoline: "Gasolina €/100 km", diesel: "Diésel €/100 km" } },
+    );
+    if (noteEl) {
+      // Days inside the tie band belong to neither fuel; naming them keeps the percentages adding up.
+      const tie = data.pct_days_tie ? ` Un ${data.pct_days_tie}% de los días quedaron en empate técnico.` : "";
+      noteEl.textContent = data.flips
+        ? `El ganador cambió ${data.flips} vez/veces en el periodo. El diésel salió más barato el ${data.pct_days_diesel_wins}% de los días.${tie}`
+        : `El resultado no cambió ni un solo día del periodo: el diésel salió más barato el ${data.pct_days_diesel_wins}% de los días.${tie}`;
+    }
+  } catch {
+    clearFuelTypeText("fuel-type-history-note");
+    el.innerHTML = emptyMsg("Sin datos");
+  }
+}
+
+function fuelTypeReload() {
+  loadFuelTypeVerdict();
+  loadFuelTypeCost();
+  loadFuelTypeProvinces();
+  loadFuelTypeHistory();
+}
+
+async function initFuelTypeReport() {
+  document.getElementById("fuel-type-filter").addEventListener("submit", (e) => e.preventDefault());
+  // Options must load before the first fetch: the pair select is API-populated, so a deep-linked
+  // pair would otherwise be applied to an empty select and silently fall back to "".
+  await loadFuelTypeOptions();
+  // initReportes captured this tab's defaults and applied the deep link while these controls were
+  // still empty, so re-do both now: first re-baseline the defaults (otherwise every fuel-report
+  // field looks non-default and lands in the URL), then re-apply the deep link against real options.
+  if (tabDefaults.reportes) {
+    Object.assign(tabDefaults.reportes, {
+      pair: ctrl('#fuel-type-filter select[name="pair"]')?.value || "",
+      prov: ctrl('#fuel-type-filter select[name="province"]')?.value || "",
+      km: ctrl("#fuel-type-annual-km")?.value || "",
+      period: ctrl("#fuel-type-period-select")?.value || "",
+    });
+  }
+  if (initialTab === "reportes") restoreFilters("reportes");
+
+  ctrl('#fuel-type-filter select[name="pair"]').addEventListener("change", fuelTypeReload);
+  ctrl('#fuel-type-filter select[name="province"]').addEventListener("change", () => {
+    loadFuelTypeVerdict();
+    loadFuelTypeCost();
+    loadFuelTypeHistory();
+  });
+  ctrl("#fuel-type-period-select").addEventListener("change", loadFuelTypeHistory);
+  // Annual km only rescales cached rows — no refetch.
+  ctrl("#fuel-type-annual-km").addEventListener("input", renderFuelTypeAnnual);
+
+  fuelTypeReload();
 }
 
 loaders.trends = initTrends;

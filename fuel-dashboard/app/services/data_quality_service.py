@@ -72,7 +72,7 @@ def get_data_inventory(ingestion_stats: pd.DataFrame) -> dict:
     }
 
 
-def get_latest_day_stats(ingestion_stats: pd.DataFrame, max_date: date) -> dict:
+def get_latest_day_stats(ingestion_stats: pd.DataFrame, max_date: date | None) -> dict:
     """Extract key metrics from the latest available day in the ingestion stats."""
     empty: dict = {
         "max_date": None,

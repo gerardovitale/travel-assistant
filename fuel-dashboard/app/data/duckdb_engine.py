@@ -93,7 +93,8 @@ def replace_latest_stations(df: pd.DataFrame) -> int:
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS latest_stations")
         conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
-        count = conn.execute("SELECT COUNT(*) FROM latest_stations").fetchone()[0]
+        count_row = conn.execute("SELECT COUNT(*) FROM latest_stations").fetchone()
+        count = count_row[0] if count_row else 0
     query_national_avg_stats.cache_clear()
     return count
 
@@ -166,7 +167,8 @@ def refresh_zip_code_trend_snapshot() -> bool:
     with _lock:
         conn = get_connection()
         conn.execute(f"CREATE OR REPLACE TABLE {ZIP_CODE_TREND_TABLE} AS SELECT * FROM df")
-        row_count = conn.execute(f"SELECT COUNT(*) FROM {ZIP_CODE_TREND_TABLE}").fetchone()[0]
+        count_row = conn.execute(f"SELECT COUNT(*) FROM {ZIP_CODE_TREND_TABLE}").fetchone()
+        row_count = count_row[0] if count_row else 0
     _zip_code_trend_ready.set()
     _last_successful_trend_refresh = time.time()
     duration_ms = (time.perf_counter() - started) * 1000
@@ -817,7 +819,7 @@ def query_day_of_week_pattern(
                     [fuel_type, province_filter],
                 ).fetchdf()
             else:
-                exclude_list = list(exclude_provinces | {"__national__"})
+                exclude_list = list(set(exclude_provinces or ()) | {"__national__"})
                 result = conn.execute(
                     """
                     SELECT day_of_week,

@@ -19,6 +19,14 @@ MIN_TRANSITIONS = 30
 DEFAULT_WINDOW_DAYS = 180
 
 
+def _iso_date(value) -> str:
+    """ISO date for a pandas timestamp. Empty string for NaT rather than an AttributeError."""
+    timestamp = pd.Timestamp(value)
+    if pd.isna(timestamp):
+        return ""
+    return timestamp.date().isoformat()  # ty: ignore[unresolved-attribute]  # NaT returned above
+
+
 def _normalize_zip(value: object) -> str:
     """Canonical Spanish postal code: strip float suffix (``28001.0``) and zero-pad to 5 digits."""
     return str(value).split(".", 1)[0].strip().zfill(5)
@@ -245,7 +253,7 @@ def _build_response(
         source=source,
         coverage_days=int(history["date"].nunique()),
         transition_observations=int(transition_total),
-        current_date=pd.Timestamp(current_row["date"]).date().isoformat(),
+        current_date=_iso_date(current_row["date"]),
         current_avg_price=round(float(current_row["avg_price"]), 4),
         current_regime=current_regime,
         next_day_probabilities=rounded_matrix[current_regime],

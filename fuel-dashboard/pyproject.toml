@@ -32,3 +32,29 @@ dev = [
     "httpx",
     "jupyter>=1.1.1",
 ]
+
+[tool.ty.environment]
+# `pythonpath = ["app"]` above is pytest-only; ty needs the same first-party roots. "." lets the
+# test modules resolve `tests.fixture`. The venv is the shared workspace one at the repo root.
+root = ["./app", "."]
+python = "../.venv"
+
+[tool.ty.rules]
+# Demoted, not ignored — these still print, they just don't fail the build.
+# `pd.DataFrame(columns=[...])` is reported because typeshed declares `list.index`'s `start` as
+# positional-only while pandas' `SequenceNotStr` protocol requires it to accept a keyword. An
+# upstream mismatch on correct pandas usage, ~26 call sites across the workspace. Restore to
+# "error" once pandas/typeshed agree.
+invalid-argument-type = "warn"
+
+# Tests routinely index the `X | None` returns that services hand back — the assertion on the next
+# line is the null check. Enforcing it here would mean rewriting every test around the checker.
+[[tool.ty.overrides]]
+include = ["tests/**"]
+
+[tool.ty.overrides.rules]
+not-subscriptable = "ignore"
+not-iterable = "ignore"
+# Comparisons and round() over pandas scalars, whose stubs widen to unions the operators reject.
+unsupported-operator = "ignore"
+no-matching-overload = "ignore"

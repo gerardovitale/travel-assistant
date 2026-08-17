@@ -82,7 +82,8 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="Spain Fuel Prices Dashboard", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# slowapi types the handler with a narrower exc than Starlette's ExceptionHandler alias allows.
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # ty: ignore[invalid-argument-type]
 app.include_router(router, prefix="/api/v1")
 
 if _mcp_route is not None:
@@ -286,10 +287,20 @@ def _render_insights(request: Request, active_tab: str):
         return templates.TemplateResponse(
             request, "loading.html", _base_context("insights"), status_code=503, headers={"Retry-After": "5"}
         )
-    insights_zones_enabled, insights_historical_enabled, insights_reportes_enabled = (
+    (
+        insights_zones_enabled,
+        insights_historical_enabled,
+        insights_reportes_enabled,
+        report_fuel_type_enabled,
+    ) = (
         ui_test_insights_flags()
         if settings.ui_test_mode
-        else (settings.insights_zones_enabled, settings.insights_historical_enabled, settings.insights_reportes_enabled)
+        else (
+            settings.insights_zones_enabled,
+            settings.insights_historical_enabled,
+            settings.insights_reportes_enabled,
+            settings.report_fuel_type_enabled,
+        )
     )
     # Fall back to the always-available trends tab when a deep link targets a disabled tab.
     tab_enabled = {
@@ -305,6 +316,8 @@ def _render_insights(request: Request, active_tab: str):
     ctx["insights_zones_enabled"] = insights_zones_enabled
     ctx["insights_historical_enabled"] = insights_historical_enabled
     ctx["insights_reportes_enabled"] = insights_reportes_enabled
+    # Per-report flag inside the Reportes tab, not a tab of its own.
+    ctx["report_fuel_type_enabled"] = report_fuel_type_enabled
     ctx["active_tab"] = active_tab
     # Defaults for the Tendencias tab filters (province/period).
     ctx["trends_default_province"] = settings.trends_default_province
@@ -312,6 +325,9 @@ def _render_insights(request: Request, active_tab: str):
     # Defaults for the reportes savings estimate (user-editable inputs).
     ctx["default_tank_liters"] = int(settings.default_tank_liters)
     ctx["default_fills_per_month"] = settings.default_fills_per_month
+    # Defaults for the fuel-type report (user-editable inputs).
+    ctx["report_fuel_type_default_km_year"] = settings.report_fuel_type_default_km_year
+    ctx["report_fuel_type_default_pair"] = settings.report_fuel_type_default_pair
     # /insights/trends duplicates /insights — canonicalise it to the bare path; other tabs are distinct.
     ctx["canonical_path"] = "/insights" if active_tab == "trends" else f"/insights/{active_tab}"
     return templates.TemplateResponse(request, "insights.html", ctx)

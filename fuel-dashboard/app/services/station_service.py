@@ -233,7 +233,7 @@ def get_cheapest_by_address(
     lat: float,
     lon: float,
     fuel_type: FuelType,
-    radius_km: float = None,
+    radius_km: float | None = None,
     limit: int = 5,
     labels: list[str] | None = None,
 ) -> list[StationResult]:
@@ -355,7 +355,7 @@ def get_cheapest_by_address_group(
     lat: float,
     lon: float,
     fuel_group: FuelGroup,
-    radius_km: float = None,
+    radius_km: float | None = None,
     limit: int = 5,
     labels: list[str] | None = None,
 ) -> list[StationResult]:

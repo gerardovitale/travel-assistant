@@ -14,7 +14,8 @@
     <p class="font-label text-[11px] tracking-[0.12em] text-on-primary-container mb-3 uppercase">Dashboard de análisis</p>
     <h1 class="text-4xl md:text-[3.25rem] leading-[1.1] font-headline font-extrabold tracking-tight">Insights y tendencias</h1>
     {% set visible_tabs = 2 + (1 if insights_zones_enabled else 0) + (1 if insights_historical_enabled else 0) + (1 if insights_reportes_enabled else 0) %}
-    <nav class="mt-8 grid grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" data-testid="insight-tabs" data-active-tab="{{ active_tab | default('trends') }}" aria-label="Secciones">
+    {# Wrap to two rows on phones: at 375px, 5-6 tabs in one row clips the Spanish labels. #}
+    <nav class="mt-8 grid grid-cols-3 sm:grid-cols-{{ visible_tabs }} gap-2 md:gap-4" id="insight-tabs" data-testid="insight-tabs" data-active-tab="{{ active_tab | default('trends') }}" aria-label="Secciones">
       <button type="button" data-tab="trends" data-testid="insight-tab-trends" class="bg-white text-primary-container rounded-xl shadow-lg px-3 py-3 md:px-4 md:py-4 transition-all flex flex-col items-center gap-1">
         <span class="material-symbols-outlined filled-icon">trending_up</span>
         <span class="text-[10px] md:text-xs font-bold tracking-wider uppercase font-headline">Tendencias</span>
@@ -224,6 +225,33 @@
   {% if insights_reportes_enabled %}
   <section data-panel="reportes" class="hidden space-y-6">
 
+    <!-- Report picker: stays visible so switching reports is one click and the reader always sees
+         which of the available reports they are looking at. Each entry owns everything below it. -->
+    <nav id="report-picker" data-testid="report-picker" class="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="Informes disponibles"
+         data-default-report="marcas">
+      <button type="button" data-report-option="marcas" data-testid="report-option-marcas"
+              class="text-left rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4 shadow-sm transition-all">
+        <span class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary-container">local_gas_station</span>
+          <span class="font-headline font-bold">Marcas</span>
+        </span>
+        <span class="mt-1 block text-sm text-on-surface-variant">Qué marca es más barata y cuánto se aleja del precio de mercado.</span>
+      </button>
+      {% if report_fuel_type_enabled %}
+      <button type="button" data-report-option="combustible" data-testid="report-option-combustible"
+              class="text-left rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4 shadow-sm transition-all">
+        <span class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary-container">compare_arrows</span>
+          <span class="font-headline font-bold">Combustible</span>
+        </span>
+        <span class="mt-1 block text-sm text-on-surface-variant">Gasolina o diésel: cuál sale más barato de usar y en qué provincias.</span>
+      </button>
+      {% endif %}
+    </nav>
+
+    <!-- REPORT: comparativa de marcas -->
+    <div data-report="marcas" class="space-y-6">
+
     <!-- Shared filters: fuel type + brand picker (affect all charts below) -->
     <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <form id="reportes-filter" data-testid="reportes-filter" class="flex flex-wrap items-end gap-4">
@@ -316,6 +344,104 @@
       <p class="text-sm text-on-surface-variant mb-4">Porcentaje de días en que la marca mantuvo un precio inferior al promedio del mercado.</p>
       <div id="reportes-days-below-chart" data-testid="reportes-days-below-chart" class="h-48 w-full overflow-hidden"></div>
     </div>
+
+    </div><!-- /report: marcas -->
+
+  <!-- REPORT: gasolina vs diésel -->
+  {% if report_fuel_type_enabled %}
+    <div data-report="combustible" class="hidden space-y-6">
+
+    <!-- Shared filters: model pair + province + annual km -->
+    <div class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <form id="fuel-type-filter" data-testid="fuel-type-filter" class="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4"
+            data-default-pair="{{ report_fuel_type_default_pair }}">
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Modelo</span>
+          <select name="pair" data-testid="fuel-type-pair-select" class="w-full rounded-lg border-outline-variant"></select>
+        </label>
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Provincia</span>
+          <select name="province" data-testid="fuel-type-province-select" class="w-full rounded-lg border-outline-variant"><option value="">Nacional</option></select>
+        </label>
+        <label class="block">
+          <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Kilómetros al año</span>
+          <input name="km" id="fuel-type-annual-km" data-testid="fuel-type-annual-km" type="number" min="1000" max="100000" step="1000" value="{{ report_fuel_type_default_km_year }}" class="w-full rounded-lg border-outline-variant">
+        </label>
+      </form>
+    </div>
+
+    <!-- Methodology: stated up front, not buried in a footnote -->
+    <div data-testid="fuel-type-disclosure" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <h2 class="font-headline font-bold text-lg mb-2">Cómo se calcula</h2>
+      <p class="text-sm text-on-surface-variant mb-2">Coste por 100&nbsp;km = consumo del vehículo × precio medio del combustible en la zona, con nuestros propios datos de precios. Comparamos <strong>Gasolina 95 E5</strong> y <strong>Diésel A</strong>.</p>
+      <ul class="text-sm text-on-surface-variant list-disc pl-5 space-y-1">
+        <li>Los consumos son cifras <strong>WLTP declaradas por el fabricante</strong>, medidas en laboratorio. El consumo real suele ser un 10–25&nbsp;% superior y varía con el tipo de conducción.</li>
+        <li>Esto compara el <strong>coste de uso</strong>, no el de compra. No incluye precio del vehículo, mantenimiento, seguro, impuestos ni restricciones ZBE / etiqueta DGT. Responde «cuál sale más barato de usar», no «cuál me compro».</li>
+        <li>Con solo el coste de combustible, el coche más barato por 100&nbsp;km lo es <strong>a cualquier kilometraje</strong>. Los km al año solo determinan cuánto dinero hay en juego, no quién gana.</li>
+        <li>Catálogo <span data-testid="fuel-type-catalog-version"></span> · <span data-testid="fuel-type-catalog-source"></span></li>
+      </ul>
+    </div>
+
+    <!-- Verdict (hero) -->
+    <div id="sec-reportes-fuel-verdict" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">¿Gasolina o diésel?</h2>
+        {{ share_button("sec-reportes-fuel-verdict") }}
+      </div>
+      <p id="fuel-type-verdict-summary" data-testid="fuel-type-verdict-summary" class="text-sm text-on-surface-variant mb-4"></p>
+      <div id="fuel-type-verdict-kpis" data-testid="fuel-type-verdict-kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"></div>
+      <!-- The exact inputs behind the verdict: consumption x price = cost, per variant. Shown rather
+           than implied so the reader can check the arithmetic and judge the consumption figures. -->
+      <div id="fuel-type-inputs" data-testid="fuel-type-inputs" class="mt-4 border-t border-outline-variant/40 pt-4"></div>
+    </div>
+
+    <!-- Cost per 100 km / per year -->
+    <div id="sec-reportes-fuel-cost" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">Coste por 100 km</h2>
+        {{ share_button("sec-reportes-fuel-cost") }}
+      </div>
+      <p class="text-sm text-on-surface-variant mb-4">Lo que cuesta mover cada variante con los precios actuales. El coste anual usa los km que hayas indicado arriba.</p>
+      <div id="fuel-type-cost-chart" data-testid="fuel-type-cost-chart" class="h-48 w-full overflow-hidden"></div>
+      <div id="fuel-type-annual-kpis" data-testid="fuel-type-annual-kpis" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4"></div>
+    </div>
+
+    <!-- Where diesel wins by the widest margin -->
+    <div id="sec-reportes-fuel-provinces" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">Dónde compensa más</h2>
+        {{ share_button("sec-reportes-fuel-provinces") }}
+      </div>
+      <p class="text-sm text-on-surface-variant mb-4">Coste de cada variante en cada provincia con los precios de ese día. «Dif.» positiva = el diésel sale más barato. Canarias, Baleares, Ceuta y Melilla quedan fuera por su régimen fiscal distinto.</p>
+      <div class="overflow-x-auto">
+        <div id="fuel-type-provinces-table" data-testid="fuel-type-provinces-table"></div>
+      </div>
+      <p id="fuel-type-provinces-note" data-testid="fuel-type-provinces-note" class="text-xs text-on-surface-variant mt-3"></p>
+    </div>
+
+    <!-- Has the answer changed over time? -->
+    <div id="sec-reportes-fuel-history" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">¿Ha cambiado la respuesta?</h2>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <label class="flex items-center gap-2">
+            <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Periodo</span>
+            <select id="fuel-type-period-select" data-testid="fuel-type-period-select" class="rounded-lg border-outline-variant text-sm">
+              <option value="quarter">3 meses</option>
+              <option value="half_year">6 meses</option>
+              <option value="year" selected>1 año</option>
+            </select>
+          </label>
+          {{ share_button("sec-reportes-fuel-history") }}
+        </div>
+      </div>
+      <p class="text-sm text-on-surface-variant mb-4">Coste por 100 km de cada variante a lo largo del tiempo. Donde las líneas se cruzan, cambia el ganador.</p>
+      <div id="fuel-type-history-chart" data-testid="fuel-type-history-chart" class="h-64 w-full overflow-hidden"></div>
+      <p id="fuel-type-history-note" data-testid="fuel-type-history-note" class="text-xs text-on-surface-variant mt-3"></p>
+    </div>
+
+    </div><!-- /report: combustible -->
+  {% endif %}
 
   </section>
   {% endif %}
