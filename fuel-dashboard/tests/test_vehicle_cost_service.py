@@ -7,12 +7,12 @@ from services.vehicle_cost_service import get_breakeven_history
 from services.vehicle_cost_service import get_pair_breakeven
 from services.vehicle_cost_service import get_vehicle_costs
 
-# VW Golf: 5.7 l/100km gasoline, 4.6 l/100km diesel -> breakeven ratio 5.7 / 4.6 = 1.2391...
+# VW Golf (IDAE WLTP, MY26): 5.4 l/100km gasoline, 4.4 l/100km diesel -> breakeven ratio 1.2272...
 PAIR_ID = "vw-golf"
-GASOLINE_ID = "vw-golf-tsi"
-DIESEL_ID = "vw-golf-tdi"
-GASOLINE_CONSUMPTION = 5.7
-DIESEL_CONSUMPTION = 4.6
+GASOLINE_ID = "vw-golf-gasoline"
+DIESEL_ID = "vw-golf-diesel"
+GASOLINE_CONSUMPTION = 5.4
+DIESEL_CONSUMPTION = 4.4
 BREAKEVEN_RATIO = GASOLINE_CONSUMPTION / DIESEL_CONSUMPTION
 
 GASOLINE_COLUMN = "gasoline_95_e5_price"

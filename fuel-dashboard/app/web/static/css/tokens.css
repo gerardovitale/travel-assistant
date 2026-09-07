@@ -24,11 +24,46 @@ body {
 /* Eyebrow / overline label (footer + Acerca). Color set per-use. */
 .fp-eyebrow { font-family: Inter, sans-serif; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.1em; }
 
+/* ─── Motion system: single source of truth for durations/easing/stagger ───
+   Every reveal animation in this file (and every JS call site) should use
+   these tokens rather than inventing new duration/easing/delay values. */
+:root {
+  --motion-duration-fast: 150ms;   /* micro: tab fade-out */
+  --motion-duration-base: 250ms;   /* default reveal: fade-in, chart swap */
+  --motion-duration-slow: 350ms;   /* page-level: page-enter */
+  --motion-ease-zen: cubic-bezier(0.22, 1, 0.36, 1); /* calm decelerate, no overshoot */
+  --motion-stagger-step: 60ms;     /* one canonical stagger increment */
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton, .page-enter, .fade-in, .page-exit, .panel-fade-out, [class^="stagger-"] {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0ms !important;
+    transition: none !important;
+  }
+  ::view-transition-group(root), ::view-transition-old(root), ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+
+/* Cross-document view transitions: smooths full page navigations (top nav,
+   bottom tab bar, any same-origin <a href>) into a calm crossfade instead of
+   the browser's default hard cut between documents. Browsers without support
+   (older Safari/Firefox) silently keep today's instant navigation — this is
+   pure progressive enhancement, no JS, no regression. */
+@view-transition {
+  navigation: auto;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--motion-duration-slow);
+  animation-timing-function: var(--motion-ease-zen);
+}
+
 /* Skeleton shimmer */
 .skeleton {
   background: linear-gradient(90deg, #e7e8ee 25%, #f2f3f9 50%, #e7e8ee 75%);
   background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
+  animation: shimmer 1.4s var(--motion-ease-zen) infinite;
   border-radius: 0.5rem;
 }
 @keyframes shimmer {
@@ -41,11 +76,27 @@ body {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
-.page-enter { animation: page-enter 350ms ease-out both; }
+.page-enter { animation: page-enter var(--motion-duration-slow) var(--motion-ease-zen) both; }
 
 /* Fade-in for async content — `both` fill-mode makes animation-delay work correctly */
-.fade-in { animation: fade 250ms ease-out both; }
+.fade-in { animation: fade var(--motion-duration-base) var(--motion-ease-zen) both; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* Fade-out mirror of `.fade-in`, e.g. the loading page just before its single reload */
+.page-exit { animation: fade var(--motion-duration-base) var(--motion-ease-zen) reverse both; }
+
+/* Insights tab-panel cross-fade (fade out old panel before the hidden-class swap) */
+.panel-fade-out { animation: panel-fade-out var(--motion-duration-fast) var(--motion-ease-zen) both; }
+@keyframes panel-fade-out { from { opacity: 1; } to { opacity: 0; } }
+
+/* Canonical stagger steps — replaces ad-hoc inline animation-delay values in JS */
+.stagger-0 { animation-delay: 0ms; }
+.stagger-1 { animation-delay: var(--motion-stagger-step); }
+.stagger-2 { animation-delay: calc(var(--motion-stagger-step) * 2); }
+.stagger-3 { animation-delay: calc(var(--motion-stagger-step) * 3); }
+.stagger-4 { animation-delay: calc(var(--motion-stagger-step) * 4); }
+.stagger-5 { animation-delay: calc(var(--motion-stagger-step) * 5); }
+.stagger-6 { animation-delay: calc(var(--motion-stagger-step) * 6); }
 
 /* Leaflet containers — keep below dropdowns that overflow from the form card */
 .leaflet-container { border-radius: 0.75rem; font-family: "Inter", sans-serif; position: relative; z-index: 1; }

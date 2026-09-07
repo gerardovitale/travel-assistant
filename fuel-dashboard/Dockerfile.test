@@ -13,6 +13,10 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY ./fuel-dashboard/app/ ./
 COPY ./fuel-dashboard/tests/ ./tests/
+# tests/test_idae_ingest_pipeline.py imports the idae_*.py scripts (fuel-dashboard/pyproject.toml's
+# `pythonpath = ["app", "../scripts"]` covers this locally; that ini file isn't copied into this
+# image, so PYTHONPATH does the same job here).
+COPY ./scripts/ /scripts/
 ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/scripts
 ENTRYPOINT ["pytest", "--durations=5", "-vv", "/app/tests/"]

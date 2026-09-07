@@ -493,7 +493,8 @@ def test_fuel_type_report_vehicles_returns_200_from_the_committed_catalog(fuel_t
     assert response.status_code == 200
     data = response.json()
     assert data["pairs"]
-    # source_url is empty while the catalog holds unverified estimates; the endpoint still serves it.
+    # The endpoint serves whatever the committed catalog carries, empty or not -- it doesn't
+    # editorialize on provenance itself (see test_vehicle_catalog.py for that guarantee).
     assert "source_url" in data
     # Electricity has no price source yet and must be declared as such rather than hidden.
     assert "electric" in data["unpriceable_energy_types"]

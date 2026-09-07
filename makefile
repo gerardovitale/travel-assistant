@@ -37,6 +37,22 @@ data.download-reports:
 		"gs://travel-assistant-spain-fuel-prices/aggregates/reports/**/*.parquet" \
 		./data/reports
 
+# IDAE vehicle-consumption catalog (fuel-type report). Manual/occasional, not part of test-local or
+# CI: it hits the network and the dataset only changes semi-annually. See idae-consumption-ingest-task.md.
+data.check-idae-update:
+	cd fuel-dashboard && uv run python ../scripts/idae_ingest_raw.py --check-only
+
+data.ingest-vehicle-consumption-raw:
+	cd fuel-dashboard && uv run python ../scripts/idae_ingest_raw.py
+
+data.transform-vehicle-consumption:
+	cd fuel-dashboard && uv run python ../scripts/idae_transform_vehicle_consumption.py
+
+data.build-vehicle-catalog:
+	cd fuel-dashboard && uv run python ../scripts/idae_build_vehicle_catalog.py
+
+data.refresh-vehicle-catalog: data.ingest-vehicle-consumption-raw data.transform-vehicle-consumption data.build-vehicle-catalog
+
 notebook:
 	docker run -it --rm -p 8888:8888 \
 		-v "${PWD}":/home/jovyan/work \

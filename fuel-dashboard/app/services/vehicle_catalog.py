@@ -1,15 +1,19 @@
 # Curated vehicle-consumption catalog backing the fuel-type report (Reportes tab).
 #
-# The catalog is a committed JSON file, not ingested data: the model selection is an editorial choice
-# and the consumption figures are manufacturer-declared WLTP values. Both facts are surfaced in the UI
-# (``version`` / ``source_url``) so the reader can judge them.
+# The catalog is a committed JSON file, regenerated (not hand-written) from IDAE's public "Base de
+# Datos de Consumo de Carburante y Emisiones" by the scripts/idae_*.py pipeline: model selection is
+# still an editorial choice (which pairs to include), but every consumption figure is IDAE's own
+# WLTP-declared value for that exact trim, traceable via each vehicle's ``source_url``. See
+# idae-consumption-ingest-task.md and scripts/idae_vehicle_pairs.py for how pairs are chosen.
 #
 # Vehicles are grouped by ``pair_id`` so the comparison is like-for-like (same model, same generation,
 # different engine). An electric row added under an existing ``pair_id`` extends the comparison to
 # three ways without any change here.
 import json
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from api.schemas import EnergyType
 from pydantic import BaseModel
@@ -26,6 +30,17 @@ CONSUMPTION_UNIT_BY_ENERGY: dict[EnergyType, str] = {
     EnergyType.diesel: "l/100km",
     EnergyType.lpg: "l/100km",
     EnergyType.electric: "kWh/100km",
+}
+
+# Loose plausibility ceiling per unit, not a precision bound: `Field(gt=0)` alone would let a stray
+# data-entry typo (a misplaced decimal point, e.g. IDAE reporting 54.0 instead of 5.4) through
+# untouched. Wide enough to cover everything from a city car to a heavy 4x4/van (still M1) or a
+# thirsty early EV, tight enough to catch an order-of-magnitude error.
+MAX_PLAUSIBLE_CONSUMPTION_BY_ENERGY: dict[EnergyType, float] = {
+    EnergyType.gasoline: 20.0,
+    EnergyType.diesel: 20.0,
+    EnergyType.lpg: 20.0,
+    EnergyType.electric: 40.0,
 }
 
 SEGMENT_LABELS: dict[str, str] = {
@@ -49,6 +64,22 @@ class Vehicle(BaseModel):
     energy_type: EnergyType
     consumption: float = Field(gt=0)
     consumption_unit: str
+    # Where this row can be verified. IDAE has no per-vehicle permalink, so every vehicle from a
+    # given ingest run carries the same catalog-wide CSV URL -- not a deep link, but exactly where
+    # the number can be checked by searching for `variant`.
+    source_url: str
+    # Fixed to WLTP for now: the ingest script drops NEDC-only IDAE rows before they ever reach
+    # this model, so mixing cycles is a structural impossibility, not just a convention. If NEDC
+    # support is ever wanted, widen this to an enum.
+    cycle: Literal["WLTP"]
+    # When a human last confirmed this pairing is still reasonable -- set by the ingest script at
+    # run time, not derived from IDAE's own dates.
+    reviewed_on: date
+    # Hand-set by the curator (scripts/idae_vehicle_pairs.py), not inferred from IDAE's dates, and
+    # -- unlike consumption/source_url -- not sourced from IDAE at all: it's the curator's general
+    # knowledge as of that file's per-entry comment date, and can go stale silently. The UI should
+    # not imply you can go buy a discontinued diesel, but treat this field as a hint, not a fact.
+    market_status: Literal["vigente", "descontinuado"]
 
     @property
     def label(self) -> str:
@@ -61,6 +92,11 @@ class Vehicle(BaseModel):
             raise ValueError(f"{self.id}: {self.energy_type.value} must use {expected_unit}")
         if self.segment not in SEGMENT_LABELS:
             raise ValueError(f"{self.id}: unknown segment {self.segment!r}")
+        if not self.source_url.startswith("http"):
+            raise ValueError(f"{self.id}: source_url must be a real link, got {self.source_url!r}")
+        max_consumption = MAX_PLAUSIBLE_CONSUMPTION_BY_ENERGY[self.energy_type]
+        if self.consumption > max_consumption:
+            raise ValueError(f"{self.id}: consumption {self.consumption} exceeds plausible ceiling {max_consumption}")
         return self
 
 

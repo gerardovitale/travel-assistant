@@ -1,49 +1,14 @@
 # Trivy Ignore File
 # These CVEs affect OS packages in python:3.13-slim (Debian) with no upstream fix.
-# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
 
 # ncurses buffer overflow — not used by application code (terminal library)
+# Reviewed: 2026-09-07. Re-review by: 2026-12-07.
 CVE-2025-69720
-
-# systemd arbitrary code execution — not the init system inside containers
-CVE-2026-29111
-
-# nghttp2 DoS — base image residual; not used by application code
-CVE-2026-27135
-
-# glibc iconv() DoS — fix deferred by Debian; app does not use iconv with untrusted character sets
-CVE-2026-4046
-
-# curl / libcurl4t64 — SMB connection reuse and cookie leak; app uses HTTPS only, not SMB
-# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
-CVE-2026-5773
-CVE-2026-6276
-
-# libgnutls30t64 — all DTLS-specific vulnerabilities (zero-length fragment DoS, NUL-char auth bypass,
-# heap overflow, nameConstraints bypass, packet reordering DoS, name constraint bypass);
-# app makes TCP/HTTPS calls only with no DTLS exposure. No Debian fix available.
-# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
-CVE-2026-33845
-CVE-2026-42010
-CVE-2026-33846
-CVE-2026-3833
-CVE-2026-42009
-CVE-2026-42011
-
-# libssh2 integer overflow via large username/password — app does not use SSH in any container
-# Reviewed: 2026-05-19. Re-review by: 2026-08-31.
-CVE-2026-7598
 
 # libssh2 heap buffer overflow via integer overflow in publickey attribute allocation —
 # no Debian fix available; app does not use SSH in any container.
 # Reviewed: 2026-08-14. Re-review by: 2026-11-14.
 CVE-2026-58050
-
-# libkrb5 / Kerberos DoS via integer underflow (libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0)
-# No Debian fix available. App does not use Kerberos or GSSAPI; these packages are
-# transitive OS-level dependencies of the python:3.13-slim base image.
-# Reviewed: 2026-05-21. Re-review by: 2026-08-31.
-CVE-2026-40356
 
 # perl-base — Archive::Tar symlink/hardlink path traversal, IO::Compress arbitrary code execution,
 # Perl heap buffer overflow, and memory exhaustion via crafted archives.
@@ -107,11 +72,6 @@ CVE-2026-41992
 # operations on attacker-controlled paths.
 CVE-2026-54369
 
-# util-linux family (bsdutils, libblkid1, liblastlog2-2, util-linux) — integer
-# overflow in libblkid DOS partition parsing. The app never inspects block
-# devices or partition tables; libblkid is a base-image transitive dep.
-CVE-2026-53615
-
 # cryptography 46.0.5 — CVE-2026-69247 (fix 50.0.0) and CVE-2026-69249 (fix
 # 49.0.0). Held at 46.0.5 by constraint-dependencies in the root pyproject.toml
 # because 48.x+ crashes ("Illegal instruction") on arm64, the Raspberry Pi 5 the
@@ -121,3 +81,19 @@ CVE-2026-53615
 # Reviewed: 2026-08-10. Re-review by: 2026-11-10.
 CVE-2026-69247
 CVE-2026-69249
+
+# ---------------------------------------------------------------------------
+# util-linux / systemd local privilege-escalation family (bsdutils, libblkid1,
+# liblastlog2-2, libmount1, libsmartcols1, libuuid1, login, mount, util-linux,
+# libsystemd0, libudev1). No Debian fix available (Status: affected, Fixed
+# Version: none). All require either a local shell with mount/nsenter/cgroup
+# privileges, or systemd-homed's interactive user-account management — the
+# container runs a single non-interactive FastAPI process, never invokes mount,
+# nsenter, or homectl, is not run --privileged, and has no local multi-user
+# accounts. No network-reachable path to any of these.
+# Reviewed: 2026-09-07. Re-review by: 2026-12-07.
+CVE-2026-16742
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410

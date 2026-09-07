@@ -48,7 +48,7 @@
       <!-- Fuel type -->
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
-        <select name="fuel_type" data-testid="search-fuel-select" class="w-full h-[42px] rounded-lg border-outline-variant"></select>
+        <select name="fuel_type" data-testid="search-fuel-select" class="w-full h-[42px] rounded-lg border-outline-variant skeleton" disabled></select>
       </label>
 
       <!-- Custom brands dropdown -->
@@ -60,7 +60,10 @@
             <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
           </button>
           <div id="brands-list" data-testid="search-brands-list" style="display:none" class="absolute z-[100] left-0 right-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl max-h-56 overflow-y-auto">
-            <!-- populated by JS -->
+            <!-- skeleton placeholders until JS populates real brand rows -->
+            <div class="skeleton h-8 rounded-lg m-2"></div>
+            <div class="skeleton h-8 rounded-lg m-2"></div>
+            <div class="skeleton h-8 rounded-lg m-2"></div>
           </div>
         </div>
       </div>

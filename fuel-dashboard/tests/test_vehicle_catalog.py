@@ -21,6 +21,10 @@ def _vehicle(**overrides) -> dict:
         "energy_type": "gasoline",
         "consumption": 6.0,
         "consumption_unit": "l/100km",
+        "source_url": "https://example.com/idae.csv",
+        "cycle": "WLTP",
+        "reviewed_on": "2026-08-20",
+        "market_status": "vigente",
     }
     return {**base, **overrides}
 
@@ -72,12 +76,45 @@ def test_shipped_catalog_segments_are_known():
         assert vehicle.segment in SEGMENT_LABELS
 
 
+def test_shipped_catalog_vehicles_have_a_real_source_url():
+    # Every figure must be traceable to a fetched record, not just the catalog as a whole -- see
+    # idae-consumption-ingest-task.md's definition of done.
+    for vehicle in load_catalog().vehicles:
+        assert vehicle.source_url
+        assert vehicle.source_url.startswith("http")
+
+
+def test_shipped_catalog_cycle_is_consistent_within_pair():
+    # A WLTP figure is ~20% lower than the equivalent NEDC one; comparing across cycles within a
+    # pair would silently favor whichever variant happened to keep the older measurement.
+    for pair in list_pairs():
+        cycles = {v.cycle for v in pair.vehicles}
+        assert len(cycles) == 1
+
+
+def test_shipped_catalog_market_status_is_known():
+    for vehicle in load_catalog().vehicles:
+        assert vehicle.market_status in {"vigente", "descontinuado"}
+
+
 def test_shipped_catalog_diesel_variants_consume_less_than_gasoline():
     # The whole report rests on this: diesel engines burn fewer litres. A pair where it doesn't hold
     # is a data-entry error, not an interesting finding.
     for pair in list_pairs():
         by_energy = {v.energy_type: v for v in pair.vehicles}
         assert by_energy[EnergyType.diesel].consumption < by_energy[EnergyType.gasoline].consumption
+
+
+def test_shipped_catalog_pairs_are_the_same_generation():
+    # "Same model, same generation, different engine" (module docstring) is a claim about the two
+    # vehicles being comparable, not just about which pair_id they share. A multi-year gap between
+    # the gasoline and diesel model_year means they weren't measured under the same era of WLTP
+    # methodology -- idae_build_vehicle_catalog.py's own build-time guard should already have
+    # refused to ship such a pair; this is the regression net on the committed file itself.
+    max_gap = 2
+    for pair in list_pairs():
+        years = {v.model_year for v in pair.vehicles}
+        assert max(years) - min(years) <= max_gap, f"{pair.pair_id}: model years {sorted(years)} span too many years"
 
 
 # --- validation ------------------------------------------------------------------------
@@ -106,6 +143,13 @@ def test_pair_with_two_vehicles_of_same_energy_type_rejected():
 def test_zero_consumption_rejected():
     with pytest.raises(ValidationError):
         VehicleCatalog(**_catalog([_vehicle(consumption=0)]))
+
+
+def test_consumption_above_plausible_ceiling_rejected():
+    # Guards against a stray data-entry error (e.g. a misplaced decimal point) sailing through with
+    # only a `> 0` check -- 54 l/100km is not a real passenger car.
+    with pytest.raises(ValidationError, match="exceeds plausible ceiling"):
+        VehicleCatalog(**_catalog([_vehicle(consumption=54.0)]))
 
 
 def test_wrong_unit_for_energy_type_rejected():

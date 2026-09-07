@@ -24,7 +24,10 @@ dependencies = [
 spain-fuel-fetcher = { workspace = true }
 
 [tool.pytest.ini_options]
-pythonpath = ["app"]
+# "../scripts" makes the idae_*.py ingest scripts importable from tests/test_idae_ingest_pipeline.py
+# -- they're run via `cd fuel-dashboard && uv run python ../scripts/<script>.py` in practice, so this
+# is the venv that already has their deps (pandas, httpx, google-cloud-storage).
+pythonpath = ["app", "../scripts"]
 
 [dependency-groups]
 dev = [
@@ -34,9 +37,10 @@ dev = [
 ]
 
 [tool.ty.environment]
-# `pythonpath = ["app"]` above is pytest-only; ty needs the same first-party roots. "." lets the
-# test modules resolve `tests.fixture`. The venv is the shared workspace one at the repo root.
-root = ["./app", "."]
+# `pythonpath = [...]` above is pytest-only; ty needs the same first-party roots. "." lets the
+# test modules resolve `tests.fixture`; "../scripts" matches the idae_*.py ingest scripts pytest
+# can already import. The venv is the shared workspace one at the repo root.
+root = ["./app", ".", "../scripts"]
 python = "../.venv"
 
 [tool.ty.rules]

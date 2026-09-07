@@ -27,6 +27,29 @@
 
 {% block page_scripts %}
 <script>
-  window.setTimeout(() => window.location.reload(), 3000);
+  (function () {
+    const card = document.querySelector('[data-testid="loading-page"] > div');
+    let pollTimer = null;
+
+    async function poll() {
+      try {
+        const res = await fetch("/health/ready", { headers: { Accept: "application/json" } });
+        const body = await res.json().catch(() => ({}));
+        if (body.ready) {
+          // Stop polling and schedule the reload first: reloading must happen even if the DOM
+          // shape ever changes and `card` doesn't match anything, so this can't get stuck behind
+          // a null-element throw — the fade-out is a nice-to-have, not a precondition for the reload.
+          clearInterval(pollTimer);
+          if (card) card.classList.add("page-exit");
+          window.setTimeout(() => window.location.reload(), 220);
+        }
+      } catch {
+        // Transient network hiccup — try again next tick.
+      }
+    }
+
+    pollTimer = setInterval(poll, 2000);
+    poll(); // don't wait a full interval before the first check
+  })();
 </script>
 {% endblock %}

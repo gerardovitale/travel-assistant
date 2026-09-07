@@ -331,8 +331,13 @@ def get_breakeven_by_province(pair_id: str, mainland_only: bool = True) -> dict 
     # Align on days where BOTH fuels reported, then take each province's most recent such day. A
     # province whose diesel series stopped weeks ago must not have its stale price compared against
     # today's gasoline and then be dated as if it were current.
-    wide = subset.pivot_table(index=["province", "date"], columns="fuel_type", values="avg_price", aggfunc="last")
-    counts = subset.pivot_table(index=["province", "date"], columns="fuel_type", values="station_count", aggfunc="last")
+    # One pivot for both metrics (avg_price and station_count share the same index/columns) instead
+    # of scanning `subset` twice.
+    pivoted = subset.pivot_table(
+        index=["province", "date"], columns="fuel_type", values=["avg_price", "station_count"], aggfunc="last"
+    )
+    wide = pivoted["avg_price"]
+    counts = pivoted["station_count"]
     if any(column not in wide.columns for column in columns):
         return {**empty, "provinces_dropped": provinces_seen}
 
@@ -422,6 +427,10 @@ def get_breakeven_history(pair_id: str, province: str | None = None, days: int =
         "model": gasoline.model,
         "province": province,
         "breakeven_ratio": round(breakeven_ratio, 4),
+        # A share of calendar days, not of independent trials -- fuel prices move gradually, so
+        # consecutive days are highly correlated and this is not a Bernoulli proportion over `days`
+        # independent draws. Read it as "how much of the period", not as a confidence-bearing rate.
+        # The UI disclosure (insights.html) carries the same caveat for the reader.
         "pct_days_diesel_wins": round(float(merged["diesel_wins"].mean()) * 100, 1),
         # Reported so the percentages account for every day: diesel + gasoline + tie = 100.
         "pct_days_tie": round(float((merged["winner"] == "tie").mean()) * 100, 1),

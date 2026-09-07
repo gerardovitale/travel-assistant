@@ -258,7 +258,19 @@ def test_pages_wait_for_data_before_rendering():
             assert resp.status_code == 503
             assert resp.headers["retry-after"] == "5"
             assert "Cargando la instantánea de estaciones" in resp.text
-            assert "window.setTimeout(() => window.location.reload(), 3000);" in resp.text
+            assert 'fetch("/health/ready"' in resp.text
+
+
+def test_health_ready_reflects_is_data_ready():
+    with patch("main.is_data_ready", return_value=False):
+        resp = _get_client().get("/health/ready")
+    assert resp.status_code == 200
+    assert resp.json() == {"ready": False}
+
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/health/ready")
+    assert resp.status_code == 200
+    assert resp.json() == {"ready": True}
 
 
 def test_page_search_renders_config_defaults():

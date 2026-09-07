@@ -59,9 +59,9 @@ function banner(kind, text) {
 }
 function hideBanner() { document.getElementById("trip-banner").classList.add("hidden"); }
 
-function kpi(label, value, icon, delay = 0, valueClass = "text-on-surface") {
+function kpi(label, value, icon, staggerIndex = 0, valueClass = "text-on-surface") {
   return `
-    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm fade-in" style="animation-delay:${delay}ms">
+    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm fade-in stagger-${staggerIndex}">
       <div class="flex items-center gap-2 text-outline">
         <span class="material-symbols-outlined text-[18px]">${icon}</span>
         <span class="text-[11px] font-label font-bold tracking-wider uppercase">${label}</span>
@@ -105,10 +105,10 @@ function renderKpis(plan, body) {
   const el = document.getElementById("trip-kpis");
   el.innerHTML = [
     kpi("Distancia total", formatKm(plan.total_distance_km), "straighten", 0),
-    kpi("Duración", formatMin(plan.duration_minutes), "schedule", 60),
-    kpi("Coste combustible", formatEur(plan.total_fuel_cost), "payments", 120),
-    kpi("Ahorro estimado", formatEur(plan.savings_eur), "savings", 180),
-    kpi("Combustible al llegar", `${fuelPct?.toFixed(0) ?? "—"}%`, "local_gas_station", 240, fuelClass),
+    kpi("Duración", formatMin(plan.duration_minutes), "schedule", 1),
+    kpi("Coste combustible", formatEur(plan.total_fuel_cost), "payments", 2),
+    kpi("Ahorro estimado", formatEur(plan.savings_eur), "savings", 3),
+    kpi("Combustible al llegar", `${fuelPct?.toFixed(0) ?? "—"}%`, "local_gas_station", 4, fuelClass),
   ].join("");
   el.classList.remove("hidden");
   renderFloorWarning(plan, body);
@@ -143,7 +143,7 @@ function directionsAnchorHtml(lat, lon) {
 function stopCard(s, i) {
   const st = s.station;
   return `
-    <article data-testid="trip-stop-card" data-index="${i}" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 60, 360)}ms">
+    <article data-testid="trip-stop-card" data-index="${i}" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in stagger-${Math.min(i, 6)}">
       <div class="h-10 w-10 rounded-full bg-primary-container text-white flex items-center justify-center font-headline font-bold">${i + 1}</div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
@@ -539,14 +539,22 @@ async function init() {
   const originAC = attachAutocomplete(document.querySelector('[name="origin"]'));
   attachAutocomplete(document.querySelector('[name="destination"]'));  // no geo button; controller unused
   initTripGeolocation(originAC);
-  await populateFuelSelect(document.querySelector('select[name="fuel_type"]'));
-
   initBrandsDropdown("brands-toggle", "brands-list");
-  try {
-    const labels = await getLabels();
-    populateBrandsList("brands-list", "brands-label", selectedLabels, labels);
-  } catch (err) {
-    console.warn("Failed to load brand labels:", err);
+
+  // Fetch fuel-type options and brand labels together so both controls reveal
+  // at the same moment instead of popping in at whatever order the network
+  // happens to resolve them in.
+  const [fuelResult, labelsResult] = await Promise.allSettled([
+    populateFuelSelect(document.querySelector('select[name="fuel_type"]')),
+    getLabels(),
+  ]);
+  if (fuelResult.status === "rejected") {
+    console.warn("Failed to load fuel types:", fuelResult.reason);
+  }
+  if (labelsResult.status === "fulfilled") {
+    populateBrandsList("brands-list", "brands-label", selectedLabels, labelsResult.value);
+  } else {
+    console.warn("Failed to load brand labels:", labelsResult.reason);
   }
 
   const levelInput = document.querySelector('input[name="fuel_level_pct"]');

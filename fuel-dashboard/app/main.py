@@ -167,6 +167,20 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/health/ready")
+def health_ready():
+    """Whether the in-memory station cache is warm enough to render a real page.
+
+    Polled by `loading.html` instead of `/health/data`, which reports freshness/
+    staleness rather than readiness and can 503 even when `is_data_ready()` is
+    true — that would leave the loading screen polling forever on a stale-but-
+    ready day. Reuses the exact predicate `_render_page`/`_render_insights` gate
+    on, so "ready" here and "will the next request render a real page" agree.
+    """
+    ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
+    return {"ready": ready}
+
+
 @app.get("/health/data")
 def health_data():
     if settings.ui_test_mode:

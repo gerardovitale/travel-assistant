@@ -12,6 +12,19 @@ const COMMON_LAYOUT = {
 };
 const CONFIG = { responsive: true, displaylogo: false, displayModeBar: false };
 
+// Every chart renders through here so the reveal transition (and any future
+// motion tweak) stays in one place instead of five separate call sites.
+function _renderChart(el, traces, layout, config) {
+  el.classList.remove("fade-in");
+  void el.offsetHeight; // force reflow so the animation restarts
+  el.classList.add("fade-in");
+  Plotly.newPlot(el, traces, layout, config);
+}
+
+export function loadingSkeleton() {
+  return '<div class="skeleton h-full w-full"></div>';
+}
+
 export function lineTrend(el, points, { label = "Precio" } = {}) {
   if (!points || !points.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";
@@ -24,7 +37,7 @@ export function lineTrend(el, points, { label = "Precio" } = {}) {
     { x, y: min, name: "Min", mode: "lines", line: { color: "#b2c5ff", width: 1 }, fill: "tonexty", fillcolor: "rgba(178,197,255,0.25)", hoverinfo: "skip" },
     { x, y: avg, name: label, mode: "lines+markers", line: { color: "#001642", width: 2.5 }, marker: { size: 5 } },
   ];
-  Plotly.newPlot(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
+  _renderChart(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
 }
 
 export function multiLine(el, seriesMap, { labels = {} } = {}) {
@@ -42,7 +55,7 @@ export function multiLine(el, seriesMap, { labels = {} } = {}) {
       line: { color: palette[i % palette.length], width: 2 },
     };
   });
-  Plotly.newPlot(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
+  _renderChart(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
 }
 
 export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15, colorFn = null, tickSuffix = "", labelFn = null } = {}) {
@@ -52,7 +65,7 @@ export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642",
   const y = slice.map((r) => (labelFn ? labelFn(r[labelKey]) : r[labelKey]));
   const x = slice.map((r) => r[valueKey]);
   const markerColor = colorFn ? slice.map(colorFn) : color;
-  Plotly.newPlot(
+  _renderChart(
     el,
     [{ x, y, type: "bar", orientation: "h", marker: { color: markerColor } }],
     {
@@ -98,7 +111,7 @@ export function fuelByDistance(el, points, { floorPct = null } = {}) {
     });
   }
 
-  Plotly.newPlot(
+  _renderChart(
     el,
     [{
       x, y, type: "bar", marker: { color: colors },
@@ -120,7 +133,7 @@ export function fuelByDistance(el, points, { floorPct = null } = {}) {
 export function heatmap(el, x, y, z) {
   if (!z || !z.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";
-  Plotly.newPlot(
+  _renderChart(
     el,
     [{ x, y, z, type: "heatmap", colorscale: [[0, "#dae2ff"], [1, "#001642"]], showscale: false }],
     { ...COMMON_LAYOUT, margin: { l: 80, r: 16, t: 16, b: 40 } },

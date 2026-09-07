@@ -62,6 +62,9 @@ export async function populateFuelSelect(selectEl, { defaultValue = "gasoline_95
     selectEl.appendChild(og);
   }
   if (defaultValue) selectEl.value = defaultValue;
+  selectEl.classList.remove("skeleton");
+  selectEl.disabled = false;
+  selectEl.classList.add("fade-in");
 }
 
 export async function populateGroupSelect(selectEl, { defaultValue = "gasoline_95" } = {}) {

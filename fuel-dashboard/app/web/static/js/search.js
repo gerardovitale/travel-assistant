@@ -60,9 +60,9 @@ function switchMode(mode) {
 
 // ── KPIs + rendering ────────────────────────────────────────────────
 
-function kpiCard(label, value, icon = "insights", delay = 0) {
+function kpiCard(label, value, icon = "insights", staggerIndex = 0) {
   return `
-    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm fade-in" style="animation-delay:${delay}ms">
+    <div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm fade-in stagger-${staggerIndex}">
       <div class="flex items-center gap-2 text-outline">
         <span class="material-symbols-outlined text-[18px]">${icon}</span>
         <span class="text-[11px] font-label font-bold tracking-wider uppercase">${label}</span>
@@ -81,9 +81,9 @@ function renderKpis(results) {
 
   const cards = [
     kpiCard("Mejor precio", formatPrice(cheapest), "savings", 0),
-    kpiCard("Media del listado", formatPrice(avg), "bar_chart", 60),
-    kpiCard(nearest ? "Más cercana" : "Resultados", nearest ? formatKm(nearest.distance_km) : String(results.length), "near_me", 120),
-    kpiCard("Estación", escapeHtml(best.label || "—"), "local_gas_station", 180),
+    kpiCard("Media del listado", formatPrice(avg), "bar_chart", 1),
+    kpiCard(nearest ? "Más cercana" : "Resultados", nearest ? formatKm(nearest.distance_km) : String(results.length), "near_me", 2),
+    kpiCard("Estación", escapeHtml(best.label || "—"), "local_gas_station", 3),
   ];
   const el = document.getElementById("kpis");
   el.innerHTML = cards.join("");
@@ -111,7 +111,7 @@ function renderList(results) {
       console.warn("search result: skipping directions link for invalid coords", { lat: s.latitude, lon: s.longitude, err: err.message });
     }
     return `
-      <article data-index="${i}" data-testid="search-result-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in" style="animation-delay:${Math.min(i * 50, 350)}ms">
+      <article data-index="${i}" data-testid="search-result-card" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in stagger-${Math.min(i, 6)}">
         <div class="h-10 w-10 rounded-lg bg-surface-container-high flex items-center justify-center text-primary-container shrink-0 font-headline font-bold">${i + 1}</div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center justify-between gap-2">
@@ -217,7 +217,7 @@ function resetResults({ emptyState = null } = {}) {
 
 function skeletonCards(n = 4) {
   return Array.from({ length: n }, (_, i) =>
-    `<div class="skeleton fade-in h-20 rounded-2xl" style="animation-delay:${i * 80}ms"></div>`
+    `<div class="skeleton fade-in stagger-${Math.min(i, 6)} h-20 rounded-2xl"></div>`
   ).join("");
 }
 
@@ -397,14 +397,22 @@ async function init() {
   // Must run before any await so inputs are wrapped before the page becomes interactive.
   const locationAC = attachAutocomplete(document.querySelector('[name="location"]'));
   initGeolocation(locationAC);
-  await populateFuelSelect(document.querySelector('select[name="fuel_type"]'));
-
   initBrandsDropdown("brands-toggle", "brands-list");
-  try {
-    const labels = await getLabels();
-    populateBrandsList("brands-list", "brands-label", state.selectedLabels, labels);
-  } catch (err) {
-    console.warn("Failed to load brand labels:", err);
+
+  // Fetch fuel-type options and brand labels together so both controls reveal
+  // at the same moment instead of popping in at whatever order the network
+  // happens to resolve them in.
+  const [fuelResult, labelsResult] = await Promise.allSettled([
+    populateFuelSelect(document.querySelector('select[name="fuel_type"]')),
+    getLabels(),
+  ]);
+  if (fuelResult.status === "rejected") {
+    console.warn("Failed to load fuel types:", fuelResult.reason);
+  }
+  if (labelsResult.status === "fulfilled") {
+    populateBrandsList("brands-list", "brands-label", state.selectedLabels, labelsResult.value);
+  } else {
+    console.warn("Failed to load brand labels:", labelsResult.reason);
   }
 
   attachHoverHandlers();

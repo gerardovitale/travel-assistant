@@ -1,7 +1,7 @@
 import { api, qs } from "./app.js";
 import { registerShareBuilder, initShare } from "./share.js";
 import { populateFuelSelect, populateGroupSelect, getProvinces, getCatalog, FUEL_LABELS } from "./fuel.js";
-import { lineTrend, multiLine, horizontalBar, heatmap, emptyMsg } from "./charts.js";
+import { lineTrend, multiLine, horizontalBar, heatmap, emptyMsg, loadingSkeleton } from "./charts.js";
 import { createMap, drawGeoJSON } from "./maps.js";
 import { formatPrice, escapeHtml } from "./format.js";
 
@@ -295,7 +295,7 @@ async function loadTrends() {
   else if (province) params.province = province;
   const kpisEl = document.getElementById("trend-kpis");
   const chartEl = document.getElementById("trend-chart");
-  chartEl.innerHTML = emptyMsg("Cargando…");
+  chartEl.innerHTML = loadingSkeleton();
   try {
     const resp = await api(`/trends/price?${qs(params)}`, { signal: AbortSignal.timeout(15000) });
     const pts = resp.trend || [];
@@ -324,7 +324,7 @@ async function loadGroupTrends() {
   if (zip) params.zip_code = zip;
   else if (province) params.province = province;
   const el = document.getElementById("group-trend-chart");
-  el.innerHTML = emptyMsg("Cargando…");
+  el.innerHTML = loadingSkeleton();
   try {
     const resp = await api(`/trends/group?${qs(params)}`, { signal: AbortSignal.timeout(15000) });
     multiLine(el, resp.series || {}, { labels: FUEL_LABELS });
@@ -672,7 +672,7 @@ async function loadForecast() {
   scopeEl.textContent = "";
   bannerEl.className = "rounded-xl px-4 py-3 text-sm mb-4 bg-surface-container text-on-surface";
   kpisEl.innerHTML = "";
-  probsEl.innerHTML = emptyMsg("Cargando…");
+  probsEl.innerHTML = loadingSkeleton();
 
   if (!normalizedZip && !province) {
     bannerEl.textContent = "Introduce un código postal o selecciona una provincia para activar el pronóstico.";
@@ -702,7 +702,7 @@ async function loadHistorical() {
   const fuel = data.get("fuel_type"), period = data.get("period"), province = data.get("province");
 
   const provEl = document.getElementById("hist-provinces");
-  provEl.innerHTML = emptyMsg("Cargando…");
+  provEl.innerHTML = loadingSkeleton();
   try {
     const r = await api(`/zones/provinces?${qs({ fuel_type: fuel, period })}`);
     const rows = r.rows || [];
@@ -710,7 +710,7 @@ async function loadHistorical() {
   } catch (err) { provEl.innerHTML = emptyMsg(err.message); }
 
   const dowEl = document.getElementById("hist-dow");
-  dowEl.innerHTML = emptyMsg("Cargando…");
+  dowEl.innerHTML = loadingSkeleton();
   try {
     const r = await api(`/historical/day-of-week?${qs({ fuel_type: fuel, province: province || null })}`);
     const rows = r.rows || [];
@@ -727,7 +727,7 @@ async function loadHistorical() {
 
   const brandsEl = document.getElementById("hist-brands");
   const brandTrendEl = document.getElementById("hist-brand-trend");
-  brandsEl.innerHTML = emptyMsg("Cargando…"); brandTrendEl.innerHTML = emptyMsg("Cargando…");
+  brandsEl.innerHTML = loadingSkeleton(); brandTrendEl.innerHTML = loadingSkeleton();
   try {
     const r = await api(`/historical/brands?${qs({ fuel_type: fuel, period })}`);
     horizontalBar(brandsEl, r.ranking || [], { labelKey: "brand", valueKey: "avg_price" });
@@ -741,7 +741,7 @@ async function loadHistorical() {
   } catch (err) { brandsEl.innerHTML = emptyMsg(err.message); brandTrendEl.innerHTML = emptyMsg(err.message); }
 
   const volEl = document.getElementById("hist-volatility");
-  volEl.innerHTML = emptyMsg("Cargando…");
+  volEl.innerHTML = loadingSkeleton();
   try {
     const r = await api(`/historical/volatility?${qs({ fuel_type: fuel, period, mainland_only: true })}`);
     horizontalBar(volEl, r.rows || [], { labelKey: "zip_code", valueKey: "volatility_pct", color: "#a33d3d", maxRows: 20 });
@@ -784,6 +784,11 @@ async function loadQuality() {
 
 const loaders = { trends: null, zones: null, historical: null, reportes: null, quality: null };
 const loaded = new Set();
+// The very first switchTab() call (page load / deep link) establishes the active tab -- it isn't
+// a user-perceived "switch" away from anything, so it must never crossfade. Without this guard, a
+// deep link into a non-default tab (e.g. /insights/reportes) would fade the server-rendered
+// default "trends" panel out before fading the requested tab in, flashing the wrong content first.
+let hasActivatedTab = false;
 
 function switchTab(name, opts = {}) {
   document.querySelectorAll("#insight-tabs button").forEach((b) => {
@@ -792,19 +797,56 @@ function switchTab(name, opts = {}) {
     b.classList.toggle("bg-white/10", !active); b.classList.toggle("text-white", !active);
     b.querySelector(".material-symbols-outlined").classList.toggle("filled-icon", active);
   });
-  document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
-  if (!loaded.has(name) && loaders[name]) { loaders[name](); loaded.add(name); }
-  activeTab = name;
-  // Switching tabs drops the previous section anchor and the other tab's filters.
-  if (opts.sync !== false) syncUrl(name, false);
+
+  const panels = document.querySelectorAll("[data-panel]");
+  const current = [...panels].find((p) => !p.classList.contains("hidden"));
+  const target = [...panels].find((p) => p.dataset.panel === name);
+
+  const reveal = () => {
+    panels.forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
+    if (target) {
+      target.classList.remove("fade-in");
+      void target.offsetHeight; // force reflow so the animation restarts
+      target.classList.add("fade-in");
+    }
+    if (!loaded.has(name) && loaders[name]) { loaders[name](); loaded.add(name); }
+    activeTab = name;
+    hasActivatedTab = true;
+    // Switching tabs drops the previous section anchor and the other tab's filters.
+    if (opts.sync !== false) syncUrl(name, false);
+  };
+
+  if (hasActivatedTab && current && current !== target) {
+    // Cross-fade: fade the old panel out, then swap `hidden` and fade the new one in.
+    // A timeout fallback covers `prefers-reduced-motion` zeroing the animation duration,
+    // where `animationend` never fires.
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      current.classList.remove("panel-fade-out");
+      reveal();
+    };
+    current.classList.add("panel-fade-out");
+    current.addEventListener("animationend", finish, { once: true });
+    setTimeout(finish, 200);
+  } else {
+    reveal();
+  }
 }
 
 async function initTrends() {
-  await populateGroupSelect(document.querySelector('#trends-filter select[name="fuel_group"]'));
   const formEl = document.getElementById("trends-filter");
   const provSel = document.querySelector('#trends-filter select[name="province"]');
-  try {
-    const provs = await getProvinces();
+
+  // Fuel-group options and the province list are independent — fetch together
+  // so the filter form reveals as one unit instead of field-by-field.
+  const [, provincesResult] = await Promise.allSettled([
+    populateGroupSelect(document.querySelector('#trends-filter select[name="fuel_group"]')),
+    getProvinces(),
+  ]);
+  if (provincesResult.status === "fulfilled") {
+    const provs = provincesResult.value;
     for (const [raw, pretty] of Object.entries(provs)) {
       const opt = document.createElement("option"); opt.value = raw; opt.textContent = pretty; provSel.appendChild(opt);
     }
@@ -813,7 +855,7 @@ async function initTrends() {
     const defaultProvince = (formEl.dataset.defaultProvince || "").trim().toLowerCase();
     const provOpt = defaultProvince && [...provSel.options].find((o) => o.value.toLowerCase() === defaultProvince);
     if (provOpt) provSel.value = provOpt.value;
-  } catch {}
+  }
 
   // Server-configured default period (DASHBOARD_TRENDS_DEFAULT_PERIOD); ignored if it doesn't match
   // one of the static period options.
@@ -848,15 +890,20 @@ async function initZones() {
   loadProvinceMap();
 }
 async function initHistorical() {
-  await populateFuelSelect(document.querySelector('#historical-form select[name="fuel_type"]'));
   const provSel = document.querySelector('#historical-form select[name="province"]');
   const zipInput = document.querySelector('#historical-form input[name="zip_code"]');
-  try {
-    const provs = await getProvinces();
-    for (const [raw, pretty] of Object.entries(provs)) {
+
+  // Fuel-type options and the province list are independent — fetch together
+  // so the filter form reveals as one unit instead of field-by-field.
+  const [, provincesResult] = await Promise.allSettled([
+    populateFuelSelect(document.querySelector('#historical-form select[name="fuel_type"]')),
+    getProvinces(),
+  ]);
+  if (provincesResult.status === "fulfilled") {
+    for (const [raw, pretty] of Object.entries(provincesResult.value)) {
       const opt = document.createElement("option"); opt.value = raw; opt.textContent = pretty; provSel.appendChild(opt);
     }
-  } catch {}
+  }
   const debouncedHistorical = debounce(loadHistorical, 600);
   document.querySelector('#historical-form select[name="fuel_type"]').addEventListener("change", loadHistorical);
   document.querySelector('#historical-form select[name="period"]').addEventListener("change", loadHistorical);
@@ -1050,7 +1097,7 @@ async function loadWinRate() {
   if (!el) return;
   const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
   const direction = document.getElementById("reportes-direction-select").value;
-  el.innerHTML = emptyMsg("Cargando…");
+  el.innerHTML = loadingSkeleton();
   try {
     const url = `/reportes/win-rate?fuel_type=${encodeURIComponent(fuelType)}&direction=${encodeURIComponent(direction)}${brandsQuery()}`;
     const rows = await api(url);
@@ -1064,8 +1111,8 @@ async function loadPriceComparison() {
   const daysEl = document.getElementById("reportes-days-below-chart");
   if (!deltaEl || !daysEl) return;
   const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
-  deltaEl.innerHTML = emptyMsg("Cargando…");
-  daysEl.innerHTML = emptyMsg("Cargando…");
+  deltaEl.innerHTML = loadingSkeleton();
+  daysEl.innerHTML = loadingSkeleton();
   try {
     const rows = await api(`/reportes/price-comparison?fuel_type=${encodeURIComponent(fuelType)}${brandsQuery()}`);
     horizontalBar(deltaEl, rows, {
@@ -1091,7 +1138,7 @@ async function loadCoverage() {
   const el = document.getElementById("reportes-coverage-table");
   if (!el) return;
   const fuelType = document.querySelector('#reportes-filter select[name="fuel_type"]').value;
-  el.innerHTML = emptyMsg("Cargando…");
+  el.innerHTML = loadingSkeleton();
   try {
     const rows = await api(`/reportes/coverage?fuel_type=${encodeURIComponent(fuelType)}${brandsQuery()}`);
     if (!rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
@@ -1338,6 +1385,7 @@ async function loadFuelTypeCost() {
   const params = new URLSearchParams();
   for (const v of (fuelTypePairs[pair] || {}).vehicles || []) params.append("vehicle_ids", v.vehicle_id);
   if (province) params.set("province", province);
+  el.innerHTML = loadingSkeleton();
   try {
     fuelTypeCostRows = await api(`/reportes/fuel-type/cost?${params.toString()}`);
   } catch {
@@ -1454,6 +1502,7 @@ async function loadFuelTypeHistory() {
   const noteEl = document.getElementById("fuel-type-history-note");
   const { pair, province, period } = fuelTypeFilters();
   if (!pair || !el) return;
+  el.innerHTML = loadingSkeleton();
   try {
     const data = await api(`/reportes/fuel-type/history?${qs({ pair_id: pair, province: province || undefined, period })}`);
     // multiLine keys off {date, avg_price}, so map each cost series onto that shape and reuse it.

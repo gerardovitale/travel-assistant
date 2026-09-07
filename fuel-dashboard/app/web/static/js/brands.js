@@ -29,6 +29,9 @@ export function populateBrandsList(listId, labelId, selectedSet, labelsMap) {
   const labelEl = document.getElementById(labelId);
   if (!list || !labelEl) return;
 
+  list.innerHTML = ""; // clear skeleton placeholders
+  list.classList.add("fade-in");
+
   for (const [raw, pretty] of Object.entries(labelsMap)) {
     const item = document.createElement("label");
     item.dataset.testid = `brand-option-${raw}`;

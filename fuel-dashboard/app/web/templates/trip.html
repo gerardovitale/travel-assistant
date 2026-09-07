@@ -46,7 +46,7 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <label class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible</span>
-        <select name="fuel_type" data-testid="trip-fuel-select" class="w-full rounded-lg border-outline-variant"></select>
+        <select name="fuel_type" data-testid="trip-fuel-select" class="w-full h-[42px] rounded-lg border-outline-variant skeleton" disabled></select>
       </label>
       <div class="block">
         <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Marcas <span class="font-normal text-outline">(opcional)</span></span>
@@ -56,6 +56,10 @@
             <span class="material-symbols-outlined text-[18px] text-outline">expand_more</span>
           </button>
           <div id="brands-list" data-testid="trip-brands-list" style="display:none" class="absolute z-[100] left-0 right-0 mt-1 bg-white rounded-lg border border-outline-variant shadow-xl max-h-56 overflow-y-auto">
+            <!-- skeleton placeholders until JS populates real brand rows -->
+            <div class="skeleton h-8 rounded-lg m-2"></div>
+            <div class="skeleton h-8 rounded-lg m-2"></div>
+            <div class="skeleton h-8 rounded-lg m-2"></div>
           </div>
         </div>
       </div>
