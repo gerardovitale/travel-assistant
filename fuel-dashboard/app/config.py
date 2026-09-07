@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     # Reports listed inside the Reportes tab. The brand report (marcas) is always on with the tab;
     # the fuel-type one ships dark until the catalog's WLTP figures have been verified against
     # manufacturer spec sheets. See app/data/vehicle_catalog.json.
-    report_fuel_type_enabled: bool = False
+    report_fuel_type_enabled: bool = True
     # Default annual mileage for the fuel-type report. Only scales the euro gap — it never changes
     # which engine wins, because fuel-only cost is linear in km.
     report_fuel_type_default_km_year: int = 15000
