@@ -416,6 +416,8 @@ def get_breakeven_history(pair_id: str, province: str | None = None, days: int =
         {
             "date": row["date"].date().isoformat(),
             "price_ratio": round(float(row["price_ratio"]), 4),
+            # Same convention as the headline verdict: positive = diesel cheaper.
+            "margin_pct": round(float(row["margin_pct"]), 1),
             "cost_gasoline_per_100km": _cost_per_100km(gasoline, float(row["price_gasoline"])),
             "cost_diesel_per_100km": _cost_per_100km(diesel, float(row["price_diesel"])),
         }

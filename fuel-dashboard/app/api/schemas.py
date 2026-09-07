@@ -515,6 +515,7 @@ class ProvinceBreakevenResponse(BaseModel):
 class BreakevenHistoryPoint(BaseModel):
     date: str
     price_ratio: float
+    margin_pct: float  # positive = diesel cheaper, same convention as the headline verdict
     cost_gasoline_per_100km: float
     cost_diesel_per_100km: float
 

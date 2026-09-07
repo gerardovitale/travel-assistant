@@ -26,6 +26,17 @@ export const GROUP_LABELS = {
   natural_gas: "Gas natural",
 };
 
+// Default pair pre-selected in "Comparativa de variantes" per group. Where a group has a regular
+// vs. premium grade, default to that pair (the "is premium worth it" question a reader is most
+// likely to have); groups with only two members just default to those two.
+export const GROUP_DEFAULT_VARIANT_PAIR = {
+  diesel: ["diesel_a_price", "diesel_premium_price"],
+  gasoline_95: ["gasoline_95_e5_price", "gasoline_95_e5_premium_price"],
+  gasoline_98: ["gasoline_98_e5_price", "gasoline_98_e10_price"],
+  biofuel: ["biodiesel_price", "bioethanol_price"],
+  natural_gas: ["compressed_natural_gas_price", "liquefied_natural_gas_price"],
+};
+
 let _catalog = null;
 export async function getCatalog() {
   if (_catalog) return _catalog;

@@ -618,6 +618,33 @@ def test_fuel_type_report_history_returns_200_with_data(mock_service, fuel_type_
 
 
 @patch("api.router.get_breakeven_history")
+def test_fuel_type_report_history_series_carries_margin_pct(mock_service, fuel_type_on):
+    mock_service.return_value = {
+        "pair_id": "vw-golf",
+        "model": "Volkswagen Golf",
+        "province": None,
+        "breakeven_ratio": 1.2391,
+        "pct_days_diesel_wins": 100.0,
+        "pct_days_tie": 0.0,
+        "days": 1,
+        "flips": 0,
+        "crossovers": [],
+        "series": [
+            {
+                "date": "2026-08-01",
+                "price_ratio": 0.97,
+                "margin_pct": 21.7,
+                "cost_gasoline_per_100km": 8.4,
+                "cost_diesel_per_100km": 6.9,
+            }
+        ],
+    }
+    response = _get_client().get("/api/v1/reportes/fuel-type/history?pair_id=vw-golf&period=year")
+    assert response.status_code == 200
+    assert response.json()["series"][0]["margin_pct"] == 21.7
+
+
+@patch("api.router.get_breakeven_history")
 def test_fuel_type_report_history_maps_period_to_days(mock_service, fuel_type_on):
     mock_service.return_value = None
     _get_client().get("/api/v1/reportes/fuel-type/history?pair_id=vw-golf&period=quarter")

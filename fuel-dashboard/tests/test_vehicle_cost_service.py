@@ -334,6 +334,9 @@ def test_breakeven_history_series_carries_both_costs():
     assert point["cost_gasoline_per_100km"] == pytest.approx(GASOLINE_CONSUMPTION * 1.50, abs=0.01)
     assert point["cost_diesel_per_100km"] == pytest.approx(DIESEL_CONSUMPTION * 1.45, abs=0.01)
     assert point["price_ratio"] == pytest.approx(1.45 / 1.50, abs=0.0001)
+    breakeven_ratio = result["breakeven_ratio"]
+    expected_margin_pct = (breakeven_ratio - point["price_ratio"]) / breakeven_ratio * 100
+    assert point["margin_pct"] == pytest.approx(expected_margin_pct, abs=0.1)
 
 
 def test_breakeven_history_returns_none_for_unknown_pair():

@@ -1,3 +1,4 @@
+import pytest
 import ui_test_support as ui_test
 from api.schemas import FuelGroup
 from api.schemas import FuelType
@@ -34,6 +35,16 @@ def test_ui_test_support_happy_path_contracts():
         assert geojson.geojson["type"] == "FeatureCollection"
     finally:
         ui_test.pop_fixture_set(token)
+
+
+def test_fuel_type_history_response_series_carries_margin_pct():
+    response = ui_test.fuel_type_history_response(pair_id="vw-golf")
+    assert response.series
+    for point in response.series:
+        # price_ratio on the point is already rounded to 4dp, so recomputing margin_pct from it
+        # (rather than from the unrounded ratio the fixture used) only agrees to ~0.1 abs.
+        expected = (response.breakeven_ratio - point.price_ratio) / response.breakeven_ratio * 100
+        assert point.margin_pct == pytest.approx(expected, abs=0.15)
 
 
 def test_ui_test_support_special_fixture_states():

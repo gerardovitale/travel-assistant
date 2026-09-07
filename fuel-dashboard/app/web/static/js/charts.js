@@ -58,6 +58,72 @@ export function multiLine(el, seriesMap, { labels = {} } = {}) {
   _renderChart(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
 }
 
+// Same as multiLine, plus one extra trace plotted on a secondary right-hand y-axis (%).
+// Used for a computed %-diff line alongside price/cost lines that already share their own axis.
+// diffSeries: [{date, value}]. diffVisible sets the trace's initial toggle state.
+export function multiLineWithDiff(el, seriesMap, diffSeries, { labels = {}, diffLabel = "% dif.", diffVisible = true } = {}) {
+  const keys = Object.keys(seriesMap || {});
+  if (!keys.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
+  el.innerHTML = "";
+  const palette = ["#001642", "#0453cd", "#b3923a", "#0e7b52", "#a33d3d", "#6f42c1", "#ba1a1a"];
+  const traces = keys.map((k, i) => {
+    const pts = seriesMap[k] || [];
+    return {
+      x: pts.map((p) => p.date),
+      y: pts.map((p) => p.avg_price),
+      mode: "lines",
+      name: labels[k] || k,
+      line: { color: palette[i % palette.length], width: 2 },
+    };
+  });
+  const diffTraceIndex = traces.length;
+  traces.push({
+    x: (diffSeries || []).map((p) => p.date),
+    y: (diffSeries || []).map((p) => p.value),
+    mode: "lines",
+    name: diffLabel,
+    yaxis: "y2",
+    line: { color: "#6f42c1", width: 1.5, dash: "dot" },
+    visible: diffVisible ? true : "legendonly",
+  });
+  _renderChart(
+    el,
+    traces,
+    {
+      ...COMMON_LAYOUT,
+      showlegend: true,
+      legend: { orientation: "h", y: -0.2 },
+      // Hidden (not just the trace) when the diff line is toggled off — an unused axis with no
+      // visible trace on it is still a right-hand scale a reader has to make sense of. automargin
+      // grows the fixed right margin to fit the actual tick text (e.g. "-106.4%" on a narrow
+      // card) instead of a guessed pixel width that a wide value would still clip.
+      yaxis2: {
+        overlaying: "y",
+        side: "right",
+        ticksuffix: "%",
+        gridcolor: "transparent",
+        visible: diffVisible,
+        automargin: true,
+      },
+    },
+    CONFIG,
+  );
+  el.dataset.diffTraceIndex = String(diffTraceIndex);
+}
+
+// Merges two {date, avg_price} series on date and computes the %-diff of b vs a.
+// Drops dates missing from either side, and a zero-price date (division by zero), rather than
+// pretending a value it doesn't have.
+export function mergePctDiff(seriesA, seriesB) {
+  const byDate = new Map((seriesA || []).map((p) => [p.date, p.avg_price]));
+  return (seriesB || [])
+    .filter((p) => byDate.get(p.date))
+    .map((p) => {
+      const a = byDate.get(p.date);
+      return { date: p.date, value: ((p.avg_price - a) / a) * 100 };
+    });
+}
+
 export function horizontalBar(el, rows, { labelKey, valueKey, color = "#001642", maxRows = 15, colorFn = null, tickSuffix = "", labelFn = null } = {}) {
   if (!rows || !rows.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";

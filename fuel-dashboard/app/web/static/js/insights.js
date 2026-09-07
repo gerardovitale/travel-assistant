@@ -1,7 +1,7 @@
 import { api, qs } from "./app.js";
 import { registerShareBuilder, initShare } from "./share.js";
-import { populateFuelSelect, populateGroupSelect, getProvinces, getCatalog, FUEL_LABELS } from "./fuel.js";
-import { lineTrend, multiLine, horizontalBar, heatmap, emptyMsg, loadingSkeleton } from "./charts.js";
+import { populateFuelSelect, populateGroupSelect, getProvinces, getCatalog, FUEL_LABELS, GROUP_DEFAULT_VARIANT_PAIR } from "./fuel.js";
+import { lineTrend, multiLine, multiLineWithDiff, mergePctDiff, horizontalBar, heatmap, emptyMsg, loadingSkeleton } from "./charts.js";
 import { createMap, drawGeoJSON } from "./maps.js";
 import { formatPrice, escapeHtml } from "./format.js";
 
@@ -38,6 +38,9 @@ const PARAMS = {
     prov: ctrl('#trends-filter select[name="province"]')?.value || "",
     zip: (ctrl('#trends-filter input[name="zip_code"]')?.value || "").trim(),
     period: ctrl('#trends-filter select[name="period"]')?.value || "",
+    variantA: ctrl("#trends-variant-a")?.value || "",
+    variantB: ctrl("#trends-variant-b")?.value || "",
+    diffOn: ctrl("#trends-variant-diff-toggle") ? (ctrl("#trends-variant-diff-toggle").checked ? "1" : "0") : "1",
   }),
   historical: () => ({
     fuel: ctrl('#historical-form select[name="fuel_type"]')?.value || "",
@@ -76,6 +79,13 @@ function restoreFilters(tab) {
     set('#trends-filter select[name="province"]', "prov");
     set('#trends-filter input[name="zip_code"]', "zip");
     set('#trends-filter select[name="period"]', "period");
+    // No-ops the first time restoreFilters("trends") runs — the variant selects are still empty
+    // at that point (API-populated per group). initTrends re-populates them for the resolved group
+    // and calls restoreFilters("trends") a second time, mirroring initFuelTypeReport's pair select.
+    set("#trends-variant-a", "variantA");
+    set("#trends-variant-b", "variantB");
+    const diffToggle = ctrl("#trends-variant-diff-toggle");
+    if (diffToggle && p.has("diffOn")) diffToggle.checked = p.get("diffOn") !== "0";
   } else if (tab === "historical") {
     set('#historical-form select[name="fuel_type"]', "fuel");
     set('#historical-form select[name="period"]', "period");
@@ -220,7 +230,8 @@ function registerShareBuilders() {
 // Selects/checkboxes (`change`) sync immediately; text inputs (`input`) are debounced so typing a
 // zip doesn't replaceState on every keystroke.
 const TRACKED_FILTERS =
-  '#trends-filter [name], #historical-form [name], #reportes-filter [name], #reportes-direction-select, ' +
+  '#trends-filter [name], #trends-variant-a, #trends-variant-b, #trends-variant-diff-toggle, ' +
+  '#historical-form [name], #reportes-filter [name], #reportes-direction-select, ' +
   '#fuel-type-filter [name], #fuel-type-period-select, #zones-fuel, #zones-mainland';
 const debouncedUrlSync = debounce(() => syncUrl(activeTab, true), 600);
 function onFilterChange(e) {
@@ -315,20 +326,74 @@ async function loadTrends() {
   } catch (err) { chartEl.innerHTML = emptyMsg(err.message); }
 }
 
+// Comparativa de variantes caches the last fetched group series so that picking a different
+// variant pair, or toggling the %-diff line, re-renders instantly from data already in hand
+// instead of refetching — same "no refetch" pattern as the fuel-type report's annual-km recompute.
+let lastGroupSeries = {};
+let lastVariantGroup = null;
+
+// Populates the two variant selects from the group's members and defaults them to the curated
+// regular-vs-premium pair (fuel.js). Only called when the group actually changes.
+async function populateVariantSelects(fuelGroup) {
+  const cat = await getCatalog();
+  const members = cat.groups[fuelGroup] || [];
+  const [defA, defB] = GROUP_DEFAULT_VARIANT_PAIR[fuelGroup] || members.slice(0, 2);
+  for (const [sel, def] of [[ctrl("#trends-variant-a"), defA], [ctrl("#trends-variant-b"), defB]]) {
+    if (!sel) continue;
+    sel.innerHTML = members.map((f) => `<option value="${f}">${FUEL_LABELS[f] || f}</option>`).join("");
+    if (def) sel.value = def;
+  }
+  lastVariantGroup = fuelGroup;
+}
+
+// The variant pickers only matter while the diff line is on — hide them (not just leave them
+// disabled) rather than showing controls with no visible effect.
+function syncVariantPickerVisibility() {
+  const picker = ctrl("#trends-variant-picker");
+  if (picker) picker.classList.toggle("hidden", !(ctrl("#trends-variant-diff-toggle")?.checked ?? true));
+}
+
+function renderGroupTrendChart() {
+  syncVariantPickerVisibility();
+  const el = document.getElementById("group-trend-chart");
+  if (!el || !Object.keys(lastGroupSeries).length) return;
+  const a = ctrl("#trends-variant-a")?.value;
+  const b = ctrl("#trends-variant-b")?.value;
+  const diffSeries = a && b && lastGroupSeries[a] && lastGroupSeries[b] ? mergePctDiff(lastGroupSeries[a], lastGroupSeries[b]) : [];
+  const diffVisible = ctrl("#trends-variant-diff-toggle")?.checked ?? true;
+  const diffLabel = a && b ? `% dif. (${FUEL_LABELS[b] || b} vs. ${FUEL_LABELS[a] || a})` : "% dif.";
+  multiLineWithDiff(el, lastGroupSeries, diffSeries, { labels: FUEL_LABELS, diffLabel, diffVisible });
+}
+
+// Bumped on every call so a response that resolves after a newer call has already started is
+// dropped instead of clobbering the newer group's data — group/province/period/zip changes are
+// not debounced, so two requests can be in flight at once and finish out of order.
+let groupTrendsRequestId = 0;
+
 async function loadGroupTrends() {
+  const requestId = ++groupTrendsRequestId;
   const form = document.getElementById("trends-filter");
   const data = new FormData(form);
   const zip = (data.get("zip_code") || "").trim();
   const province = (data.get("province") || "").trim() || null;
-  const params = { fuel_group: data.get("fuel_group"), period: data.get("period") };
+  const fuelGroup = data.get("fuel_group");
+  const params = { fuel_group: fuelGroup, period: data.get("period") };
   if (zip) params.zip_code = zip;
   else if (province) params.province = province;
   const el = document.getElementById("group-trend-chart");
   el.innerHTML = loadingSkeleton();
   try {
     const resp = await api(`/trends/group?${qs(params)}`, { signal: AbortSignal.timeout(15000) });
-    multiLine(el, resp.series || {}, { labels: FUEL_LABELS });
-  } catch (err) { el.innerHTML = emptyMsg(err.message); }
+    if (requestId !== groupTrendsRequestId) return; // superseded by a newer request
+    lastGroupSeries = resp.series || {};
+    if (fuelGroup !== lastVariantGroup) await populateVariantSelects(fuelGroup);
+    if (requestId !== groupTrendsRequestId) return; // superseded while awaiting the catalog
+    renderGroupTrendChart();
+  } catch (err) {
+    if (requestId !== groupTrendsRequestId) return;
+    lastGroupSeries = {};
+    el.innerHTML = emptyMsg(err.message);
+  }
 }
 
 // ------------------------------- ZONES ---------------------------------------
@@ -870,12 +935,30 @@ async function initTrends() {
   const reloadAll = () => { loadTrends(); loadGroupTrends(); loadForecast(); };
   const dAll = debounce(reloadAll, 600);
 
-  document.querySelector('#trends-filter select[name="fuel_group"]').addEventListener("change", reloadAll);
+  const groupSel = document.querySelector('#trends-filter select[name="fuel_group"]');
+  groupSel.addEventListener("change", reloadAll);
   document.querySelector('#trends-filter select[name="period"]').addEventListener("change", reloadAll);
   document.querySelector('#trends-filter input[name="zip_code"]').addEventListener("input", dAll);
   provSel.addEventListener("change", reloadAll);
 
   captureAndRestore("trends");
+
+  // Variant selects are API-populated per group, so they were still empty when captureAndRestore
+  // ran above (same gap initFuelTypeReport works around for the pair select): populate them now for
+  // the resolved group, re-baseline just these two fields, then re-apply the deep link so a
+  // variantA/variantB in the URL lands on real options instead of silently no-opping.
+  await populateVariantSelects(groupSel.value);
+  if (tabDefaults.trends) {
+    tabDefaults.trends.variantA = ctrl("#trends-variant-a")?.value || "";
+    tabDefaults.trends.variantB = ctrl("#trends-variant-b")?.value || "";
+  }
+  if (initialTab === "trends") restoreFilters("trends");
+  syncVariantPickerVisibility(); // reflect a deep-linked diffOn=0 before the first fetch resolves
+
+  ctrl("#trends-variant-a").addEventListener("change", renderGroupTrendChart);
+  ctrl("#trends-variant-b").addEventListener("change", renderGroupTrendChart);
+  ctrl("#trends-variant-diff-toggle").addEventListener("change", renderGroupTrendChart);
+
   loadTrends();
   loadGroupTrends();
   loadForecast();
@@ -1497,6 +1580,32 @@ async function loadFuelTypeProvinces() {
   }
 }
 
+// Cached so toggling the diff line re-renders from data already in hand instead of refetching —
+// same pattern as the annual-km recompute and Comparativa de variantes.
+let lastFuelTypeHistory = null;
+
+function renderFuelTypeHistoryChart() {
+  const el = document.getElementById("fuel-type-history-chart");
+  if (!el || !lastFuelTypeHistory) return;
+  const data = lastFuelTypeHistory;
+  // multiLineWithDiff keys its primary traces off {date, avg_price}, so map each cost series onto
+  // that shape and reuse it; the %-diff line comes straight from margin_pct (positive = diésel
+  // cheaper, same convention as the verdict card above).
+  multiLineWithDiff(
+    el,
+    {
+      gasoline: data.series.map((p) => ({ date: p.date, avg_price: p.cost_gasoline_per_100km })),
+      diesel: data.series.map((p) => ({ date: p.date, avg_price: p.cost_diesel_per_100km })),
+    },
+    data.series.map((p) => ({ date: p.date, value: p.margin_pct })),
+    {
+      labels: { gasoline: "Gasolina €/100 km", diesel: "Diésel €/100 km" },
+      diffLabel: "% dif. (diésel vs. gasolina)",
+      diffVisible: ctrl("#fuel-type-diff-toggle")?.checked ?? true,
+    },
+  );
+}
+
 async function loadFuelTypeHistory() {
   const el = document.getElementById("fuel-type-history-chart");
   const noteEl = document.getElementById("fuel-type-history-note");
@@ -1505,15 +1614,8 @@ async function loadFuelTypeHistory() {
   el.innerHTML = loadingSkeleton();
   try {
     const data = await api(`/reportes/fuel-type/history?${qs({ pair_id: pair, province: province || undefined, period })}`);
-    // multiLine keys off {date, avg_price}, so map each cost series onto that shape and reuse it.
-    multiLine(
-      el,
-      {
-        gasoline: data.series.map((p) => ({ date: p.date, avg_price: p.cost_gasoline_per_100km })),
-        diesel: data.series.map((p) => ({ date: p.date, avg_price: p.cost_diesel_per_100km })),
-      },
-      { labels: { gasoline: "Gasolina €/100 km", diesel: "Diésel €/100 km" } },
-    );
+    lastFuelTypeHistory = data;
+    renderFuelTypeHistoryChart();
     if (noteEl) {
       // Days inside the tie band belong to neither fuel; naming them keeps the percentages adding up.
       const tie = data.pct_days_tie ? ` Un ${data.pct_days_tie}% de los días quedaron en empate técnico.` : "";
@@ -1522,6 +1624,7 @@ async function loadFuelTypeHistory() {
         : `El resultado no cambió ni un solo día del periodo: el diésel salió más barato el ${data.pct_days_diesel_wins}% de los días.${tie}`;
     }
   } catch {
+    lastFuelTypeHistory = null;
     clearFuelTypeText("fuel-type-history-note");
     el.innerHTML = emptyMsg("Sin datos");
   }
@@ -1561,6 +1664,8 @@ async function initFuelTypeReport() {
   ctrl("#fuel-type-period-select").addEventListener("change", loadFuelTypeHistory);
   // Annual km only rescales cached rows — no refetch.
   ctrl("#fuel-type-annual-km").addEventListener("input", renderFuelTypeAnnual);
+  // Toggling the %-diff line re-renders from cached data — no refetch.
+  ctrl("#fuel-type-diff-toggle").addEventListener("change", renderFuelTypeHistoryChart);
 
   fuelTypeReload();
 }

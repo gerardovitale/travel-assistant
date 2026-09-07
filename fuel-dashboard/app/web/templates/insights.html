@@ -88,9 +88,27 @@
     </div>
 
     <div id="sec-trends-variants" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <div class="flex items-start justify-between gap-3 mb-4">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
         <h2 class="font-headline font-bold text-xl">Comparativa de variantes</h2>
-        {{ share_button("sec-trends-variants") }}
+        <div class="flex flex-wrap items-center gap-3">
+          <label class="flex items-center gap-2">
+            <input id="trends-variant-diff-toggle" type="checkbox" checked class="rounded">
+            <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Mostrar % dif.</span>
+          </label>
+          <!-- Only meaningful with the diff line on — hidden (not just disabled) while it's off,
+               see #trends-variant-diff-toggle's change handler in insights.js. -->
+          <div id="trends-variant-picker" class="flex flex-wrap items-center gap-3">
+            <label class="flex items-center gap-2">
+              <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Variante A</span>
+              <select id="trends-variant-a" data-testid="trends-variant-a" class="rounded-lg border-outline-variant text-sm"></select>
+            </label>
+            <label class="flex items-center gap-2">
+              <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Variante B</span>
+              <select id="trends-variant-b" data-testid="trends-variant-b" class="rounded-lg border-outline-variant text-sm"></select>
+            </label>
+          </div>
+          {{ share_button("sec-trends-variants") }}
+        </div>
       </div>
       <div id="group-trend-chart" data-testid="group-trend-chart" class="h-80"></div>
     </div>
@@ -396,6 +414,31 @@
       <div id="fuel-type-inputs" data-testid="fuel-type-inputs" class="mt-4 border-t border-outline-variant/40 pt-4"></div>
     </div>
 
+    <!-- Has the answer changed over time? -->
+    <div id="sec-reportes-fuel-history" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
+        <h2 class="font-headline font-bold text-lg">¿Ha cambiado la respuesta?</h2>
+        <div class="flex items-center gap-2 flex-shrink-0">
+          <label class="flex items-center gap-2">
+            <input id="fuel-type-diff-toggle" type="checkbox" checked class="rounded">
+            <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Mostrar % dif.</span>
+          </label>
+          <label class="flex items-center gap-2">
+            <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Periodo</span>
+            <select id="fuel-type-period-select" data-testid="fuel-type-period-select" class="rounded-lg border-outline-variant text-sm">
+              <option value="quarter">3 meses</option>
+              <option value="half_year">6 meses</option>
+              <option value="year" selected>1 año</option>
+            </select>
+          </label>
+          {{ share_button("sec-reportes-fuel-history") }}
+        </div>
+      </div>
+      <p class="text-sm text-on-surface-variant mb-4">Coste por 100 km de cada variante a lo largo del tiempo. Donde las líneas se cruzan, cambia el ganador. La línea de % dif. (eje derecho) resume el hueco entre ambas: positivo = el diésel sale más barato.</p>
+      <div id="fuel-type-history-chart" data-testid="fuel-type-history-chart" class="h-64 w-full overflow-hidden"></div>
+      <p id="fuel-type-history-note" data-testid="fuel-type-history-note" class="text-xs text-on-surface-variant mt-3"></p>
+    </div>
+
     <!-- Cost per 100 km / per year -->
     <div id="sec-reportes-fuel-cost" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
       <div class="flex items-start justify-between gap-3 mb-1">
@@ -418,27 +461,6 @@
         <div id="fuel-type-provinces-table" data-testid="fuel-type-provinces-table"></div>
       </div>
       <p id="fuel-type-provinces-note" data-testid="fuel-type-provinces-note" class="text-xs text-on-surface-variant mt-3"></p>
-    </div>
-
-    <!-- Has the answer changed over time? -->
-    <div id="sec-reportes-fuel-history" class="bg-surface-container-lowest rounded-2xl shadow-md p-5 md:p-6 border border-outline-variant/40">
-      <div class="flex flex-wrap items-start justify-between gap-3 mb-1">
-        <h2 class="font-headline font-bold text-lg">¿Ha cambiado la respuesta?</h2>
-        <div class="flex items-center gap-2 flex-shrink-0">
-          <label class="flex items-center gap-2">
-            <span class="text-xs font-label font-bold text-on-surface-variant whitespace-nowrap">Periodo</span>
-            <select id="fuel-type-period-select" data-testid="fuel-type-period-select" class="rounded-lg border-outline-variant text-sm">
-              <option value="quarter">3 meses</option>
-              <option value="half_year">6 meses</option>
-              <option value="year" selected>1 año</option>
-            </select>
-          </label>
-          {{ share_button("sec-reportes-fuel-history") }}
-        </div>
-      </div>
-      <p class="text-sm text-on-surface-variant mb-4">Coste por 100 km de cada variante a lo largo del tiempo. Donde las líneas se cruzan, cambia el ganador.</p>
-      <div id="fuel-type-history-chart" data-testid="fuel-type-history-chart" class="h-64 w-full overflow-hidden"></div>
-      <p id="fuel-type-history-note" data-testid="fuel-type-history-note" class="text-xs text-on-surface-variant mt-3"></p>
     </div>
 
     </div><!-- /report: combustible -->

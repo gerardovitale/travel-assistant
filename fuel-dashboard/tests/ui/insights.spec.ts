@@ -36,6 +36,62 @@ test("trends tab loads charts and debounced zip updates only send the final requ
   await expect(page.getByTestId("trend-kpis")).toContainText("Actual");
 });
 
+test("comparativa de variantes populates the default variant pair and recomputes the diff without refetching", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+  await insightsPage.goto();
+
+  // The UI-test fixture always models the diesel group regardless of the selected one, so switch
+  // to it explicitly rather than relying on the form's own default (gasoline_95).
+  await page.getByTestId("trends-group-select").selectOption("diesel");
+  const chart = page.getByTestId("group-trend-chart");
+  await expect(chart).toHaveAttribute("data-plot-ready", "true");
+  await expect(insightsPage.trendsVariantASelect).toHaveValue("diesel_a_price");
+  await expect(insightsPage.trendsVariantBSelect).toHaveValue("diesel_premium_price");
+  await expect(insightsPage.trendsVariantDiffToggle).toBeChecked();
+  await expect(insightsPage.trendsVariantPicker).toBeVisible();
+  await expect(chart).toHaveAttribute("data-yaxis2-visible", "true");
+
+  const groupRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/trends/group")) groupRequests.push(request.url());
+  });
+
+  await insightsPage.trendsVariantASelect.selectOption("diesel_b_price");
+
+  // Switching off the diff line hides both the %-axis and the now-pointless variant pickers.
+  await insightsPage.trendsVariantDiffToggle.uncheck();
+  await expect(insightsPage.trendsVariantPicker).toBeHidden();
+  await expect(chart).toHaveAttribute("data-yaxis2-visible", "false");
+
+  // All of the above are pure client-side recomputes over the already-fetched group series.
+  expect(groupRequests).toHaveLength(0);
+});
+
+test("comparativa de variantes ignores a stale group response that resolves after a newer one", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+
+  // Delay only the page's initial request (fuel_group=gasoline_95, the form's default) so it
+  // resolves after the fast follow-up request for "diesel" that the test triggers below.
+  await page.route("**/api/v1/trends/group*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("fuel_group") === "gasoline_95") await new Promise((r) => setTimeout(r, 600));
+    await route.continue();
+  });
+
+  await insightsPage.goto();
+  await page.getByTestId("trends-group-select").selectOption("diesel");
+  await expect(page.getByTestId("group-trend-chart")).toHaveAttribute("data-plot-ready", "true");
+  await expect(insightsPage.trendsVariantASelect).toHaveValue("diesel_a_price");
+
+  // Give the delayed gasoline_95 response time to land. Without the request-sequence guard it
+  // would overwrite the variant selects back to the gasoline_95 default pair after the fact.
+  await page.waitForTimeout(800);
+  await expect(insightsPage.trendsVariantASelect).toHaveValue("diesel_a_price");
+  await expect(insightsPage.trendsVariantBSelect).toHaveValue("diesel_premium_price");
+});
+
 test("quality tab renders KPI and summary content", async ({ page }) => {
   const insightsPage = new InsightsPage(page);
   await insightsPage.goto();
@@ -302,6 +358,29 @@ test("fuel-type report tab renders the verdict, both charts and the methodology 
   await expect(disclosure).toContainText("WLTP");
   await expect(disclosure).toContainText("coste de uso");
   await expect(page.getByTestId("fuel-type-catalog-version")).not.toBeEmpty();
+});
+
+test("fuel-type history chart shows the diff line and its axis by default, and hides both when toggled off", async ({ page }) => {
+  const insightsPage = new InsightsPage(page);
+  await setFixture(page, "insights_all");
+  await page.goto("/insights/reportes?report=combustible");
+  const chart = page.getByTestId("fuel-type-history-chart");
+  await expect(chart).toHaveAttribute("data-plot-ready", "true");
+  await expect(insightsPage.fuelTypeDiffToggle).toBeChecked();
+  // Three traces: gasoline, diesel, and the diff line — visible by default (index 2).
+  await expect(chart).toHaveAttribute("data-trace2-visible", "true");
+  await expect(chart).toHaveAttribute("data-yaxis2-visible", "true");
+
+  const historyRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/reportes/fuel-type/history")) historyRequests.push(request.url());
+  });
+
+  await insightsPage.fuelTypeDiffToggle.uncheck();
+  await expect(chart).toHaveAttribute("data-trace2-visible", "legendonly");
+  await expect(chart).toHaveAttribute("data-yaxis2-visible", "false");
+  // A pure re-render from the cached response — no refetch.
+  expect(historyRequests).toHaveLength(0);
 });
 
 test("fuel-type report annual km recomputes the yearly cost without refetching", async ({ page }) => {

@@ -649,10 +649,12 @@ def fuel_type_history_response(pair_id: str = "", province: Optional[str] = None
         diesel_price = 1.409 + 0.011 * offset
         price_ratio = diesel_price / gasoline_price
         diesel_wins += price_ratio < breakeven_ratio
+        margin_pct = (breakeven_ratio - price_ratio) / breakeven_ratio * 100
         series.append(
             BreakevenHistoryPoint(
                 date=day.isoformat(),
                 price_ratio=round(price_ratio, 4),
+                margin_pct=round(margin_pct, 1),
                 cost_gasoline_per_100km=round(gasoline.consumption * gasoline_price, 2),
                 cost_diesel_per_100km=round(diesel.consumption * diesel_price, 2),
             )
