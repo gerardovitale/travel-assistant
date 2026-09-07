@@ -37,12 +37,12 @@ def test_report_brands_list_passthrough():
     assert s.report_brands == ["bp", "shell"]
 
 
-def test_fuel_type_report_ships_disabled_by_default(monkeypatch):
+def test_fuel_type_report_ships_enabled_by_default(monkeypatch):
     monkeypatch.delenv("DASHBOARD_REPORT_FUEL_TYPE_ENABLED", raising=False)
     from config import Settings
 
     s = Settings()
-    assert s.report_fuel_type_enabled is False
+    assert s.report_fuel_type_enabled is True
     assert s.report_fuel_type_default_km_year == 15000
 
 
