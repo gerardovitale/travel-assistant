@@ -771,7 +771,7 @@ def test_insights_comparador_tab_no_longer_exists():
 
 
 def test_reportes_lists_only_the_brand_report_while_fuel_type_is_disabled():
-    with patch("main.is_data_ready", return_value=True):
+    with patch.object(settings, "report_fuel_type_enabled", False), patch("main.is_data_ready", return_value=True):
         resp = _get_client().get("/insights/reportes")
     assert resp.status_code == 200
     assert 'data-testid="report-option-marcas"' in resp.text

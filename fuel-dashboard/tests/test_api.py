@@ -662,16 +662,17 @@ def test_fuel_type_report_history_rejects_invalid_period(fuel_type_on):
 def test_fuel_type_report_endpoints_404_while_the_flag_is_off():
     # Hiding the tab is not enough: the catalog this serves declares itself unverified, so "off"
     # has to mean off at the API too.
-    client = _get_client()
-    paths = [
-        "/api/v1/reportes/fuel-type/vehicles",
-        "/api/v1/reportes/fuel-type/cost?vehicle_ids=vw-golf-tsi",
-        "/api/v1/reportes/fuel-type/breakeven?pair_id=vw-golf",
-        "/api/v1/reportes/fuel-type/provinces?pair_id=vw-golf",
-        "/api/v1/reportes/fuel-type/history?pair_id=vw-golf",
-    ]
-    for path in paths:
-        assert client.get(path).status_code == 404, path
+    with patch.object(settings, "report_fuel_type_enabled", False):
+        client = _get_client()
+        paths = [
+            "/api/v1/reportes/fuel-type/vehicles",
+            "/api/v1/reportes/fuel-type/cost?vehicle_ids=vw-golf-tsi",
+            "/api/v1/reportes/fuel-type/breakeven?pair_id=vw-golf",
+            "/api/v1/reportes/fuel-type/provinces?pair_id=vw-golf",
+            "/api/v1/reportes/fuel-type/history?pair_id=vw-golf",
+        ]
+        for path in paths:
+            assert client.get(path).status_code == 404, path
 
 
 def test_fuel_type_report_vehicles_serves_once_the_flag_is_on():
