@@ -12,6 +12,8 @@ from api.schemas import BrandReportFuelType
 from api.schemas import BrandWinRateRow
 from api.schemas import BreakevenHistoryResponse
 from api.schemas import BreakevenResponse
+from api.schemas import CommodityCorrelationResponse
+from api.schemas import CommodityTrendResponse
 from api.schemas import DataFrameResponse
 from api.schemas import Direction
 from api.schemas import DistrictMapResponse
@@ -51,6 +53,8 @@ from fastapi import HTTPException
 from fastapi import Query
 from fastapi import Request
 from net_utils import get_real_client_ip
+from services.commodity_service import get_commodity_trend
+from services.commodity_service import get_fuel_vs_brent_correlation
 from services.data_quality_service import get_quality_report
 from services.forecast_service import get_historical_forecast
 from services.geocoding import geocode_address
@@ -244,6 +248,39 @@ def group_price_trends(
         return ui_test.group_trend_response(zip_code, fuel_group, period)
     series = get_group_price_trends(zip_code, fuel_group, period, province=province)
     return GroupTrendResponse(series=series, zip_code=zip_code, fuel_group=fuel_group.value, period=period.value)
+
+
+def _require_commodities() -> None:
+    """Gate the Brent-overlay/correlation endpoints on the commodities feature flag."""
+    enabled = ui_test.insights_flags()[4] if settings.ui_test_mode else settings.commodities_enabled
+    if not enabled:
+        raise HTTPException(status_code=404, detail="Commodity data not available")
+
+
+@router.get("/commodities/trend", response_model=CommodityTrendResponse)
+@limiter.limit(settings.rate_limit)
+def commodities_trend(
+    request: Request,
+    days_back: int = Query(settings.commodities_default_window_days, ge=7, le=730),
+):
+    _require_commodities()
+    if settings.ui_test_mode:
+        return ui_test.commodity_trend_response(days_back)
+    return get_commodity_trend(days_back)
+
+
+@router.get("/commodities/correlation", response_model=CommodityCorrelationResponse)
+@limiter.limit(settings.rate_limit)
+def commodities_correlation(
+    request: Request,
+    fuel_type: FuelType = Query(...),
+    days_back: int = Query(settings.commodities_default_window_days, ge=14, le=365),
+    province: str | None = Query(default=None, max_length=64),
+):
+    _require_commodities()
+    if settings.ui_test_mode:
+        return ui_test.commodity_correlation_response(fuel_type, days_back)
+    return get_fuel_vs_brent_correlation(fuel_type, days_back, province)
 
 
 @router.post("/trip/plan", response_model=TripPlanResponse)

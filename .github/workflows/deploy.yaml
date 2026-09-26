@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       spain-fuel-fetcher: ${{ steps.filter.outputs.spain-fuel-fetcher }}
+      commodity-fetcher: ${{ steps.filter.outputs.commodity-fetcher }}
       fuel-ingestor: ${{ steps.filter.outputs.fuel-ingestor }}
       fuel-dashboard: ${{ steps.filter.outputs.fuel-dashboard }}
       infra: ${{ steps.filter.outputs.infra }}
@@ -40,9 +41,14 @@ jobs:
               - 'spain-fuel-fetcher/**'
               - 'uv.lock'
               - 'pyproject.toml'
+            commodity-fetcher:
+              - 'commodity-fetcher/**'
+              - 'uv.lock'
+              - 'pyproject.toml'
             fuel-ingestor:
               - 'fuel-ingestor/**'
               - 'spain-fuel-fetcher/**'
+              - 'commodity-fetcher/**'
               - 'uv.lock'
               - 'pyproject.toml'
             fuel-dashboard:
@@ -56,6 +62,7 @@ jobs:
               - 'fuel-ingestor/**'
               - 'fuel-dashboard/**'
               - 'spain-fuel-fetcher/**'
+              - 'commodity-fetcher/**'
               - 'uv.lock'
               - 'pyproject.toml'
 
@@ -81,6 +88,22 @@ jobs:
         run: |
           docker buildx build --load -f spain-fuel-fetcher/Dockerfile.test -t spain-fuel-fetcher-test .
           docker run --rm spain-fuel-fetcher-test
+
+  test-commodity-fetcher:
+    needs: detect-changes
+    if: >-
+      needs.detect-changes.outputs.commodity-fetcher == 'true' ||
+      inputs.force_all == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and run tests
+        run: |
+          docker buildx build --load -f commodity-fetcher/Dockerfile.test -t commodity-fetcher-test .
+          docker run --rm commodity-fetcher-test
 
   test-fuel-ingestor:
     needs: detect-changes

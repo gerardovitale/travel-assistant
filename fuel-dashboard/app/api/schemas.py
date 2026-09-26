@@ -219,6 +219,27 @@ class GroupTrendResponse(BaseModel):
     period: str
 
 
+class CommodityPoint(BaseModel):
+    date: str
+    value: float
+
+
+class CommodityTrendResponse(BaseModel):
+    series: list[CommodityPoint]
+    commodity: str
+    unit: str
+    days_back: int
+
+
+class CommodityCorrelationResponse(BaseModel):
+    fuel_type: str
+    commodity: str
+    correlation: float | None = None
+    window_days: int
+    observations: int
+    insufficient_data: bool = False
+
+
 class HistoricalForecastResponse(BaseModel):
     geography_type: str
     geography_value: str

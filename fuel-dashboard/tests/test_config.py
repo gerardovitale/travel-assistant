@@ -54,3 +54,20 @@ def test_fuel_type_report_flag_reads_env(monkeypatch):
     s = Settings()
     assert s.report_fuel_type_enabled is True
     assert s.report_fuel_type_default_km_year == 22000
+
+
+def test_commodities_ship_enabled_by_default(monkeypatch):
+    monkeypatch.delenv("DASHBOARD_COMMODITIES_ENABLED", raising=False)
+    from config import Settings
+
+    s = Settings()
+    assert s.commodities_enabled is True
+    assert s.commodities_default_window_days == 90
+
+
+def test_commodities_flag_can_be_disabled_via_env(monkeypatch):
+    monkeypatch.setenv("DASHBOARD_COMMODITIES_ENABLED", "false")
+    from config import Settings
+
+    s = Settings()
+    assert s.commodities_enabled is False

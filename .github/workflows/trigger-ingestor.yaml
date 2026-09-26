@@ -22,3 +22,12 @@ jobs:
       script_path: app/aggregator/main.py
     secrets:
       gcp_credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+  run-commodity-ingestor:
+    uses: ./.github/workflows/run-python-job-reusable.yaml
+    with:
+      working_directory: fuel-ingestor
+      script_path: app/ingestor/commodity_main.py
+    secrets:
+      gcp_credentials: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+      fred_api_key: ${{ secrets.FRED_API_KEY }}

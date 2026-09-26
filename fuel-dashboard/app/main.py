@@ -306,6 +306,7 @@ def _render_insights(request: Request, active_tab: str):
         insights_historical_enabled,
         insights_reportes_enabled,
         report_fuel_type_enabled,
+        commodities_enabled,
     ) = (
         ui_test_insights_flags()
         if settings.ui_test_mode
@@ -314,6 +315,7 @@ def _render_insights(request: Request, active_tab: str):
             settings.insights_historical_enabled,
             settings.insights_reportes_enabled,
             settings.report_fuel_type_enabled,
+            settings.commodities_enabled,
         )
     )
     # Fall back to the always-available trends tab when a deep link targets a disabled tab.
@@ -332,6 +334,8 @@ def _render_insights(request: Request, active_tab: str):
     ctx["insights_reportes_enabled"] = insights_reportes_enabled
     # Per-report flag inside the Reportes tab, not a tab of its own.
     ctx["report_fuel_type_enabled"] = report_fuel_type_enabled
+    # Widget flag inside the always-on Tendencias tab, not a tab of its own.
+    ctx["commodities_enabled"] = commodities_enabled
     ctx["active_tab"] = active_tab
     # Defaults for the Tendencias tab filters (province/period).
     ctx["trends_default_province"] = settings.trends_default_province

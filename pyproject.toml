@@ -1,5 +1,5 @@
 [tool.uv.workspace]
-members = ["spain-fuel-fetcher", "fuel-ingestor", "fuel-dashboard"]
+members = ["spain-fuel-fetcher", "commodity-fetcher", "fuel-ingestor", "fuel-dashboard"]
 exclude = ["ingest-fuel-prices"]
 
 [tool.uv]

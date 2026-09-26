@@ -36,6 +36,63 @@ test("trends tab loads charts and debounced zip updates only send the final requ
   await expect(page.getByTestId("trend-kpis")).toContainText("Actual");
 });
 
+test("brent overlay toggle is checked by default and fetches the commodity trend on load", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+  const commodityRequests: string[] = [];
+
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/commodities/")) commodityRequests.push(request.url());
+  });
+
+  await insightsPage.goto();
+  await expect(page.getByTestId("trend-chart")).toHaveAttribute("data-plot-ready", "true");
+  await expect(insightsPage.trendsBrentToggle).toBeVisible();
+  await expect(insightsPage.trendsBrentToggle).toBeChecked();
+
+  await expect(insightsPage.commodityCorrelationKpi).toBeVisible();
+  await expect(insightsPage.commodityCorrelationKpi).toContainText("Correlación con el Brent");
+  expect(commodityRequests.some((u) => u.includes("/commodities/trend"))).toBe(true);
+  expect(commodityRequests.some((u) => u.includes("/commodities/correlation"))).toBe(true);
+});
+
+test("brent overlay window tracks the selected trend period instead of a fixed lookback", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+  const commodityRequests: string[] = [];
+
+  page.on("request", (request) => {
+    if (request.url().includes("/api/v1/commodities/")) commodityRequests.push(request.url());
+  });
+
+  await insightsPage.goto();
+  await expect(page.getByTestId("trend-chart")).toHaveAttribute("data-plot-ready", "true");
+  // Default period is half_year (see DASHBOARD_TRENDS_DEFAULT_PERIOD) -> 180 days, not a fixed 90.
+  expect(commodityRequests.some((u) => u.includes("/commodities/trend") && u.includes("days_back=180"))).toBe(true);
+
+  commodityRequests.length = 0;
+  // data-plot-ready flips to "true" on the very first render and never resets, so it can't be
+  // used to await this second render — wait on the actual re-fetches instead.
+  await Promise.all([
+    page.waitForRequest((r) => r.url().includes("/commodities/trend") && r.url().includes("days_back=365")),
+    page.waitForRequest((r) => r.url().includes("/commodities/correlation") && r.url().includes("days_back=365")),
+    page.getByTestId("trends-period-select").selectOption("year"),
+  ]);
+});
+
+test("brent overlay toggle can be unchecked to hide the correlation KPI", async ({ page }) => {
+  await setFixture(page, "insights_all");
+  const insightsPage = new InsightsPage(page);
+
+  await insightsPage.goto();
+  await expect(page.getByTestId("trend-chart")).toHaveAttribute("data-plot-ready", "true");
+  await expect(insightsPage.commodityCorrelationKpi).toBeVisible();
+
+  await insightsPage.trendsBrentToggle.uncheck();
+
+  await expect(insightsPage.commodityCorrelationKpi).toBeHidden();
+});
+
 test("comparativa de variantes populates the default variant pair and recomputes the diff without refetching", async ({ page }) => {
   await setFixture(page, "insights_all");
   const insightsPage = new InsightsPage(page);
@@ -224,7 +281,7 @@ test("switching tabs updates the path", async ({ page }) => {
 
 test("reportes deep link restores the active tab and its filters", async ({ page }) => {
   await setFixture(page, "insights_all");
-  await page.goto("/insights/reportes?fuel=diesel_a_price&dir=priciest");
+  await page.goto("/insights/reportes?report=marcas&fuel=diesel_a_price&dir=priciest");
 
   // Server activates the reportes tab; the client restores both filters from the query.
   await expect(page.getByTestId("insight-tabs")).toHaveAttribute("data-active-tab", "reportes");
@@ -235,7 +292,7 @@ test("reportes deep link restores the active tab and its filters", async ({ page
 
 test("reportes shows the savings estimate and recomputes on input change", async ({ page }) => {
   await setFixture(page, "insights_all");
-  await page.goto("/insights/reportes");
+  await page.goto("/insights/reportes?report=marcas");
 
   const kpis = page.getByTestId("reportes-savings-kpis");
   await expect(kpis).toContainText("/año");
@@ -255,7 +312,7 @@ test("reportes shows the savings estimate and recomputes on input change", async
 test("reportes savings inputs stay inside the card on a narrow iphone viewport", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 667 }); // iPhone SE / 8 width
   await setFixture(page, "insights_all");
-  await page.goto("/insights/reportes");
+  await page.goto("/insights/reportes?report=marcas");
 
   const card = page.locator("#sec-reportes-savings");
   await expect(card).toBeVisible();
@@ -287,7 +344,7 @@ test("reportes brand picker defaults to four brands, refreshes charts, and caps 
     if (request.url().includes("/api/v1/reportes/coverage")) coverageRequests.push(request.url());
   });
 
-  await page.goto("/insights/reportes");
+  await page.goto("/insights/reportes?report=marcas");
 
   // Picker opens with the four default brands pre-selected.
   await page.getByTestId("reportes-brand-picker").locator("summary").click();
@@ -457,32 +514,34 @@ test("reportes picker switches between reports and syncs the choice to the URL",
   const marcas = page.locator('[data-report="marcas"]');
   const combustible = page.locator('[data-report="combustible"]');
 
-  // Brand report is the default; the fuel-type one is listed but not shown.
-  await expect(page.getByTestId("reportes-win-rate-chart")).toHaveAttribute("data-plot-ready", "true");
-  await expect(marcas).toBeVisible();
-  await expect(combustible).toBeHidden();
-
-  await page.getByTestId("report-option-combustible").click();
-  await expect(page).toHaveURL(/[?&]report=combustible/);
+  // Fuel-type report is the default; the brand one is listed but not shown.
   await expect(page.getByTestId("fuel-type-cost-chart")).toHaveAttribute("data-plot-ready", "true");
   await expect(combustible).toBeVisible();
   await expect(marcas).toBeHidden();
 
-  // And back, without a reload. marcas is the default, so it drops out of the URL again.
   await page.getByTestId("report-option-marcas").click();
+  await expect(page).toHaveURL(/[?&]report=marcas/);
+  await expect(page.getByTestId("reportes-win-rate-chart")).toHaveAttribute("data-plot-ready", "true");
   await expect(marcas).toBeVisible();
   await expect(combustible).toBeHidden();
+
+  // And back, without a reload. combustible is the default, so it drops out of the URL again.
+  await page.getByTestId("report-option-combustible").click();
+  await expect(combustible).toBeVisible();
+  await expect(marcas).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]report=combustible/);
 });
 
 test("reportes does not fetch the fuel-type report until it is opened", async ({ page }) => {
+  // combustible is the default report, so laziness is only observable by deep-linking to marcas
+  // instead — the fuel-type report's own data must stay unfetched until the user opens it.
   await setFixture(page, "insights_all");
   const fuelRequests: string[] = [];
   page.on("request", (r) => {
     if (r.url().includes("/api/v1/reportes/fuel-type/")) fuelRequests.push(r.url());
   });
 
-  await page.goto("/insights/reportes");
+  await page.goto("/insights/reportes?report=marcas");
   await expect(page.getByTestId("reportes-win-rate-chart")).toHaveAttribute("data-plot-ready", "true");
   expect(fuelRequests).toHaveLength(0);
 

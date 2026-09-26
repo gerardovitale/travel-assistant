@@ -25,7 +25,10 @@ export function loadingSkeleton() {
   return '<div class="skeleton h-full w-full"></div>';
 }
 
-export function lineTrend(el, points, { label = "Precio" } = {}) {
+// overlay: optional secondary-axis series (e.g. Brent crude), [{date, value}] — same
+// yaxis2 idiom as multiLineWithDiff, but always visible (no toggle-off state of its own;
+// the caller only calls lineTrend with an overlay when it wants one shown).
+export function lineTrend(el, points, { label = "Precio", overlay = null, overlayLabel = "Brent (USD/bbl)" } = {}) {
   if (!points || !points.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";
   const x = points.map((p) => p.date);
@@ -37,7 +40,19 @@ export function lineTrend(el, points, { label = "Precio" } = {}) {
     { x, y: min, name: "Min", mode: "lines", line: { color: "#b2c5ff", width: 1 }, fill: "tonexty", fillcolor: "rgba(178,197,255,0.25)", hoverinfo: "skip" },
     { x, y: avg, name: label, mode: "lines+markers", line: { color: "#001642", width: 2.5 }, marker: { size: 5 } },
   ];
-  _renderChart(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
+  const layout = { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } };
+  if (overlay && overlay.length) {
+    traces.push({
+      x: overlay.map((p) => p.date),
+      y: overlay.map((p) => p.value),
+      mode: "lines",
+      name: overlayLabel,
+      yaxis: "y2",
+      line: { color: "#b3923a", width: 1.5, dash: "dot" },
+    });
+    layout.yaxis2 = { overlaying: "y", side: "right", gridcolor: "transparent", automargin: true };
+  }
+  _renderChart(el, traces, layout, CONFIG);
 }
 
 export function multiLine(el, seriesMap, { labels = {} } = {}) {

@@ -292,6 +292,43 @@ const HISTORICAL_PERIOD_DAYS = {
 
 // ------------------------------- TRENDS --------------------------------------
 
+// Mirrors api/schemas.py TREND_PERIOD_DAYS — the overlay must span the same window as the
+// fuel-price line it's drawn on top of, not a fixed lookback.
+const TREND_COMMODITY_DAYS = { week: 7, month: 30, quarter: 90, half_year: 180, year: 365 };
+// /commodities/correlation requires days_back >= 14 (MIN_CORRELATION_OBSERVATIONS); the trend
+// endpoint has no such floor, so only the correlation request needs clamping.
+const MIN_CORRELATION_DAYS_BACK = 14;
+
+// Optional — only present when DASHBOARD_COMMODITIES_ENABLED gates the widget on. Guarded by
+// element presence throughout, same pattern as the other flag-gated controls in this file.
+async function loadCommodityOverlay(fuelType, period) {
+  const toggle = document.getElementById("trends-brent-toggle");
+  const kpiEl = document.getElementById("commodity-correlation-kpi");
+  if (!toggle || !toggle.checked) {
+    if (kpiEl) kpiEl.classList.add("hidden");
+    return null;
+  }
+  const daysBack = TREND_COMMODITY_DAYS[period] || TREND_COMMODITY_DAYS.month;
+  try {
+    const [trendResp, corrResp] = await Promise.all([
+      api(`/commodities/trend?${qs({ days_back: daysBack })}`, { signal: AbortSignal.timeout(15000) }),
+      api(`/commodities/correlation?${qs({ fuel_type: fuelType, days_back: Math.max(daysBack, MIN_CORRELATION_DAYS_BACK) })}`, {
+        signal: AbortSignal.timeout(15000),
+      }),
+    ]);
+    if (kpiEl) {
+      kpiEl.classList.remove("hidden");
+      kpiEl.textContent = corrResp.insufficient_data || corrResp.correlation === null
+        ? "Correlación con el Brent: datos insuficientes"
+        : `Correlación con el Brent (${corrResp.window_days} días): ${corrResp.correlation.toFixed(2)}`;
+    }
+    return trendResp.series || [];
+  } catch {
+    if (kpiEl) kpiEl.classList.add("hidden");
+    return null;
+  }
+}
+
 async function loadTrends() {
   const form = document.getElementById("trends-filter");
   const data = new FormData(form);
@@ -322,7 +359,8 @@ async function loadTrends() {
       kpi("Máximo", formatPrice(max), "north"),
       kpi("Variación", `${pct.toFixed(2)} %`, pct >= 0 ? "trending_up" : "trending_down"),
     ].join("");
-    lineTrend(chartEl, pts, { label: FUEL_LABELS[fuelType] || "Precio" });
+    const overlay = await loadCommodityOverlay(fuelType, data.get("period"));
+    lineTrend(chartEl, pts, { label: FUEL_LABELS[fuelType] || "Precio", overlay });
   } catch (err) { chartEl.innerHTML = emptyMsg(err.message); }
 }
 
@@ -958,6 +996,8 @@ async function initTrends() {
   ctrl("#trends-variant-a").addEventListener("change", renderGroupTrendChart);
   ctrl("#trends-variant-b").addEventListener("change", renderGroupTrendChart);
   ctrl("#trends-variant-diff-toggle").addEventListener("change", renderGroupTrendChart);
+  // Only present when DASHBOARD_COMMODITIES_ENABLED gates the widget on.
+  ctrl("#trends-brent-toggle")?.addEventListener("change", loadTrends);
 
   loadTrends();
   loadGroupTrends();
@@ -1289,11 +1329,16 @@ async function initReportes() {
   const recomputeSavings = () => renderSavings(lastComparisonRows);
   document.getElementById("reportes-tank-liters")?.addEventListener("input", recomputeSavings);
   document.getElementById("reportes-fills-month")?.addEventListener("input", recomputeSavings);
-  captureAndRestore("reportes");
-  // The deep link may target a report that the flags left out of the page; fall back to marcas.
+  // The deep link may target a report that the flags left out of the page; fall back to the
+  // picker's own default (also flag-dependent — falls back further to marcas if that's missing).
+  // Resolved before captureAndRestore so PARAMS.reportes() baselines against the report actually
+  // shown, not the pre-init placeholder — otherwise the default report would wrongly show up in
+  // the URL as if it were a non-default choice (see the analogous re-baseline in initFuelTypeReport).
   const requested = pendingParams?.get("report");
   const available = [...document.querySelectorAll("[data-report-option]")].map((o) => o.dataset.reportOption);
-  showReport(available.includes(requested) ? requested : "marcas");
+  const defaultReport = document.getElementById("report-picker")?.dataset.defaultReport || "marcas";
+  showReport(available.includes(requested) ? requested : available.includes(defaultReport) ? defaultReport : "marcas");
+  captureAndRestore("reportes");
   await loadBrandOptions(); // resolves selectedBrands before the first chart fetch
   reportesReload();
 }

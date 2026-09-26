@@ -12,6 +12,8 @@ on:
     secrets:
       gcp_credentials:
         required: true
+      fred_api_key:
+        required: false
 
 jobs:
   run-python-job:
@@ -40,4 +42,6 @@ jobs:
 
       - name: Run script
         working-directory: ${{ inputs.working_directory }}
+        env:
+          FRED_API_KEY: ${{ secrets.fred_api_key }}
         run: PYTHONPATH=app uv run --frozen --no-sync python "${{ inputs.script_path }}"

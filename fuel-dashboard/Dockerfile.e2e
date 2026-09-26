@@ -17,6 +17,7 @@ COPY pyproject.toml uv.lock ./
 COPY spain-fuel-fetcher/ ./spain-fuel-fetcher/
 COPY fuel-dashboard/pyproject.toml ./fuel-dashboard/
 COPY fuel-ingestor/pyproject.toml ./fuel-ingestor/
+COPY commodity-fetcher/pyproject.toml ./commodity-fetcher/
 RUN uv sync --frozen --no-install-project --no-editable --package fuel-dashboard --group dev
 
 COPY ./fuel-dashboard/app/ ./app/

@@ -749,6 +749,31 @@ def get_distinct_labels(top_n: int = 0) -> dict[str, str]:
     return {label: label.title() for label in labels}
 
 
+def query_commodity_price_trend(commodity_df: pd.DataFrame | None, series_id: str, days_back: int) -> pd.DataFrame:
+    """Query a commodity price trend from the pre-computed commodity_prices aggregate."""
+    if commodity_df is None or commodity_df.empty:
+        return pd.DataFrame(columns=["date", "value"])
+    df = commodity_df  # noqa: F841
+    with _lock:
+        conn = get_connection()
+        conn.execute("DROP TABLE IF EXISTS _commodity_trend")
+        conn.execute("CREATE TEMP TABLE _commodity_trend AS SELECT * FROM df")
+        try:
+            result = conn.execute(
+                """
+                SELECT date, value
+                FROM _commodity_trend
+                WHERE series_id = $1
+                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                ORDER BY date ASC
+                """,
+                [series_id, days_back],
+            ).fetchdf()
+        finally:
+            conn.execute("DROP TABLE IF EXISTS _commodity_trend")
+    return result
+
+
 def query_province_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back: int) -> pd.DataFrame:
     """Query province ranking from pre-computed province_daily_stats aggregate."""
     fuel_type = _validate_fuel_column(fuel_type)

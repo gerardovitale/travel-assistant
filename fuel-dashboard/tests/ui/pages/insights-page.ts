@@ -11,6 +11,8 @@ export class InsightsPage {
   readonly trendsVariantDiffToggle: Locator;
   readonly trendsVariantPicker: Locator;
   readonly fuelTypeDiffToggle: Locator;
+  readonly trendsBrentToggle: Locator;
+  readonly commodityCorrelationKpi: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -23,6 +25,8 @@ export class InsightsPage {
     this.trendsVariantDiffToggle = page.locator("#trends-variant-diff-toggle");
     this.trendsVariantPicker = page.locator("#trends-variant-picker");
     this.fuelTypeDiffToggle = page.locator("#fuel-type-diff-toggle");
+    this.trendsBrentToggle = page.locator("#trends-brent-toggle");
+    this.commodityCorrelationKpi = page.getByTestId("commodity-correlation-kpi");
   }
 
   async goto() {

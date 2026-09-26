@@ -15,8 +15,8 @@ export
 setup:
 	uv sync --all-packages --dev
 
-test: spain-fuel-fetcher.test fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
-test-local: setup typecheck spain-fuel-fetcher.test-local fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
+test: spain-fuel-fetcher.test commodity-fetcher.test fuel-ingestor.test fuel-dashboard.test fuel-dashboard.ui-test
+test-local: setup typecheck spain-fuel-fetcher.test-local commodity-fetcher.test-local fuel-ingestor.test-local fuel-dashboard.test-local fuel-dashboard.ui-test-local
 scan: fuel-dashboard.scan
 done: setup test-local scan
 
@@ -69,6 +69,9 @@ fuel-dashboard.sync:
 spain-fuel-fetcher.test-local:
 	uv run --package spain-fuel-fetcher pytest --durations=5 -vv spain-fuel-fetcher/tests/
 
+commodity-fetcher.test-local:
+	uv run --package commodity-fetcher pytest --durations=5 -vv commodity-fetcher/tests/
+
 fuel-ingestor.test-local:
 	cd fuel-ingestor && uv run pytest --durations=5 -vv tests/
 
@@ -85,10 +88,13 @@ fuel-dashboard.ui-test-local:
 # output but must not fail the build. Error-level diagnostics still do.
 TY := ../.venv/bin/ty check --exit-zero-on-warning
 
-typecheck: spain-fuel-fetcher.typecheck fuel-ingestor.typecheck fuel-dashboard.typecheck
+typecheck: spain-fuel-fetcher.typecheck commodity-fetcher.typecheck fuel-ingestor.typecheck fuel-dashboard.typecheck
 
 spain-fuel-fetcher.typecheck:
 	cd spain-fuel-fetcher && $(TY)
+
+commodity-fetcher.typecheck:
+	cd commodity-fetcher && $(TY)
 
 fuel-ingestor.typecheck:
 	cd fuel-ingestor && $(TY)
@@ -119,6 +125,11 @@ spain-fuel-fetcher.test:
 	./scripts/run-docker-test.sh spain-fuel-fetcher
 
 
+# COMMODITY FETCHER (shared package)
+commodity-fetcher.test:
+	./scripts/run-docker-test.sh commodity-fetcher
+
+
 # FUEL INGESTOR
 fuel-ingestor.test:
 	./scripts/run-docker-test.sh fuel-ingestor
@@ -133,6 +144,12 @@ fuel-aggregator.run:
 	uv sync --frozen --no-dev --no-install-project --package fuel-ingestor && \
 	cd fuel-ingestor && \
 	PYTHONPATH=app uv run --frozen --no-sync python app/aggregator/main.py
+
+commodity-ingestor.run:
+	uv sync --frozen --no-dev --no-install-project --package fuel-ingestor && \
+	cd fuel-ingestor && \
+	mkdir -p output && \
+	PYTHONPATH=app uv run --frozen --no-sync python app/ingestor/commodity_local_run.py
 
 
 # FUEL DASHBOARD

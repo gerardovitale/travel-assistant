@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     # Period must be one of week/month/quarter/half_year/year.
     trends_default_province: str = "madrid"
     trends_default_period: str = "half_year"
+
+    # Brent-crude overlay + fuel/Brent correlation KPI inside the Tendencias tab (see
+    # app/services/commodity_service.py).
+    commodities_enabled: bool = True
+    commodities_default_window_days: int = 90
     # Default brand pre-selection for the reportes picker (the user can pick up to 4 of any brand).
     # Override: DASHBOARD_REPORT_BRANDS=cepsa,repsol,ballenoil,costco  (empty = all brands)
     report_brands: list[str] = ["cepsa", "repsol", "ballenoil", "costco"]

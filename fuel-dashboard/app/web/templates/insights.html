@@ -84,6 +84,15 @@
         {{ share_button("sec-trends-price") }}
       </div>
       <div id="trend-kpis" data-testid="trend-kpis" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+      {% if commodities_enabled %}
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <label class="flex items-center gap-2 text-sm">
+          <input id="trends-brent-toggle" type="checkbox" class="rounded" checked>
+          Comparar con el precio del Brent
+        </label>
+      </div>
+      <div id="commodity-correlation-kpi" data-testid="commodity-correlation-kpi" class="hidden text-sm text-on-surface-variant mb-3"></div>
+      {% endif %}
       <div id="trend-chart" data-testid="trend-chart" class="h-80"></div>
     </div>
 
@@ -246,7 +255,7 @@
     <!-- Report picker: stays visible so switching reports is one click and the reader always sees
          which of the available reports they are looking at. Each entry owns everything below it. -->
     <nav id="report-picker" data-testid="report-picker" class="grid grid-cols-1 sm:grid-cols-2 gap-3" aria-label="Informes disponibles"
-         data-default-report="marcas">
+         data-default-report="combustible">
       <button type="button" data-report-option="marcas" data-testid="report-option-marcas"
               class="text-left rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-4 shadow-sm transition-all">
         <span class="flex items-center gap-2">

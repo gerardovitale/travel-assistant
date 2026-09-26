@@ -16,6 +16,9 @@ from api.schemas import BrandWinRateRow
 from api.schemas import BreakevenHistoryPoint
 from api.schemas import BreakevenHistoryResponse
 from api.schemas import BreakevenResponse
+from api.schemas import CommodityCorrelationResponse
+from api.schemas import CommodityPoint
+from api.schemas import CommodityTrendResponse
 from api.schemas import DataFrameResponse
 from api.schemas import DataInventory
 from api.schemas import DistrictMapResponse
@@ -86,7 +89,7 @@ def is_data_ready() -> bool:
     return current_fixture_set() != "loading"
 
 
-def insights_flags() -> tuple[bool, bool, bool, bool]:
+def insights_flags() -> tuple[bool, bool, bool, bool, bool]:
     fixture = current_fixture_set()
     zones = settings.insights_zones_enabled or fixture in {"zones_enabled", "insights_all"}
     historical = settings.insights_historical_enabled or fixture in {
@@ -96,7 +99,8 @@ def insights_flags() -> tuple[bool, bool, bool, bool]:
     }
     reportes = settings.insights_reportes_enabled or fixture in {"insights_all"}
     fuel_type_report = settings.report_fuel_type_enabled or fixture in {"insights_all"}
-    return zones, historical, reportes, fuel_type_report
+    commodities = settings.commodities_enabled or fixture in {"insights_all"}
+    return zones, historical, reportes, fuel_type_report, commodities
 
 
 def health_data_response() -> tuple[int, dict[str, Any]]:
@@ -253,6 +257,28 @@ def group_trend_response(zip_code: Optional[str], fuel_group: FuelGroup, period:
         FuelType.diesel_premium_price.value: diesel_premium,
     }
     return GroupTrendResponse(series=series, zip_code=zip_code, fuel_group=fuel_group.value, period=period.value)
+
+
+def commodity_trend_response(days_back: int) -> CommodityTrendResponse:
+    points = [
+        CommodityPoint(date="2026-04-13", value=82.14),
+        CommodityPoint(date="2026-04-14", value=82.87),
+        CommodityPoint(date="2026-04-15", value=81.63),
+        CommodityPoint(date="2026-04-16", value=83.02),
+        CommodityPoint(date="2026-04-17", value=83.41),
+    ]
+    return CommodityTrendResponse(series=points, commodity="brent_crude", unit="USD/bbl", days_back=days_back)
+
+
+def commodity_correlation_response(fuel_type: FuelType, days_back: int) -> CommodityCorrelationResponse:
+    return CommodityCorrelationResponse(
+        fuel_type=fuel_type.value,
+        commodity="brent_crude",
+        correlation=0.62,
+        window_days=days_back,
+        observations=min(days_back, 90),
+        insufficient_data=False,
+    )
 
 
 def zones_provinces_response() -> DataFrameResponse:

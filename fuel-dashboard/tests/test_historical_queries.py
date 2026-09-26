@@ -44,6 +44,52 @@ def _make_day_of_week_stats():
     return pd.DataFrame(rows)
 
 
+def _make_commodity_prices():
+    """Sample commodity_prices aggregate (single series, tidy format)."""
+    rows = []
+    for day_offset in range(5):
+        rows.append(
+            {
+                "date": datetime.date.today() - datetime.timedelta(days=4 - day_offset),
+                "series_id": "DCOILBRENTEU",
+                "commodity": "brent_crude",
+                "value": 82.0 + day_offset * 0.5,
+                "unit": "USD/bbl",
+                "source": "FRED",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+class TestQueryCommodityPriceTrend:
+
+    def test_query_filters_by_series_id(self):
+        from data.duckdb_engine import query_commodity_price_trend
+
+        df = _make_commodity_prices()
+        result = query_commodity_price_trend(df, "DCOILBRENTEU", 90)
+
+        assert len(result) == 5
+        assert list(result.columns) == ["date", "value"]
+        assert result["value"].iloc[-1] == 84.0
+
+    def test_unknown_series_id_returns_empty(self):
+        from data.duckdb_engine import query_commodity_price_trend
+
+        df = _make_commodity_prices()
+        result = query_commodity_price_trend(df, "UNKNOWN_SERIES", 90)
+
+        assert result.empty
+
+    def test_none_input_returns_empty(self):
+        from data.duckdb_engine import query_commodity_price_trend
+
+        result = query_commodity_price_trend(None, "DCOILBRENTEU", 90)
+
+        assert result.empty
+        assert list(result.columns) == ["date", "value"]
+
+
 class TestQueryProvinceRanking:
 
     def test_query_filters_by_fuel_type_and_groups_by_province(self):

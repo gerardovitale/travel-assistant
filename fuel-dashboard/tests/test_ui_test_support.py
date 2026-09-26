@@ -64,16 +64,17 @@ def test_ui_test_support_special_fixture_states():
         ui_test.pop_fixture_set(token)
 
 
-def test_insights_flags_returns_four_booleans():
+def test_insights_flags_returns_five_booleans():
     token = ui_test.push_fixture_set("happy_path")
     try:
         result = ui_test.insights_flags()
-        assert len(result) == 4
-        zones, historical, reportes, fuel_type_report = result
+        assert len(result) == 5
+        zones, historical, reportes, fuel_type_report, commodities = result
         assert isinstance(zones, bool)
         assert isinstance(historical, bool)
         assert isinstance(reportes, bool)
         assert isinstance(fuel_type_report, bool)
+        assert isinstance(commodities, bool)
     finally:
         ui_test.pop_fixture_set(token)
 
@@ -81,7 +82,7 @@ def test_insights_flags_returns_four_booleans():
 def test_insights_flags_enables_reportes_for_insights_all_fixture():
     token = ui_test.push_fixture_set("insights_all")
     try:
-        _, _, reportes, _ = ui_test.insights_flags()
+        _, _, reportes, _, _ = ui_test.insights_flags()
         assert reportes is True
     finally:
         ui_test.pop_fixture_set(token)
@@ -90,7 +91,16 @@ def test_insights_flags_enables_reportes_for_insights_all_fixture():
 def test_insights_flags_enables_fuel_type_report_for_insights_all_fixture():
     token = ui_test.push_fixture_set("insights_all")
     try:
-        _, _, _, fuel_type_report = ui_test.insights_flags()
+        _, _, _, fuel_type_report, _ = ui_test.insights_flags()
         assert fuel_type_report is True
+    finally:
+        ui_test.pop_fixture_set(token)
+
+
+def test_insights_flags_enables_commodities_for_insights_all_fixture():
+    token = ui_test.push_fixture_set("insights_all")
+    try:
+        _, _, _, _, commodities = ui_test.insights_flags()
+        assert commodities is True
     finally:
         ui_test.pop_fixture_set(token)

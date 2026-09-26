@@ -8,6 +8,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "commodity-fetcher",
     "fuel-dashboard",
     "fuel-ingestor",
     "spain-fuel-fetcher",
@@ -323,6 +324,29 @@ wheels = [
 ]
 
 [[package]]
+name = "commodity-fetcher"
+version = "0.1.0"
+source = { editable = "commodity-fetcher" }
+dependencies = [
+    { name = "pandas" },
+    { name = "requests" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pandas", specifier = "==2.3.3" },
+    { name = "requests", specifier = "==2.32.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest" }]
+
+[[package]]
 name = "cryptography"
 version = "46.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -539,6 +563,7 @@ name = "fuel-ingestor"
 version = "0.1.0"
 source = { virtual = "fuel-ingestor" }
 dependencies = [
+    { name = "commodity-fetcher" },
     { name = "duckdb" },
     { name = "google-cloud-storage" },
     { name = "pandas" },
@@ -555,6 +580,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "commodity-fetcher", editable = "commodity-fetcher" },
     { name = "duckdb", specifier = "==1.1.3" },
     { name = "google-cloud-storage", specifier = "==2.18.2" },
     { name = "pandas", specifier = "==2.3.3" },

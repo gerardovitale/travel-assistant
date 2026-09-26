@@ -268,3 +268,58 @@ class TestIncrementalGCSParquetSink(TestCase):
         bucket, blob = _make_bucket_mock(existing_df=None)
         IncrementalGCSParquetSink(bucket, "test.parquet").write(pd.DataFrame())
         blob.upload_from_string.assert_not_called()
+
+    def test_deduplicates_multi_day_window_on_rerun(self):
+        # A rolling multi-day window (e.g. commodity-price re-fetch) must dedupe every
+        # date it carries, not just the first row's date.
+        existing = pd.DataFrame({"date": ["2026-01-01", "2026-01-02", "2026-01-03"], "value": [10, 20, 30]})
+        window = pd.DataFrame({"date": ["2026-01-02", "2026-01-03", "2026-01-04"], "value": [21, 31, 40]})
+        bucket, blob = _make_bucket_mock(existing_df=existing)
+
+        captured = []
+
+        def capture(data, *args, **kwargs):
+            captured.append(pd.read_parquet(io.BytesIO(data)))
+
+        blob.upload_from_string.side_effect = capture
+        IncrementalGCSParquetSink(bucket, "test.parquet").write(window)
+
+        result = captured[0]
+        self.assertEqual(len(result), 4)
+        by_date = result.set_index("date")["value"]
+        self.assertEqual(by_date["2026-01-01"], 10)
+        self.assertEqual(by_date["2026-01-02"], 21)
+        self.assertEqual(by_date["2026-01-03"], 31)
+        self.assertEqual(by_date["2026-01-04"], 40)
+
+    def test_extra_key_cols_prevents_cross_series_collision(self):
+        # Two independent series sharing dates in the same blob (e.g. commodity_prices.parquet
+        # with Brent + a future second series_id). Re-fetching one series must not drop the
+        # other series' rows just because they land on the same dates.
+        existing = pd.DataFrame(
+            {
+                "date": ["2026-01-01", "2026-01-02", "2026-01-01", "2026-01-02"],
+                "series_id": ["BRENT", "BRENT", "EURUSD", "EURUSD"],
+                "value": [80, 81, 1.08, 1.09],
+            }
+        )
+        brent_refetch = pd.DataFrame(
+            {"date": ["2026-01-01", "2026-01-02"], "series_id": ["BRENT", "BRENT"], "value": [99, 98]}
+        )
+        bucket, blob = _make_bucket_mock(existing_df=existing)
+
+        captured = []
+
+        def capture(data, *args, **kwargs):
+            captured.append(pd.read_parquet(io.BytesIO(data)))
+
+        blob.upload_from_string.side_effect = capture
+        IncrementalGCSParquetSink(bucket, "test.parquet", extra_key_cols=("series_id",)).write(brent_refetch)
+
+        result = captured[0]
+        self.assertEqual(len(result), 4)
+        by_key = result.set_index(["date", "series_id"])["value"]
+        self.assertEqual(by_key[("2026-01-01", "BRENT")], 99)
+        self.assertEqual(by_key[("2026-01-02", "BRENT")], 98)
+        self.assertEqual(by_key[("2026-01-01", "EURUSD")], 1.08)
+        self.assertEqual(by_key[("2026-01-02", "EURUSD")], 1.09)

@@ -680,3 +680,59 @@ def test_fuel_type_report_vehicles_serves_once_the_flag_is_on():
         response = _get_client().get("/api/v1/reportes/fuel-type/vehicles")
     assert response.status_code == 200
     assert response.json()["pairs"]
+
+
+# ---- /commodities endpoints ----
+# Gated on commodities_enabled, which ships False.
+
+
+@pytest.fixture
+def commodities_on():
+    with patch.object(settings, "commodities_enabled", True):
+        yield
+
+
+def test_commodities_endpoints_404_while_the_flag_is_off():
+    with patch.object(settings, "commodities_enabled", False):
+        client = _get_client()
+        paths = [
+            "/api/v1/commodities/trend",
+            "/api/v1/commodities/correlation?fuel_type=diesel_a_price",
+        ]
+        for path in paths:
+            assert client.get(path).status_code == 404, path
+
+
+@patch("api.router.get_commodity_trend")
+def test_commodities_trend_returns_200_with_data(mock_service, commodities_on):
+    from api.schemas import CommodityPoint
+    from api.schemas import CommodityTrendResponse
+
+    mock_service.return_value = CommodityTrendResponse(
+        series=[CommodityPoint(date="2026-04-17", value=83.41)],
+        commodity="brent_crude",
+        unit="USD/bbl",
+        days_back=90,
+    )
+    response = _get_client().get("/api/v1/commodities/trend")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["commodity"] == "brent_crude"
+    assert data["series"][0]["value"] == 83.41
+
+
+@patch("api.router.get_fuel_vs_brent_correlation")
+def test_commodities_correlation_returns_200_with_data(mock_service, commodities_on):
+    from api.schemas import CommodityCorrelationResponse
+
+    mock_service.return_value = CommodityCorrelationResponse(
+        fuel_type="diesel_a_price",
+        commodity="brent_crude",
+        correlation=0.62,
+        window_days=90,
+        observations=80,
+        insufficient_data=False,
+    )
+    response = _get_client().get("/api/v1/commodities/correlation?fuel_type=diesel_a_price")
+    assert response.status_code == 200
+    assert response.json()["correlation"] == 0.62
