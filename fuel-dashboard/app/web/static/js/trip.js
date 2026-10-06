@@ -8,11 +8,12 @@ import { fuelByDistance, FUEL_LOW_PCT, FUEL_MID_PCT } from "./charts.js";
 import {
   buildNavUrls,
   getProviderOrder,
+  googleWaypointLimit,
   openInMaps,
   openSmartNav,
 } from "./openInMaps.js";
 
-let map, stationsLayer, routeLayer, markersLayer;
+let map, stationsLayer, routeLayer, returnRouteLayer, markersLayer;
 let stopMarkerRefs = [];
 let activeStopIdx = -1;
 let currentNavUrls = null;  // Latest buildNavUrls() result; read by nav click handlers.
@@ -30,6 +31,7 @@ function buildShareUrl(formData, publicUrl) {
   params.set("fuel_level_pct", formData.fuel_level_pct);
   params.set("max_detour_minutes", formData.max_detour_minutes);
   params.set("min_fuel_at_destination_pct", formData.min_fuel_at_destination_pct);
+  if (formData.round_trip) params.set("round_trip", "1");
   (formData.labels || []).forEach((l) => params.append("labels[]", l));
   return `${base}?${params.toString()}`;
 }
@@ -49,6 +51,7 @@ function readShareParams() {
     max_detour_minutes: p.get("max_detour_minutes") ? parseFloat(p.get("max_detour_minutes")) : null,
     min_fuel_at_destination_pct: p.get("min_fuel_at_destination_pct") ? parseFloat(p.get("min_fuel_at_destination_pct")) : null,
     labels: p.getAll("labels[]"),
+    round_trip: p.get("round_trip") === "1",
   };
 }
 
@@ -79,11 +82,12 @@ function renderAssumptions(body) {
     { label: `Depósito ${body.tank_liters} L`, value: body.tank_liters, def: APP_CONFIG.default_tank_liters },
     { label: `Nivel inicial ${body.fuel_level_pct}%`, value: body.fuel_level_pct, def: APP_CONFIG.default_fuel_level_pct },
     { label: `Desvío máx. ${body.max_detour_minutes} min`, value: body.max_detour_minutes, def: APP_CONFIG.default_max_detour_minutes },
-    { label: `Mín. al llegar ${body.min_fuel_at_destination_pct}%`, value: body.min_fuel_at_destination_pct, def: APP_CONFIG.default_min_fuel_at_destination_pct },
+    { label: `Mín. ${body.round_trip ? "al volver" : "al llegar"} ${body.min_fuel_at_destination_pct}%`, value: body.min_fuel_at_destination_pct, def: APP_CONFIG.default_min_fuel_at_destination_pct },
   ];
+  if (body.round_trip) entries.unshift({ label: "Ida y vuelta", fixed: true });
   const list = document.getElementById("trip-assumptions-list");
   list.innerHTML = entries.map((e) => {
-    const customized = e.def == null || Number(e.value) !== Number(e.def);
+    const customized = !e.fixed && (e.def == null || Number(e.value) !== Number(e.def));
     const suffix = customized
       ? ` <span class="text-[10px] uppercase tracking-wide text-primary-container font-label font-bold">· personalizado</span>`
       : "";
@@ -96,20 +100,34 @@ function hideAssumptions() {
   document.getElementById("trip-assumptions").classList.add("hidden");
 }
 
+function fuelPctClass(pct) {
+  return pct == null           ? "text-on-surface"
+    : pct < FUEL_LOW_PCT       ? "text-error"
+    : pct < FUEL_MID_PCT       ? "text-amber-600"
+    :                            "text-tertiary-container";
+}
+
 function renderKpis(plan, body) {
   const fuelPct = plan.fuel_at_destination_pct;
-  const fuelClass = fuelPct == null ? "text-on-surface"
-    : fuelPct < FUEL_LOW_PCT   ? "text-error"
-    : fuelPct < FUEL_MID_PCT   ? "text-amber-600"
-    :                            "text-tertiary-container";
   const el = document.getElementById("trip-kpis");
-  el.innerHTML = [
+  const cards = [
     kpi("Distancia total", formatKm(plan.total_distance_km), "straighten", 0),
     kpi("Duración", formatMin(plan.duration_minutes), "schedule", 1),
     kpi("Coste combustible", formatEur(plan.total_fuel_cost), "payments", 2),
     kpi("Ahorro estimado", formatEur(plan.savings_eur), "savings", 3),
-    kpi("Combustible al llegar", `${fuelPct?.toFixed(0) ?? "—"}%`, "local_gas_station", 4, fuelClass),
-  ].join("");
+  ];
+  if (plan.round_trip) {
+    const turnPct = plan.fuel_at_turnaround_pct;
+    cards.push(kpi("Combustible en destino", `${turnPct?.toFixed(0) ?? "—"}%`, "flag", 4, fuelPctClass(turnPct)));
+    cards.push(kpi("Combustible al volver", `${fuelPct?.toFixed(0) ?? "—"}%`, "local_gas_station", 5, fuelPctClass(fuelPct)));
+  } else {
+    cards.push(kpi("Combustible al llegar", `${fuelPct?.toFixed(0) ?? "—"}%`, "local_gas_station", 4, fuelPctClass(fuelPct)));
+  }
+  el.innerHTML = cards.join("");
+  // 6 round-trip cards only fit one row from xl (~140 px content each; "1066,0 km" needs ~125 px).
+  el.classList.toggle("md:grid-cols-5", !plan.round_trip);
+  el.classList.toggle("md:grid-cols-3", !!plan.round_trip);
+  el.classList.toggle("xl:grid-cols-6", !!plan.round_trip);
   el.classList.remove("hidden");
   renderFloorWarning(plan, body);
 }
@@ -119,7 +137,7 @@ function renderFloorWarning(plan, body) {
   if (plan.floor_unmet) {
     const minPct = body?.min_fuel_at_destination_pct;
     document.getElementById("trip-floor-warning-text").textContent =
-      `No se garantiza ${Number.isFinite(minPct) ? minPct.toFixed(0) : "el"}% al llegar; ` +
+      `No se garantiza ${Number.isFinite(minPct) ? minPct.toFixed(0) : "el"}% ${plan.round_trip ? "al volver" : "al llegar"}; ` +
       `estimado ${plan.fuel_at_destination_pct?.toFixed(0) ?? "—"}%.`;
     warnEl.classList.remove("hidden");
   } else {
@@ -140,14 +158,22 @@ function directionsAnchorHtml(lat, lon) {
   }
 }
 
-function stopCard(s, i) {
+function legBadge(leg) {
+  const text = leg === "return" ? "Vuelta" : "Ida";
+  return `<span data-testid="trip-stop-leg" class="shrink-0 rounded-full bg-surface-container px-2 py-0.5 text-[10px] font-label font-bold uppercase tracking-wide text-primary-container">${text}</span>`;
+}
+
+function stopCard(s, i, roundTrip = false) {
   const st = s.station;
   return `
     <article data-testid="trip-stop-card" data-index="${i}" class="bg-surface-container-lowest rounded-2xl shadow-sm border border-outline-variant/40 p-4 flex gap-3 items-start fade-in stagger-${Math.min(i, 6)}">
       <div class="h-10 w-10 rounded-full bg-primary-container text-white flex items-center justify-center font-headline font-bold">${i + 1}</div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
-          <h3 class="font-headline font-bold truncate">${escapeHtml(st.label)}</h3>
+          <div class="flex items-center gap-2 min-w-0">
+            <h3 class="font-headline font-bold truncate">${escapeHtml(st.label)}</h3>
+            ${roundTrip ? legBadge(s.leg) : ""}
+          </div>
           <span class="font-headline font-extrabold text-lg text-primary-container">${formatPrice(st.price)}</span>
         </div>
         <p class="text-[12px] text-on-surface-variant truncate mt-0.5">${escapeHtml([st.address, st.municipality].filter(Boolean).join(", "))}</p>
@@ -168,7 +194,7 @@ function renderStops(plan) {
     el.innerHTML = `<div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">No hacen falta paradas para este viaje.</div>`;
     return;
   }
-  el.innerHTML = plan.stops.map(stopCard).join("");
+  el.innerHTML = plan.stops.map((s, i) => stopCard(s, i, plan.round_trip)).join("");
 }
 
 function altCard(alt, bestCost) {
@@ -251,13 +277,19 @@ function renderFuelChart(plan, body) {
   // reports zero width — it would fall back to a fixed default and overflow on mobile.
   wrap.classList.remove("hidden");
   const minPct = body?.min_fuel_at_destination_pct;
-  fuelByDistance(el, points, { floorPct: Number.isFinite(minPct) ? minPct : null });
+  fuelByDistance(el, points, {
+    floorPct: Number.isFinite(minPct) ? minPct : null,
+    turnaroundKm: plan.round_trip ? plan.outbound_distance_km : null,
+  });
 }
 
 function showShare(formData, plan) {
   const publicUrl = window.__APP_CONFIG__?.public_url || "";
   const shareUrl = buildShareUrl(formData, publicUrl);
-  const text = `¡He planificado un viaje de ${formData.origin} a ${formData.destination} con paradas para repostar al mejor precio! ⛽`;
+  const route = formData.round_trip
+    ? `de ida y vuelta de ${formData.origin} a ${formData.destination}`
+    : `de ${formData.origin} a ${formData.destination}`;
+  const text = `¡He planificado un viaje ${route} con paradas para repostar al mejor precio! ⛽`;
 
   const copyBtn = document.getElementById("trip-share-copy");
   const waBtn = document.getElementById("trip-share-whatsapp");
@@ -272,12 +304,9 @@ function showShare(formData, plan) {
   nativeBtn.dataset.url = shareUrl;
   nativeBtn.dataset.text = text;
 
-  currentNavUrls = buildNavUrls({
-    origin: plan.origin_coords,
-    destination: plan.destination_coords,
-    waypoints: plan.stops.map((s) => [s.station.latitude, s.station.longitude]),
-  });
+  currentNavUrls = buildNavUrls(navArgs(plan, googleWaypointLimit()));
   document.getElementById("nav-google").href = currentNavUrls.google;
+  document.getElementById("nav-google-label").textContent = currentNavUrls.googleLabel;
   document.getElementById("nav-waze").href = currentNavUrls.waze;
   document.getElementById("nav-waze-label").textContent = `(${currentNavUrls.wazeLabel})`;
   document.getElementById("nav-apple").href = currentNavUrls.apple;
@@ -287,6 +316,30 @@ function showShare(formData, plan) {
   // a SecurityError when public_url differs from the current origin (e.g. staging).
   history.pushState({}, "", window.location.pathname + shareUrl.slice(shareUrl.indexOf("?")));
   document.getElementById("trip-actions").classList.remove("hidden");
+}
+
+// Round trip navigates A → outbound stops → B → return stops → A. B is a
+// waypoint, not a fuel stop, so Waze (first waypoint only) is labelled
+// "destino" when there is no outbound stop before it.
+function navArgs(plan, maxWaypoints = Infinity) {
+  const coords = (stops) => stops.map((s) => [s.station.latitude, s.station.longitude]);
+  if (!plan.round_trip) {
+    return {
+      origin: plan.origin_coords,
+      destination: plan.destination_coords,
+      waypoints: coords(plan.stops),
+      maxWaypoints,
+    };
+  }
+  const outbound = plan.stops.filter((s) => s.leg !== "return");
+  const back = plan.stops.filter((s) => s.leg === "return");
+  return {
+    origin: plan.origin_coords,
+    destination: plan.origin_coords,
+    waypoints: [...coords(outbound), plan.destination_coords, ...coords(back)],
+    maxWaypoints,
+    wazeLabel: outbound.length ? null : "destino",
+  };
 }
 
 function hideShare() {
@@ -346,9 +399,11 @@ function resetPlanView(message = "Introduce origen y destino para planificar.") 
   document.getElementById("trip-fuel-chart").innerHTML = "";
   hideShare();
   routeLayer && map.removeLayer(routeLayer);
+  returnRouteLayer && map.removeLayer(returnRouteLayer);
   markersLayer && map.removeLayer(markersLayer);
   stationsLayer = clearLayer(map, stationsLayer);
   routeLayer = null;
+  returnRouteLayer = null;
   markersLayer = null;
   stopMarkerRefs = [];
   activeStopIdx = -1;
@@ -411,7 +466,7 @@ function attachStopInteraction() {
 function fitPlanBounds(plan) {
   const points = [];
 
-  for (const coord of plan.route_coordinates || []) {
+  for (const coord of [...(plan.route_coordinates || []), ...(plan.return_route_coordinates || [])]) {
     if (coord?.length >= 2) points.push([coord[1], coord[0]]);
   }
   for (const station of plan.candidate_stations || []) {
@@ -434,13 +489,19 @@ function fitPlanBounds(plan) {
 
 function renderMap(plan) {
   routeLayer && map.removeLayer(routeLayer);
+  returnRouteLayer && map.removeLayer(returnRouteLayer);
   markersLayer && map.removeLayer(markersLayer);
   stationsLayer = clearLayer(map, stationsLayer);
+  routeLayer = null;
+  returnRouteLayer = null;
   stopMarkerRefs = [];
   activeStopIdx = -1;
 
   if (plan.route_coordinates?.length) {
     routeLayer = drawRoute(map, plan.route_coordinates);
+  }
+  if (plan.return_route_coordinates?.length) {
+    returnRouteLayer = drawRoute(map, plan.return_route_coordinates, { color: "#4a6fa5", dashArray: "8 8" });
   }
   if (plan.candidate_stations?.length) {
     stationsLayer = drawStations(map, stationsLayer, plan.candidate_stations);
@@ -479,6 +540,7 @@ async function runPlan(form) {
     max_detour_minutes: parseFloat(data.get("max_detour_minutes")),
     min_fuel_at_destination_pct: parseFloat(data.get("min_fuel_at_destination_pct")),
     labels: getSelectedLabels(selectedLabels),
+    round_trip: form.querySelector('[name="round_trip"]').checked,
   };
   try {
     banner("info", "Calculando ruta…");
@@ -567,6 +629,16 @@ async function init() {
     if (parseInt(minFuelDestInput.value, 10) > 80) minFuelDestInput.value = 80;
     minFuelDestLabel.textContent = `${minFuelDestInput.value}%`;
   });
+
+  const roundTripInput = document.querySelector('input[name="round_trip"]');
+  const minFuelDestTitle = document.getElementById("min-fuel-dest-title");
+  const syncRoundTripLabel = () => {
+    minFuelDestTitle.textContent = roundTripInput.checked
+      ? "Combustible mínimo al volver al origen"
+      : "Combustible mínimo al llegar";
+  };
+  roundTripInput.addEventListener("change", syncRoundTripLabel);
+  syncRoundTripLabel();  // the browser may restore a checked box on reload/back navigation
 
   const swap = document.getElementById("swap-btn");
   swap?.addEventListener("click", () => {
@@ -678,6 +750,9 @@ async function init() {
       minFuelDestInput.value = params.min_fuel_at_destination_pct;
       minFuelDestLabel.textContent = `${params.min_fuel_at_destination_pct}%`;
     }
+    // Set both ways: a shared one-way link must override a box the browser restored as checked.
+    roundTripInput.checked = params.round_trip;
+    syncRoundTripLabel();
     if (params.labels?.length) {
       params.labels.forEach((l) => {
         selectedLabels.add(l);

@@ -510,6 +510,41 @@ def test_trip_plan_uses_settings_defaults_when_fields_omitted(mock_service):
 
 
 @patch("api.router.plan_trip")
+def test_trip_plan_passes_round_trip(mock_service):
+    mock_service.return_value = {
+        "stops": [],
+        "total_fuel_cost": 0.0,
+        "total_distance_km": 200.0,
+        "duration_minutes": 120.0,
+        "total_fuel_liters": 0.0,
+        "savings_eur": 0.0,
+        "route_coordinates": [],
+        "candidate_stations": [],
+        "origin_coords": [40.4, -3.7],
+        "destination_coords": [41.4, -2.7],
+        "fuel_at_destination_pct": 50.0,
+        "round_trip": True,
+        "outbound_distance_km": 100.0,
+        "fuel_at_turnaround_pct": 70.0,
+    }
+    body = {"origin": "Madrid", "destination": "Zaragoza", "fuel_type": "diesel_a_price", "round_trip": True}
+    resp = _get_client().post("/api/v1/trip/plan", json=body)
+    assert resp.status_code == 200
+    assert mock_service.call_args.kwargs["round_trip"] is True
+    plan = resp.json()["plan"]
+    assert plan["round_trip"] is True
+    assert plan["fuel_at_turnaround_pct"] == 70.0
+
+
+@patch("api.router.plan_trip")
+def test_trip_plan_round_trip_defaults_false(mock_service):
+    mock_service.side_effect = ValueError("stop here")
+    body = {"origin": "Madrid", "destination": "Zaragoza", "fuel_type": "diesel_a_price"}
+    _get_client().post("/api/v1/trip/plan", json=body)
+    assert mock_service.call_args.kwargs["round_trip"] is False
+
+
+@patch("api.router.plan_trip")
 def test_trip_plan_bad_request(mock_service):
     mock_service.side_effect = ValueError("unreachable destination")
     body = {

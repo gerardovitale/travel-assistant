@@ -14,7 +14,17 @@ export class TripPage {
   }
 
   async goto() {
-    return this.page.goto("/trip");
+    const response = await this.page.goto("/trip");
+    await this.waitForReady();
+    return response;
+  }
+
+  // trip.js init() attaches the form/swap listeners in the same synchronous block
+  // that renders the brand checkboxes (after the fuel + labels fetches settle).
+  // Interacting earlier races init and is silently ignored (e.g. swap does nothing).
+  async waitForReady() {
+    await expect(this.page.getByTestId("trip-fuel-select")).toBeEnabled();
+    await expect(this.page.locator('[data-testid^="brand-checkbox-"]').first()).toBeAttached();
   }
 
   async plan(origin: string, destination: string) {

@@ -1,3 +1,4 @@
+from typing import Callable
 from unittest.mock import patch
 
 import pandas as pd
@@ -6,13 +7,13 @@ from services.trip_planner import _build_trip_stop
 from services.trip_planner import _find_stops_with_strategy
 from services.trip_planner import _floor_unmet
 from services.trip_planner import _fuel_at_destination_pct
+from services.trip_planner import _plan_signature
 from services.trip_planner import find_min_detour
 from services.trip_planner import find_min_stops
 from services.trip_planner import find_optimal_stops
 from services.trip_planner import plan_trip
 from services.trip_planner import project_stations_onto_route
 from services.trip_planner import sample_route_waypoints
-
 
 # --- sample_route_waypoints ---
 
@@ -769,3 +770,228 @@ def test_prune_recomputes_metrics_for_surviving_stops():
     assert a_stop["fuel_at_arrival_pct"] == 20.0
     assert a_stop["liters_to_fill"] == 40.0
     assert a_stop["cost_eur"] == 56.0  # 40 L * 1.40
+
+
+# --- round trip ---
+
+
+def _meridian_route(lat_start: float, lat_end: float, distance_km: float, duration_minutes: float) -> dict:
+    """Straight north/south route with 5 evenly spaced points (~100 km apart for a 3.6° span)."""
+    step = (lat_end - lat_start) / 4
+    return {
+        "coordinates": [[-3.0, lat_start + i * step] for i in range(5)],
+        "distance_km": distance_km,
+        "duration_minutes": duration_minutes,
+    }
+
+
+def _routes_by_direction(routes: dict) -> Callable:
+    """side_effect for get_full_route keyed by (origin, destination): the two round-trip calls run concurrently."""
+    return lambda origin, destination: routes[(origin, destination)]
+
+
+def _corridor_df(rows: list[tuple[str, float, int]]) -> pd.DataFrame:
+    """rows: (label, price, closest_waypoint_idx)."""
+    return pd.DataFrame(
+        {
+            "label": [r[0] for r in rows],
+            "address": [f"addr {r[0]}" for r in rows],
+            "municipality": ["m"] * len(rows),
+            "province": ["p"] * len(rows),
+            "zip_code": ["28001"] * len(rows),
+            "latitude": [41.0 + i for i in range(len(rows))],
+            "longitude": [-3.0] * len(rows),
+            "diesel_a_price": [r[1] for r in rows],
+            "min_distance_km": [1.0] * len(rows),
+            "closest_waypoint_idx": [r[2] for r in rows],
+        }
+    )
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_round_trip_plans_both_legs(mock_geocode, mock_route, mock_corridor):
+    """400 km each way, 40 L / 8 L/100 km (500 km range), full tank, floor 20%.
+
+    Outbound S1 sits at ~200 km; on the return leg the same station sits at ~600 km.
+    Greedy picks S1 on the way out and S1 again on the way back (cheaper than S2), which only
+    works because stop dedupe is per leg.
+    """
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    mock_route.side_effect = _routes_by_direction(
+        {
+            ((40.0, -3.0), (43.6, -3.0)): _meridian_route(40.0, 43.6, 400, 240),
+            ((43.6, -3.0), (40.0, -3.0)): _meridian_route(43.6, 40.0, 400, 250),
+        }
+    )
+    df = _corridor_df([("S1", 1.40, 2), ("S2", 1.60, 3)])
+    mock_corridor.side_effect = lambda *args, **kwargs: df.copy()
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 100, 5.0, min_fuel_at_destination_pct=20, round_trip=True)
+
+    assert sorted(c.args for c in mock_route.call_args_list) == [
+        ((40.0, -3.0), (43.6, -3.0)),
+        ((43.6, -3.0), (40.0, -3.0)),
+    ]
+    assert mock_corridor.call_count == 2
+    assert result.round_trip is True
+    assert result.total_distance_km == 800
+    assert result.duration_minutes == 490
+    assert result.outbound_distance_km == 400
+    assert len(result.return_route_coordinates) == 5
+
+    assert [(s.station.label, s.leg) for s in result.stops] == [("S1", "outbound"), ("S1", "return")]
+    assert result.stops[0].route_km < 400 < result.stops[1].route_km
+    assert result.fuel_at_turnaround_pct == pytest.approx(60.0, abs=0.5)
+    assert result.fuel_at_destination_pct == pytest.approx(60.0, abs=0.5)
+    assert result.floor_unmet is False
+    # Same station near both legs shows once on the map.
+    assert sorted(c.label for c in result.candidate_stations) == ["S1", "S2"]
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_round_trip_within_range_needs_no_stops(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.0, -3.0), (40.9, -3.0)]
+    mock_route.side_effect = _routes_by_direction(
+        {
+            ((40.0, -3.0), (40.9, -3.0)): _meridian_route(40.0, 40.9, 100, 60),
+            ((40.9, -3.0), (40.0, -3.0)): _meridian_route(40.9, 40.0, 100, 60),
+        }
+    )
+    df = _corridor_df([("S1", 1.40, 2)])
+    mock_corridor.side_effect = lambda *args, **kwargs: df.copy()
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 100, 5.0, min_fuel_at_destination_pct=20, round_trip=True)
+
+    assert result.stops == []
+    assert result.total_distance_km == 200
+    assert result.fuel_at_turnaround_pct == 80.0
+    assert result.fuel_at_destination_pct == 60.0
+
+
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_round_trip_missing_return_route(mock_geocode, mock_route):
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    mock_route.side_effect = _routes_by_direction(
+        {((40.0, -3.0), (43.6, -3.0)): _meridian_route(40.0, 43.6, 400, 240), ((43.6, -3.0), (40.0, -3.0)): None}
+    )
+    with pytest.raises(ValueError, match="vuelta"):
+        plan_trip("A", "B", "diesel_a_price", 8.0, 40, 100, 5.0, round_trip=True)
+
+
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_round_trip_missing_outbound_route(mock_geocode, mock_route):
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    mock_route.side_effect = _routes_by_direction(
+        {((40.0, -3.0), (43.6, -3.0)): None, ((43.6, -3.0), (40.0, -3.0)): _meridian_route(43.6, 40.0, 400, 250)}
+    )
+    with pytest.raises(ValueError, match="origen y destino"):
+        plan_trip("A", "B", "diesel_a_price", 8.0, 40, 100, 5.0, round_trip=True)
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_one_way_keeps_round_trip_fields_empty(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    mock_route.return_value = _meridian_route(40.0, 43.6, 400, 240)
+    mock_corridor.return_value = _corridor_df([("S1", 1.40, 2), ("S2", 1.60, 3)])
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 60, 5.0, min_fuel_at_destination_pct=20)
+
+    assert mock_route.call_count == 1
+    assert mock_corridor.call_count == 1
+    assert result.round_trip is False
+    assert result.outbound_distance_km is None
+    assert result.return_route_coordinates == []
+    assert result.fuel_at_turnaround_pct is None
+    assert result.total_distance_km == 400
+    assert result.stops
+    assert all(s.leg == "outbound" for s in result.stops)
+
+
+def test_same_label_reusable_only_on_other_leg():
+    """Same label twice on one leg stays deduped; a return-leg copy is a distinct stop."""
+    outbound = _make_station("S1", 200, 1.40)
+    back = {**_make_station("S1", 600, 1.40), "leg": "return"}
+    stops = find_optimal_stops([outbound, back], total_km=800, tank_liters=40, consumption_lper100km=8.0, fuel_pct=100)
+    assert [(s["label"], s.get("leg", "outbound")) for s in stops] == [("S1", "outbound"), ("S1", "return")]
+
+
+def test_same_brand_at_different_stations_can_both_be_stops():
+    """`label` is the brand: two REPSOL stations on one leg are distinct stops (1000 km, 500 km range)."""
+    first = {**_make_station("REPSOL", 300, 1.40), "latitude": 40.0}
+    second = {**_make_station("REPSOL", 650, 1.40), "latitude": 41.0}
+    stops = find_optimal_stops([first, second], total_km=1000, tank_liters=40, consumption_lper100km=8.0, fuel_pct=100)
+    assert [s["route_km"] for s in stops] == [300, 650]
+
+
+def test_plan_signature_distinguishes_same_brand_stations_and_legs():
+    def trip_stop(lat: float, leg: str = "outbound"):
+        stop = {**_make_station("REPSOL", 300, 1.40), "latitude": lat, "leg": leg}
+        stop.update(fuel_at_arrival_pct=20.0, liters_to_fill=30.0, cost_eur=42.0)
+        return _build_trip_stop(stop)
+
+    assert _plan_signature([trip_stop(40.0)]) == _plan_signature([trip_stop(40.0)])
+    assert _plan_signature([trip_stop(40.0)]) != _plan_signature([trip_stop(41.0)])
+    assert _plan_signature([trip_stop(40.0)]) != _plan_signature([trip_stop(40.0, "return")])
+    assert _plan_signature([trip_stop(40.0), trip_stop(41.0)]) != _plan_signature([trip_stop(40.0)])
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_round_trip_empty_corridor_sets_turnaround(mock_geocode, mock_route, mock_corridor):
+    """No stations on either leg: early-return branch still fills the round-trip fields."""
+    mock_geocode.side_effect = [(40.0, -3.0), (40.9, -3.0)]
+    mock_route.side_effect = _routes_by_direction(
+        {
+            ((40.0, -3.0), (40.9, -3.0)): _meridian_route(40.0, 40.9, 100, 60),
+            ((40.9, -3.0), (40.0, -3.0)): _meridian_route(40.9, 40.0, 100, 70),
+        }
+    )
+    mock_corridor.return_value = pd.DataFrame()
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 100, 5.0, min_fuel_at_destination_pct=70, round_trip=True)
+
+    assert mock_corridor.call_count == 2
+    assert result.stops == []
+    assert result.round_trip is True
+    assert result.outbound_distance_km == 100
+    assert result.total_distance_km == 200
+    assert result.duration_minutes == 130
+    assert len(result.return_route_coordinates) == 5
+    assert result.fuel_at_turnaround_pct == 80.0  # 100 km × 8 L/100 km = 8 L of 40 L
+    assert result.fuel_at_destination_pct == 60.0
+    assert result.floor_unmet is True
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_keeps_alternative_with_same_brand_at_other_station(mock_geocode, mock_route, mock_corridor):
+    """Recommended and 'Menos paradas' both use one REPSOL stop, at different stations: the alternative must show.
+
+    600 km, 40 L / 7 L/100 km (571 km range), 50% start → first window km 0-200.
+    Cheapest picks REPSOL at km ~100 (1.30); min-stops picks the far REPSOL at km ~190 (1.45).
+    """
+    mock_geocode.side_effect = [(40.0, -3.0), (45.4, -3.0)]
+    # Points every 0.09° lat (~10 km), so waypoint index i sits at ~i × 10 km.
+    mock_route.return_value = {
+        "coordinates": [[-3.0, 40.0 + i * 0.09] for i in range(61)],
+        "distance_km": 600,
+        "duration_minutes": 360,
+    }
+    mock_corridor.return_value = _corridor_df([("REPSOL", 1.30, 10), ("REPSOL", 1.45, 19)])
+
+    result = plan_trip("A", "B", "diesel_a_price", 7.0, 40, 50, 5.0, min_fuel_at_destination_pct=0)
+
+    assert [s.station.price for s in result.stops] == [1.30]
+    menos_paradas = [a for a in result.alternative_plans if a.strategy_name == "Menos paradas"]
+    assert len(menos_paradas) == 1
+    assert [(s.station.label, s.station.price) for s in menos_paradas[0].stops] == [("REPSOL", 1.45)]

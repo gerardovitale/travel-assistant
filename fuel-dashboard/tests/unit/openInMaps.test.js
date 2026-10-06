@@ -4,6 +4,7 @@ import {
   buildNavUrls,
   detectPlatform,
   getProviderOrder,
+  googleWaypointLimit,
   openInMaps,
   openSmartNav,
 } from "../../app/web/static/js/openInMaps.js";
@@ -82,6 +83,42 @@ describe("buildNavUrls — full route with multiple waypoints (trip planner use 
   it("Waze falls back to the first stop and labels it accordingly", () => {
     assert.equal(waze, "https://waze.com/ul?ll=38.5,-4.5&navigate=yes");
     assert.equal(wazeLabel, "solo 1.ª parada");
+  });
+});
+
+describe("buildNavUrls — waypoint cap and label overrides", () => {
+  const STOP_C = [39.0, -4.0];
+
+  it("labels Google as full route when waypoints fit the cap", () => {
+    const { google, googleLabel } = buildNavUrls({ origin: MAD, destination: CHICLANA, waypoints: [STOP_A, STOP_B], maxWaypoints: 3 });
+    assert.equal(googleLabel, "ruta completa");
+    assert.match(google, /destination=36\.4188%2C-6\.1444/);
+  });
+
+  it("ends the Google route at the first point that does not fit the cap", () => {
+    const { google, apple, googleLabel } = buildNavUrls({
+      origin: MAD,
+      destination: CHICLANA,
+      waypoints: [STOP_C, STOP_A, STOP_B],
+      maxWaypoints: 2,
+    });
+    assert.equal(googleLabel, "primer tramo");
+    assert.match(google, /waypoints=39%2C-4%7C38\.5%2C-4\.5$/);
+    assert.match(google, /destination=37\.5%2C-5\.5/);
+    // Apple has no documented cap: it keeps the full route.
+    assert.match(apple, /daddr=39%2C-4\+to:38\.5%2C-4\.5\+to:37\.5%2C-5\.5\+to:36\.4188%2C-6\.1444/);
+  });
+
+  it("uses the caller's Waze label when the first waypoint is not a fuel stop", () => {
+    const { waze, wazeLabel } = buildNavUrls({ origin: MAD, destination: MAD, waypoints: [SEV], wazeLabel: "destino" });
+    assert.equal(waze, "https://waze.com/ul?ll=37.3886,-5.9823&navigate=yes");
+    assert.equal(wazeLabel, "destino");
+  });
+
+  it("googleWaypointLimit allows 9 on desktop and 3 on mobile", () => {
+    assert.equal(googleWaypointLimit("desktop"), 9);
+    assert.equal(googleWaypointLimit("ios"), 3);
+    assert.equal(googleWaypointLimit("android"), 3);
   });
 });
 

@@ -1,8 +1,11 @@
 import asyncio
+import threading
+import time
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
+import services.routing as routing
 from services.routing import get_road_distances
 from services.routing import get_route_geometries
 
@@ -141,3 +144,26 @@ def test_route_geometries_non_ok_status(mock_client_cls):
 
     result = asyncio.run(get_route_geometries((40.0, -3.0), [(40.1, -3.1)]))
     assert result == [None]
+
+
+def test_get_sync_client_concurrent_first_calls_create_one_client(monkeypatch):
+    """Round trips fetch both routes in parallel; the first calls must share one client."""
+    created = []
+
+    def slow_client(*args, **kwargs):
+        time.sleep(0.05)  # widen the check-then-create window
+        client = MagicMock(is_closed=False)
+        created.append(client)
+        return client
+
+    monkeypatch.setattr(routing, "_sync_client", None)
+    monkeypatch.setattr(routing.httpx, "Client", slow_client)
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(routing._get_sync_client())) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(created) == 1
+    assert all(r is created[0] for r in results)

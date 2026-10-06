@@ -1,5 +1,6 @@
 import logging
 import math
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from typing import Callable
 
@@ -172,9 +173,28 @@ def _prune_redundant_stops(
     return pruned
 
 
+StationId = tuple[str, float | None, float | None]
+
+
+def _station_id(label: str, latitude: float | None, longitude: float | None) -> StationId:
+    """Physical station identity. `label` is the brand (Rótulo), so it is not unique on its own."""
+    return label, latitude, longitude
+
+
+def _stop_key(station: dict[str, Any]) -> tuple[StationId, str]:
+    """Dedupe key for stop selection: one physical station once per leg (round trips may revisit it)."""
+    station_id = _station_id(station["label"], station.get("latitude"), station.get("longitude"))
+    return station_id, station.get("leg", "outbound")
+
+
+def _plan_signature(stops: list[TripStop]) -> tuple[tuple[StationId, str], ...]:
+    """Ordered stop identities (station + leg), used to tell whether two plans are the same."""
+    return tuple((_station_id(s.station.label, s.station.latitude, s.station.longitude), s.leg) for s in stops)
+
+
 def _append_stop(
     stops: list[dict[str, Any]],
-    used_labels: set[str],
+    used_keys: set[tuple[StationId, str]],
     best: dict[str, Any],
     prev_km: float,
     prev_range_km: float,
@@ -193,12 +213,12 @@ def _append_stop(
     stop["cost_eur"] = cost
     stop["reasoning"] = reasoning
     stops.append(stop)
-    used_labels.add(best["label"])
+    used_keys.add(_stop_key(best))
 
 
 def _insert_floor_safeguard_stop(
     stops: list[dict[str, Any]],
-    used_labels: set[str],
+    used_keys: set[tuple[StationId, str]],
     sorted_stations: list[dict[str, Any]],
     total_km: float,
     tank_liters: float,
@@ -211,7 +231,7 @@ def _insert_floor_safeguard_stop(
     """If predicted arrival is below the floor, insert one late stop close enough
     to the destination that a full refill keeps arrival >= the floor.
 
-    Mutates `stops` and `used_labels` in place. No-op if the floor is already met
+    Mutates `stops` and `used_keys` in place. No-op if the floor is already met
     or if no station satisfies both the reachability and reserve-window constraints.
     """
     arrival_pct = _predict_arrival_fuel_pct(stops, total_km, tank_liters, consumption_lper100km, fuel_pct)
@@ -229,7 +249,7 @@ def _insert_floor_safeguard_stop(
         for s in sorted_stations
         if anchor_km < s["route_km"] <= min(reach_upper, total_km)
         and total_km - s["route_km"] <= max_remaining_km
-        and s["label"] not in used_labels
+        and _stop_key(s) not in used_keys
     ]
     if not fix_candidates:
         return
@@ -238,7 +258,7 @@ def _insert_floor_safeguard_stop(
     window_end_km = min(reach_upper, total_km)
     _append_stop(
         stops,
-        used_labels,
+        used_keys,
         best,
         anchor_km,
         anchor_range_km,
@@ -272,7 +292,7 @@ def _find_stops_with_strategy(
     current_range_km = max_range_km * (fuel_pct / 100)
     current_km = 0.0
     stops: list[dict[str, Any]] = []
-    used_labels: set[str] = set()
+    used_keys: set[tuple[StationId, str]] = set()
 
     sorted_stations = sorted(stations, key=lambda s: s["route_km"])
 
@@ -287,7 +307,7 @@ def _find_stops_with_strategy(
         window_end = current_km + effective_range
 
         candidates = [
-            s for s in sorted_stations if window_start < s["route_km"] <= window_end and s["label"] not in used_labels
+            s for s in sorted_stations if window_start < s["route_km"] <= window_end and _stop_key(s) not in used_keys
         ]
 
         if not candidates:
@@ -301,7 +321,7 @@ def _find_stops_with_strategy(
         best = pick_fn(candidates, window_start, window_end)
         _append_stop(
             stops,
-            used_labels,
+            used_keys,
             best,
             current_km,
             current_range_km,
@@ -315,7 +335,7 @@ def _find_stops_with_strategy(
 
     _insert_floor_safeguard_stop(
         stops,
-        used_labels,
+        used_keys,
         sorted_stations,
         total_km,
         tank_liters,
@@ -438,6 +458,18 @@ def _fuel_at_destination_pct(
     return _predict_arrival_fuel_pct(stop_dicts, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
 
 
+def _turnaround_fuel_pct(
+    stops: list[TripStop],
+    outbound_km: float,
+    tank_liters: float,
+    consumption_lper100km: float,
+    fuel_level_pct: float,
+) -> float:
+    """Round trip: fuel level (%) on arrival at the destination, before any refill there."""
+    outbound_stops = [s for s in stops if s.leg == "outbound"]
+    return _fuel_at_destination_pct(outbound_stops, outbound_km, tank_liters, consumption_lper100km, fuel_level_pct)
+
+
 def _floor_unmet(dest_fuel_pct: float, min_fuel_at_destination_pct: float) -> bool:
     """True when arrival fuel falls below the requested floor (0.05 tolerance for rounding)."""
     return dest_fuel_pct + 0.05 < min_fuel_at_destination_pct
@@ -463,63 +495,44 @@ def _build_trip_stop(stop_dict: dict) -> TripStop:
         liters_to_fill=stop_dict["liters_to_fill"],
         cost_eur=stop_dict["cost_eur"],
         reasoning=stop_dict.get("reasoning"),
+        leg=stop_dict.get("leg", "outbound"),
     )
 
 
-def plan_trip(
-    origin_address: str,
-    destination_address: str,
+def _fetch_routes(
+    origin_coords: tuple[float, float],
+    dest_coords: tuple[float, float],
+    round_trip: bool,
+) -> tuple[dict | None, dict | None]:
+    """Return (outbound, return) OSRM routes; for round trips both requests run concurrently."""
+    if not round_trip:
+        return get_full_route(origin_coords, dest_coords), None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outbound = pool.submit(get_full_route, origin_coords, dest_coords)
+        back = pool.submit(get_full_route, dest_coords, origin_coords)
+        return outbound.result(), back.result()
+
+
+def _offset_waypoints(
+    waypoints: list[tuple[float, float, float]],
+    offset_km: float,
+) -> list[tuple[float, float, float]]:
+    """Shift each waypoint's cumulative km by offset_km (places the return leg after the outbound one)."""
+    return [(lat, lon, round(km + offset_km, 2)) for lat, lon, km in waypoints]
+
+
+def _corridor_candidates(
+    waypoints: list[tuple[float, float, float]],
     fuel_type: str,
-    consumption_lper100km: float,
-    tank_liters: float,
-    fuel_level_pct: float,
+    corridor_km: float,
     max_detour_minutes: float,
-    min_fuel_at_destination_pct: float = 50.0,
-    labels: list[str] | None = None,
-) -> TripPlan:
-    """Main trip planning orchestrator.
-
-    Raises ValueError for invalid inputs or geocoding failures.
-    """
-    origin_coords = geocode_address(origin_address)
-    if origin_coords is None:
-        raise ValueError(f"No se pudo geocodificar el origen: {origin_address}")
-
-    dest_coords = geocode_address(destination_address)
-    if dest_coords is None:
-        raise ValueError(f"No se pudo geocodificar el destino: {destination_address}")
-
-    route = get_full_route(origin_coords, dest_coords)
-    if route is None:
-        raise ValueError("No se pudo obtener la ruta entre origen y destino.")
-
-    route_coords = route["coordinates"]
-    total_km = route["distance_km"]
-    duration_min = route["duration_minutes"]
-
-    waypoints = sample_route_waypoints(route_coords, interval_km=10)
-
-    corridor_km = max_detour_minutes * 1.5
+    labels: list[str] | None,
+    leg: str,
+) -> tuple[list[StationResult], list[dict[str, Any]]]:
+    """Query stations along one leg's corridor; return (candidate StationResults, station dicts for the planner)."""
     stations_df = query_stations_along_corridor(waypoints, fuel_type, corridor_km, labels=labels)
-
     if stations_df.empty:
-        # No stations in corridor — min_fuel_at_destination_pct cannot be enforced;
-        # return plan with computed arrival fuel so the KPI reflects reality.
-        dest_fuel = _fuel_at_destination_pct([], total_km, tank_liters, consumption_lper100km, fuel_level_pct)
-        return TripPlan(
-            stops=[],
-            total_fuel_cost=0,
-            total_distance_km=total_km,
-            duration_minutes=duration_min,
-            total_fuel_liters=0,
-            savings_eur=0,
-            route_coordinates=route_coords,
-            candidate_stations=[],
-            origin_coords=list(origin_coords),
-            destination_coords=list(dest_coords),
-            fuel_at_destination_pct=dest_fuel,
-            floor_unmet=_floor_unmet(dest_fuel, min_fuel_at_destination_pct),
-        )
+        return [], []
 
     project_stations_onto_route(stations_df, waypoints)
 
@@ -561,7 +574,112 @@ def plan_trip(
                 "route_km": row["route_km"],
                 "detour_minutes": row["detour_minutes"],
                 "min_distance_km": row.get("min_distance_km", 0),
+                "leg": leg,
             }
+        )
+    return candidate_stations, station_dicts
+
+
+def _dedupe_candidates(candidates: list[StationResult]) -> list[StationResult]:
+    """Drop repeated stations (same station near both legs of a round trip); keep first occurrence."""
+    seen: set[StationId] = set()
+    unique = []
+    for c in candidates:
+        key = _station_id(c.label, c.latitude, c.longitude)
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
+    return unique
+
+
+def plan_trip(
+    origin_address: str,
+    destination_address: str,
+    fuel_type: str,
+    consumption_lper100km: float,
+    tank_liters: float,
+    fuel_level_pct: float,
+    max_detour_minutes: float,
+    min_fuel_at_destination_pct: float = 50.0,
+    labels: list[str] | None = None,
+    round_trip: bool = False,
+) -> TripPlan:
+    """Main trip planning orchestrator.
+
+    With round_trip, plans origin → destination → origin as one continuous drive: the return leg's
+    route_km continues after the outbound distance, and the arrival floor applies at the final return.
+
+    Raises ValueError for invalid inputs or geocoding failures.
+    """
+    origin_coords = geocode_address(origin_address)
+    if origin_coords is None:
+        raise ValueError(f"No se pudo geocodificar el origen: {origin_address}")
+
+    dest_coords = geocode_address(destination_address)
+    if dest_coords is None:
+        raise ValueError(f"No se pudo geocodificar el destino: {destination_address}")
+
+    route, return_route = _fetch_routes(origin_coords, dest_coords, round_trip)
+    if route is None:
+        raise ValueError("No se pudo obtener la ruta entre origen y destino.")
+    if round_trip and return_route is None:
+        raise ValueError("No se pudo obtener la ruta de vuelta.")
+
+    route_coords = route["coordinates"]
+    outbound_km = route["distance_km"]
+    total_km = outbound_km
+    duration_min = route["duration_minutes"]
+    if return_route is not None:
+        total_km = round(outbound_km + return_route["distance_km"], 2)
+        duration_min = round(duration_min + return_route["duration_minutes"], 1)
+
+    corridor_km = max_detour_minutes * 1.5
+    legs = [("outbound", sample_route_waypoints(route_coords, interval_km=10))]
+    if return_route is not None:
+        return_waypoints = sample_route_waypoints(return_route["coordinates"], interval_km=10)
+        legs.append(("return", _offset_waypoints(return_waypoints, outbound_km)))
+
+    candidate_stations: list[StationResult] = []
+    station_dicts: list[dict[str, Any]] = []
+    for leg, waypoints in legs:
+        leg_candidates, leg_dicts = _corridor_candidates(
+            waypoints, fuel_type, corridor_km, max_detour_minutes, labels, leg
+        )
+        candidate_stations.extend(leg_candidates)
+        station_dicts.extend(leg_dicts)
+    candidate_stations = _dedupe_candidates(candidate_stations)
+
+    round_trip_fields: dict[str, Any] = {}
+    if return_route is not None:
+        round_trip_fields = {
+            "round_trip": True,
+            "outbound_distance_km": outbound_km,
+            "return_route_coordinates": return_route["coordinates"],
+        }
+
+    if not station_dicts:
+        # No stations in corridor — min_fuel_at_destination_pct cannot be enforced;
+        # return plan with computed arrival fuel so the KPI reflects reality.
+        dest_fuel = _fuel_at_destination_pct([], total_km, tank_liters, consumption_lper100km, fuel_level_pct)
+        return TripPlan(
+            stops=[],
+            total_fuel_cost=0,
+            total_distance_km=total_km,
+            duration_minutes=duration_min,
+            total_fuel_liters=0,
+            savings_eur=0,
+            route_coordinates=route_coords,
+            candidate_stations=[],
+            origin_coords=list(origin_coords),
+            destination_coords=list(dest_coords),
+            fuel_at_destination_pct=dest_fuel,
+            floor_unmet=_floor_unmet(dest_fuel, min_fuel_at_destination_pct),
+            fuel_at_turnaround_pct=(
+                _turnaround_fuel_pct([], outbound_km, tank_liters, consumption_lper100km, fuel_level_pct)
+                if round_trip
+                else None
+            ),
+            **round_trip_fields,
         )
 
     optimal_stops = find_optimal_stops(
@@ -587,7 +705,7 @@ def plan_trip(
     else:
         savings = 0
 
-    recommended_labels = {s.station.label for s in trip_stops}
+    recommended_signature = _plan_signature(trip_stops)
     stop_args = (station_dicts, total_km, tank_liters, consumption_lper100km, fuel_level_pct)
     alternative_strategies = [
         ("Menos paradas", "Prioriza estaciones lejanas para reducir el numero de paradas", find_min_stops),
@@ -598,8 +716,7 @@ def plan_trip(
     for name, description, strategy_fn in alternative_strategies:
         alt_stops_raw = strategy_fn(*stop_args, min_fuel_at_destination_pct=min_fuel_at_destination_pct)
         alt_trip_stops = [_build_trip_stop(s) for s in alt_stops_raw]
-        alt_labels = {s.station.label for s in alt_trip_stops}
-        if alt_labels == recommended_labels:
+        if _plan_signature(alt_trip_stops) == recommended_signature:
             continue
         alt_cost = sum(s.cost_eur for s in alt_trip_stops)
         alt_liters = sum(s.liters_to_fill for s in alt_trip_stops)
@@ -636,4 +753,10 @@ def plan_trip(
         fuel_at_destination_pct=dest_fuel,
         floor_unmet=_floor_unmet(dest_fuel, min_fuel_at_destination_pct),
         alternative_plans=alternative_plans,
+        fuel_at_turnaround_pct=(
+            _turnaround_fuel_pct(trip_stops, outbound_km, tank_liters, consumption_lper100km, fuel_level_pct)
+            if round_trip
+            else None
+        ),
+        **round_trip_fields,
     )

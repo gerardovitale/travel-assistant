@@ -172,7 +172,7 @@ function fuelColor(pct) {
   return pct < FUEL_LOW_PCT ? FUEL_COLORS.low : pct < FUEL_MID_PCT ? FUEL_COLORS.mid : FUEL_COLORS.ok;
 }
 
-export function fuelByDistance(el, points, { floorPct = null } = {}) {
+export function fuelByDistance(el, points, { floorPct = null, turnaroundKm = null } = {}) {
   if (!points || !points.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";
   const x = points.map((p) => p.km);
@@ -189,6 +189,17 @@ export function fuelByDistance(el, points, { floorPct = null } = {}) {
     annotations.push({
       xref: "paper", x: 1, yref: "y", y: floorPct, yanchor: "bottom", xanchor: "right",
       text: "Reserva mín.", showarrow: false, font: { size: 10, color: "#ba1a1a" },
+    });
+  }
+  // Round trip: mark where the outbound leg ends and the return leg begins.
+  if (Number.isFinite(turnaroundKm) && turnaroundKm > 0) {
+    shapes.push({
+      type: "line", xref: "x", x0: turnaroundKm, x1: turnaroundKm, yref: "paper", y0: 0, y1: 1,
+      line: { color: "#747782", width: 1.5, dash: "dot" },
+    });
+    annotations.push({
+      xref: "x", x: turnaroundKm, yref: "paper", y: 1, yanchor: "bottom", xanchor: "center",
+      text: "Destino", showarrow: false, font: { size: 10, color: "#747782" },
     });
   }
 

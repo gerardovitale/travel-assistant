@@ -205,6 +205,23 @@ test.describe("iOS emulation", () => {
     await expect(visibleTiles.nth(1)).toHaveAttribute("data-testid", "trip-nav-google");
     await expect(visibleTiles.nth(2)).toHaveAttribute("data-testid", "trip-nav-waze");
   });
+
+  test("round trip with more than 3 waypoints sends Google only the first leg of the route", async ({ page }) => {
+    const tripPage = new TripPage(page);
+    await tripPage.goto();
+    await page.getByTestId("trip-round-trip").check();
+    await tripPage.plan("Madrid", "Sevilla");
+
+    // 2 outbound stops + Sevilla + 1 return stop = 4 waypoints > 3 allowed on mobile:
+    // Google keeps the first 3 and ends at the return stop instead of skipping points.
+    await page.getByTestId("trip-nav-button").click();
+    await expect(page.getByTestId("trip-nav-google")).toContainText("primer tramo");
+    const params = new URL((await page.getByTestId("trip-nav-google").getAttribute("href"))!).searchParams;
+    expect(params.get("waypoints")).toBe("40.03,-3.6|38.34,-3.52|37.3891,-5.9845");
+    expect(params.get("destination")).toBe("37.88,-4.77");
+    // Apple Maps has no documented cap and keeps the full route back to Madrid.
+    await expect(page.getByTestId("trip-nav-apple")).toHaveAttribute("href", /\+to:40\.4168%2C-3\.7038/);
+  });
 });
 
 test.describe("Android emulation", () => {
@@ -260,4 +277,105 @@ test("share URL pre-populates form and auto-runs plan on load", async ({ page })
   expect(req.postDataJSON()).toMatchObject({ origin: "Madrid", destination: "Sevilla", fuel_type: "gasoline_95_e5_price" });
 
   await expect(page.getByTestId("trip-actions")).toBeVisible();
+});
+
+test("round trip toggle plans both legs and labels stops and KPIs", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+
+  await page.getByTestId("trip-round-trip").check();
+  await expect(page.locator("#min-fuel-dest-title")).toHaveText("Combustible mínimo al volver al origen");
+
+  const requestPromise = page.waitForRequest((request) => request.url().includes("/api/v1/trip/plan"));
+  await tripPage.plan("Madrid", "Sevilla");
+  expect((await requestPromise).postDataJSON()).toMatchObject({ round_trip: true });
+
+  const kpis = page.getByTestId("trip-kpis");
+  await expect(kpis).toContainText("Combustible en destino");
+  await expect(kpis).toContainText("Combustible al volver");
+  await expect(kpis).not.toContainText("Combustible al llegar");
+
+  const legs = page.getByTestId("trip-stops").getByTestId("trip-stop-leg");
+  await expect(legs).toHaveCount(3);
+  await expect(legs.last()).toHaveText("Vuelta");
+  await expect(page.getByTestId("trip-stop-card").last()).toContainText("BP Cordoba Norte");
+  // Totals include the return-leg stop: 62.70 € outbound + 30 l × 1.474 € = 106.92 €.
+  await expect(kpis).toContainText("106,92");
+  await expect(page.getByTestId("trip-assumptions-list")).toContainText("Ida y vuelta");
+  await expect(page.getByTestId("trip-fuel-chart")).toHaveAttribute("data-plot-ready", "true");
+
+  await expect(page).toHaveURL(/round_trip=1/);
+
+  // Navigation: A → outbound stops → B → return stop → A. Desktop allows 9 Google
+  // waypoints, so these 4 fit and the route ends back at the origin.
+  await page.getByTestId("trip-nav-button").click();
+  const google = await page.getByTestId("trip-nav-google").getAttribute("href");
+  const params = new URL(google!).searchParams;
+  expect(params.get("destination")).toBe("40.4168,-3.7038");
+  expect(params.get("waypoints")).toBe("40.03,-3.6|38.34,-3.52|37.3891,-5.9845|37.88,-4.77");
+  await expect(page.getByTestId("trip-nav-google")).toContainText("ruta completa");
+});
+
+test("round trip without outbound stops labels Waze as the destination", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+  await page.getByTestId("trip-round-trip").check();
+
+  // BP only exists on the return leg, so the first waypoint is the turnaround (B).
+  await page.getByTestId("trip-brands-toggle").click();
+  await page.getByTestId("brand-checkbox-bp").check();
+  await tripPage.plan("Madrid", "Sevilla");
+
+  await expect(page.getByTestId("trip-stop-card")).toHaveCount(1);
+  await page.getByTestId("trip-nav-button").click();
+  await expect(page.locator("#nav-waze-label")).toHaveText("(destino)");
+  await expect(page.getByTestId("trip-nav-waze")).toHaveAttribute("href", /ll=37\.3891,-5\.9845/);
+});
+
+test("round trip toggle restored by the browser keeps the floor label in sync", async ({ page }) => {
+  // Simulate browser form restoration (reload / back navigation): the box is
+  // already checked when trip.js init runs, without any change event firing.
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      (document.querySelector('input[name="round_trip"]') as HTMLInputElement).checked = true;
+    });
+  });
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+
+  await expect(page.getByTestId("trip-round-trip")).toBeChecked();
+  await expect(page.locator("#min-fuel-dest-title")).toHaveText("Combustible mínimo al volver al origen");
+});
+
+test("one-way plans show no leg badges", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+  await tripPage.plan("Madrid", "Sevilla");
+
+  await expect(page.getByTestId("trip-stop-card")).toHaveCount(2);
+  await expect(page.getByTestId("trip-stop-leg")).toHaveCount(0);
+  await expect(page.getByTestId("trip-kpis")).toContainText("Combustible al llegar");
+});
+
+test("share URL with round_trip=1 pre-checks the toggle and auto-runs", async ({ page }) => {
+  const planRequest = page.waitForRequest((r) => r.url().includes("/api/v1/trip/plan"));
+  await page.goto("/trip?origin=Madrid&destination=Sevilla&fuel_type=gasoline_95_e5_price&round_trip=1");
+
+  await expect(page.getByTestId("trip-round-trip")).toBeChecked();
+  expect((await planRequest).postDataJSON()).toMatchObject({ round_trip: true });
+  await expect(page.getByTestId("trip-kpis")).toContainText("Combustible al volver");
+});
+
+test("one-way share link unchecks a round-trip box restored by the browser", async ({ page }) => {
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      (document.querySelector('input[name="round_trip"]') as HTMLInputElement).checked = true;
+    });
+  });
+  const planRequest = page.waitForRequest((r) => r.url().includes("/api/v1/trip/plan"));
+  await page.goto("/trip?origin=Madrid&destination=Sevilla&fuel_type=gasoline_95_e5_price");
+
+  expect((await planRequest).postDataJSON()).toMatchObject({ round_trip: false });
+  await expect(page.getByTestId("trip-round-trip")).not.toBeChecked();
+  await expect(page.locator("#min-fuel-dest-title")).toHaveText("Combustible mínimo al llegar");
 });

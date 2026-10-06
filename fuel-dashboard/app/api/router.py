@@ -302,6 +302,7 @@ def trip_plan(request: Request, body: TripPlanRequest = Body(...)):
             max_detour_minutes=body.max_detour_minutes,
             min_fuel_at_destination_pct=body.min_fuel_at_destination_pct,
             labels=body.labels,
+            round_trip=body.round_trip,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

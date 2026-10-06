@@ -22,11 +22,23 @@ function fmt(coord) {
   return `${lat},${lon}`;
 }
 
+// Google Maps URLs accept up to 3 waypoints on mobile and 9 elsewhere; extra
+// waypoints are dropped by the app, so callers cap them per platform.
+// https://developers.google.com/maps/documentation/urls/get-started#directions-action
+export function googleWaypointLimit(platform = detectPlatform()) {
+  return platform === "desktop" ? 9 : 3;
+}
+
 // Build provider URLs from a coordinate set. `destination` is required;
-// `origin` and `waypoints` are optional. Returns the three URLs plus a Waze
-// label describing what the single-destination Waze link points at, since
-// Waze doesn't support multi-stop routes.
-export function buildNavUrls({ origin, destination, waypoints = [] }) {
+// `origin` and `waypoints` are optional. Returns the three URLs plus labels:
+// - wazeLabel: what the single-destination Waze link points at, since Waze
+//   doesn't support multi-stop routes. `wazeLabel` overrides it when the
+//   first waypoint is not a fuel stop (e.g. the turnaround of a round trip).
+// - googleLabel: "ruta completa", or "primer tramo" when more than
+//   `maxWaypoints` waypoints exist. Then the Google route ends at the first
+//   point that does not fit, so it stays correct up to there instead of
+//   silently skipping points.
+export function buildNavUrls({ origin, destination, waypoints = [], maxWaypoints = Infinity, wazeLabel = null }) {
   if (!isValidCoord(destination)) {
     throw new Error("buildNavUrls: destination must be a finite [lat, lon] pair");
   }
@@ -37,10 +49,14 @@ export function buildNavUrls({ origin, destination, waypoints = [] }) {
   const dest = fmt(destination);
   const stops = waypoints.filter(isValidCoord);
 
-  const googleParams = new URLSearchParams({ api: "1", destination: dest, travelmode: "driving" });
+  const truncated = stops.length > maxWaypoints;
+  const googleStops = truncated ? stops.slice(0, maxWaypoints) : stops;
+  const googleDest = truncated ? fmt(stops[maxWaypoints]) : dest;
+  const googleParams = new URLSearchParams({ api: "1", destination: googleDest, travelmode: "driving" });
   if (origin) googleParams.set("origin", fmt(origin));
-  if (stops.length) googleParams.set("waypoints", stops.map(fmt).join("|"));
+  if (googleStops.length) googleParams.set("waypoints", googleStops.map(fmt).join("|"));
   const google = `https://www.google.com/maps/dir/?${googleParams.toString()}`;
+  const googleLabel = truncated ? "primer tramo" : "ruta completa";
 
   // Apple Maps multi-stop encodes additional stops with "+to:" inside daddr.
   // The final destination goes last so the route ends where the user expects.
@@ -55,9 +71,9 @@ export function buildNavUrls({ origin, destination, waypoints = [] }) {
   // is what the driver wants next), otherwise at the final destination.
   const wazeTarget = stops[0] || destination;
   const waze = `https://waze.com/ul?ll=${fmt(wazeTarget)}&navigate=yes`;
-  const wazeLabel = stops.length ? "solo 1.ª parada" : "destino";
+  const wazeText = wazeLabel ?? (stops.length ? "solo 1.ª parada" : "destino");
 
-  return { google, apple, waze, wazeLabel };
+  return { google, apple, waze, wazeLabel: wazeText, googleLabel };
 }
 
 // User-agent based platform detection. Narrow and pragmatic — used only to

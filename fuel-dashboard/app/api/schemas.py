@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Any
+from typing import Literal
 
 from config import settings
 from pydantic import BaseModel
@@ -154,6 +155,7 @@ class TripStop(BaseModel):
     liters_to_fill: float
     cost_eur: float
     reasoning: str | None = None
+    leg: Literal["outbound", "return"] = "outbound"
 
 
 class AlternativePlan(BaseModel):
@@ -185,6 +187,10 @@ class TripPlan(BaseModel):
     fuel_at_destination_pct: float = 0.0
     floor_unmet: bool = False
     alternative_plans: list[AlternativePlan] = []
+    round_trip: bool = False
+    outbound_distance_km: float | None = None
+    return_route_coordinates: list[list[float]] = []
+    fuel_at_turnaround_pct: float | None = None
 
 
 class SearchLocation(BaseModel):
@@ -274,6 +280,7 @@ class TripPlanRequest(BaseModel):
         default_factory=lambda: settings.default_min_fuel_at_destination_pct, ge=0.0, le=80.0
     )
     labels: list[str] | None = None
+    round_trip: bool = False
 
 
 class NationalAvgResponse(BaseModel):

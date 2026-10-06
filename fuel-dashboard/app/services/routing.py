@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import logging
+import threading
 import time
 
 import httpx
@@ -12,13 +13,18 @@ _OSRM_RETRIES = 3
 _OSRM_RETRY_DELAY = 1.0
 
 _sync_client: httpx.Client | None = None
+_sync_client_lock = threading.Lock()
 
 
 def _get_sync_client() -> httpx.Client:
+    """Shared client; the lock stops concurrent first calls (e.g. round-trip routes) creating one client each."""
     global _sync_client
-    if _sync_client is None or _sync_client.is_closed:
-        _sync_client = httpx.Client(timeout=30.0, limits=httpx.Limits(max_connections=10, max_keepalive_connections=5))
-    return _sync_client
+    with _sync_client_lock:
+        if _sync_client is None or _sync_client.is_closed:
+            _sync_client = httpx.Client(
+                timeout=30.0, limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+            )
+        return _sync_client
 
 
 def _osrm_get(url: str, timeout: float = 30.0) -> httpx.Response:

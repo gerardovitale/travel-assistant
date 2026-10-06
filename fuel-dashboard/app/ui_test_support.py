@@ -63,7 +63,6 @@ from services.vehicle_catalog import list_pairs
 from services.vehicle_cost_service import _breakeven_metrics
 from services.vehicle_cost_service import get_vehicle_options
 
-
 _CURRENT_FIXTURE_SET: ContextVar[str] = ContextVar("dashboard_ui_fixture_set", default=settings.ui_fixture_set)
 
 
@@ -178,6 +177,7 @@ def trip_plan_response(body: TripPlanRequest) -> TripPlanResponse:
         with_stops=fixture != "trip_no_stops",
         brand_filter=body.labels or [],
         floor_unmet=fixture == "trip_floor_unmet",
+        round_trip=body.round_trip,
     )
     return TripPlanResponse(plan=plan)
 
@@ -757,7 +757,9 @@ def _search_stations(mode: str, labels: Optional[list[str]]) -> list[StationResu
     return [_station(row) for row in rows[:5]]
 
 
-def _trip_plan(*, with_stops: bool, brand_filter: list[str], floor_unmet: bool = False) -> TripPlan:
+def _trip_plan(
+    *, with_stops: bool, brand_filter: list[str], floor_unmet: bool = False, round_trip: bool = False
+) -> TripPlan:
     candidate_rows = [
         {
             "brand_slug": "plenoil",
@@ -802,10 +804,33 @@ def _trip_plan(*, with_stops: bool, brand_filter: list[str], floor_unmet: bool =
             "detour_minutes": 6.0,
         },
     ]
+    outbound_km = 533.0
+    # Return-leg candidate sits on the return route (Sevilla → Madrid), ~140 km after the turnaround.
+    return_rows = (
+        [
+            {
+                "brand_slug": "bp",
+                "label": "BP Cordoba Norte",
+                "address": "A-4, km 403",
+                "municipality": "Cordoba",
+                "province": "Cordoba",
+                "zip_code": "14014",
+                "latitude": 37.88,
+                "longitude": -4.77,
+                "price": 1.474,
+                "distance_km": 1.5,
+                "route_km": outbound_km + 140.0,
+                "detour_minutes": 3.0,
+            }
+        ]
+        if round_trip
+        else []
+    )
     selected = set(brand_filter)
     if selected:
         candidate_rows = [row for row in candidate_rows if row["brand_slug"] in selected]
-    candidate_stations = [_station(row) for row in candidate_rows]
+        return_rows = [row for row in return_rows if row["brand_slug"] in selected]
+    candidate_stations = [_station(row) for row in candidate_rows + return_rows]
 
     if with_stops and candidate_rows:
         stop_rows = candidate_rows[: min(2, len(candidate_rows))]
@@ -851,26 +876,59 @@ def _trip_plan(*, with_stops: bool, brand_filter: list[str], floor_unmet: bool =
         else []
     )
 
+    # Return stops are appended after the alternatives so the one-way alternatives stay unchanged.
+    return_stops = (
+        [
+            TripStop(
+                station=_station(row),
+                route_km=float(row["route_km"]),
+                detour_minutes=float(row["detour_minutes"]),
+                fuel_at_arrival_pct=24.0,
+                liters_to_fill=30.0,
+                cost_eur=round(30.0 * row["price"], 2),
+                reasoning="Selected for price on the return leg",
+                leg="return",
+            )
+            for row in return_rows
+        ]
+        if with_stops
+        else []
+    )
+    stops = stops + return_stops
+    return_cost = sum(s.cost_eur for s in return_stops)
+    return_liters = sum(s.liters_to_fill for s in return_stops)
+
+    route_coordinates = [
+        [-3.7038, 40.4168],
+        [-3.51, 39.96],
+        [-3.12, 39.22],
+        [-4.77, 37.88],
+        [-5.99, 37.39],
+    ]
+    round_trip_fields: dict[str, Any] = {}
+    if round_trip:
+        round_trip_fields = {
+            "round_trip": True,
+            "outbound_distance_km": outbound_km,
+            "return_route_coordinates": list(reversed(route_coordinates)),
+            "fuel_at_turnaround_pct": 18.0 if stops else 34.0,
+        }
+
     return TripPlan(
         stops=stops,
-        total_fuel_cost=62.7 if stops else 43.1,
-        total_distance_km=533.0,
-        duration_minutes=312.0,
-        total_fuel_liters=41.5 if stops else 28.8,
+        total_fuel_cost=round((62.7 if stops else 43.1) + return_cost, 2),
+        total_distance_km=outbound_km * 2 if round_trip else outbound_km,
+        duration_minutes=624.0 if round_trip else 312.0,
+        total_fuel_liters=round((41.5 if stops else 28.8) + return_liters, 1),
         savings_eur=5.4 if stops else 0.0,
-        route_coordinates=[
-            [-3.7038, 40.4168],
-            [-3.51, 39.96],
-            [-3.12, 39.22],
-            [-4.77, 37.88],
-            [-5.99, 37.39],
-        ],
+        route_coordinates=route_coordinates,
         candidate_stations=candidate_stations,
         origin_coords=[40.4168, -3.7038],
         destination_coords=[37.3891, -5.9845],
         fuel_at_destination_pct=8.0 if floor_unmet else (18.0 if stops else 34.0),
         floor_unmet=floor_unmet,
         alternative_plans=alternatives,
+        **round_trip_fields,
     )
 
 

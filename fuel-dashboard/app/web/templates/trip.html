@@ -42,6 +42,14 @@
       </label>
     </div>
 
+    <!-- Round trip -->
+    <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+      <input type="checkbox" name="round_trip" data-testid="trip-round-trip" class="h-4 w-4 rounded border-outline-variant text-primary-container">
+      <span class="material-symbols-outlined text-[18px] text-primary-container">sync_alt</span>
+      <span class="text-sm font-label font-bold text-on-surface-variant">Ida y vuelta</span>
+      <span class="text-xs text-outline">(vuelve al origen)</span>
+    </label>
+
     <!-- Fuel type + Brands -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <label class="block">
@@ -90,7 +98,7 @@
         <input type="range" name="fuel_level_pct" data-testid="trip-fuel-level" min="0" max="100" step="5" value="{{ app_config.default_fuel_level_pct }}" class="w-full">
       </label>
       <label class="block mt-4">
-        <span class="block text-xs font-label font-bold text-on-surface-variant mb-1">Combustible mínimo al llegar: <span id="min-fuel-dest-val">{{ app_config.default_min_fuel_at_destination_pct|int }}%</span> <span class="font-normal text-outline">(garantizado ≥ este valor)</span></span>
+        <span class="block text-xs font-label font-bold text-on-surface-variant mb-1"><span id="min-fuel-dest-title">Combustible mínimo al llegar</span>: <span id="min-fuel-dest-val">{{ app_config.default_min_fuel_at_destination_pct|int }}%</span> <span class="font-normal text-outline">(garantizado ≥ este valor)</span></span>
         <div class="relative">
           <input type="range" name="min_fuel_at_destination_pct" data-testid="trip-min-fuel-dest" min="0" max="100" step="5" value="{{ app_config.default_min_fuel_at_destination_pct }}" class="w-full relative z-10">
           <div class="absolute inset-y-0 right-0 rounded-r-sm pointer-events-none" style="left:80%;background:repeating-linear-gradient(45deg,rgba(116,119,130,.18) 0,rgba(116,119,130,.18) 3px,transparent 3px,transparent 7px);"></div>
@@ -211,7 +219,7 @@
       <div class="trip-action-sheet__grid">
         <a id="nav-google" data-testid="trip-nav-google" href="#" rel="noopener noreferrer" class="trip-action-tile">
           <span class="trip-action-tile__icon" style="background:#fff;border:1px solid #E0E3EB;">{{ brand_icon('googlemaps', 'w-7 h-7') }}</span>
-          <span class="trip-action-tile__label">Google Maps <span class="block text-[11px] font-normal text-on-surface-variant">ruta completa</span></span>
+          <span class="trip-action-tile__label">Google Maps <span id="nav-google-label" class="block text-[11px] font-normal text-on-surface-variant">ruta completa</span></span>
         </a>
         <a id="nav-waze" data-testid="trip-nav-waze" href="#" rel="noopener noreferrer" class="trip-action-tile">
           <span class="trip-action-tile__icon" style="background:#33CCFF;color:#fff;">{{ brand_icon('waze', 'w-6 h-6') }}</span>
