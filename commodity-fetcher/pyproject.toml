@@ -5,7 +5,7 @@ description = "Fetch, validate and transform external commodity-price data (e.g.
 requires-python = ">=3.13"
 dependencies = [
     "pandas==2.3.3",
-    "requests==2.33.0",
+    "requests==2.34.2",
 ]
 
 [build-system]
