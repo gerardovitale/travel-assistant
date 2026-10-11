@@ -37,6 +37,8 @@ test("trip planner renders KPIs, stops, and alternatives from the happy path fix
   await expect(chart).toHaveAttribute("data-plot-traces", "1");
 
   const stopCard = page.getByTestId("trip-stop-card").first();
+  // route_km comes from the stop, not its station (the backend leaves station.route_km unset).
+  await expect(stopCard).toContainText("Km 48.0");
   const mapsLink = stopCard.locator('a[title="Cómo llegar"]');
   // Href stays Google Maps (desktop / right-click affordance); the click is
   // intercepted at runtime and routed through the platform-aware opener.
@@ -378,4 +380,67 @@ test("one-way share link unchecks a round-trip box restored by the browser", asy
   expect((await planRequest).postDataJSON()).toMatchObject({ round_trip: false });
   await expect(page.getByTestId("trip-round-trip")).not.toBeChecked();
   await expect(page.locator("#min-fuel-dest-title")).toHaveText("Combustible mínimo al llegar");
+});
+
+test("happy path with one route hides the route selector", async ({ page }) => {
+  const tripPage = new TripPage(page);
+  await tripPage.goto();
+  await tripPage.plan("Madrid", "Sevilla");
+
+  await expect(page.getByTestId("trip-kpis")).toBeVisible();
+  await expect(page.getByTestId("trip-route-options-wrap")).toBeHidden();
+  await expect(page.getByTestId("trip-single-route-note")).toBeVisible();
+});
+
+test.describe("route alternatives", () => {
+  test.beforeEach(async ({ page }) => {
+    await setFixture(page, "trip_route_options");
+  });
+
+  test("lists every route with badges and switches the plan when another route is chosen", async ({ page }) => {
+    const tripPage = new TripPage(page);
+    await tripPage.goto();
+    await tripPage.plan("Madrid", "Sevilla");
+
+    const options = page.getByTestId("trip-route-options").getByTestId("trip-route-option");
+    await expect(page.getByTestId("trip-route-options-wrap")).toBeVisible();
+    await expect(options).toHaveCount(3);
+    await expect(options.nth(0)).toHaveAttribute("aria-checked", "true");
+    await expect(options.nth(0)).toContainText("Vía A-4");
+    await expect(page.getByTestId("trip-single-route-note")).toBeHidden();
+    await expect(options.nth(0).getByTestId("trip-route-badge")).toHaveText(["Más rápida"]);
+    await expect(options.nth(1).getByTestId("trip-route-badge")).toHaveText(["Menor coste"]);
+    // Card duration includes stop detours: 312 min drive + 4 + 7 min detours.
+    await expect(options.nth(0).getByTestId("trip-route-duration")).toHaveText("5h 23min");
+    await expect(page.getByTestId("trip-stop-card")).toHaveCount(2);
+    await expect(page.getByTestId("trip-kpis")).toContainText("533");
+
+    await options.nth(1).click();
+
+    await expect(options.nth(1)).toHaveAttribute("aria-checked", "true");
+    await expect(options.nth(0)).toHaveAttribute("aria-checked", "false");
+    await expect(page.getByTestId("trip-kpis")).toContainText("561");
+    await expect(page.getByTestId("trip-stop-card")).toHaveCount(1);
+    await expect(page.getByTestId("trip-alt-plans-wrap")).toBeHidden();
+    await expect(page).toHaveURL(/route=1/);
+  });
+
+  test("share URL with route restores the chosen route", async ({ page }) => {
+    await page.goto("/trip?origin=Madrid&destination=Sevilla&fuel_type=gasoline_95_e5_price&route=2");
+
+    const options = page.getByTestId("trip-route-option");
+    await expect(options.nth(2)).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("trip-kpis")).toContainText("521");
+  });
+
+  test("round trip hides the route selector", async ({ page }) => {
+    const tripPage = new TripPage(page);
+    await tripPage.goto();
+    await page.getByTestId("trip-round-trip").check();
+    await tripPage.plan("Madrid", "Sevilla");
+
+    await expect(page.getByTestId("trip-kpis")).toContainText("Combustible al volver");
+    await expect(page.getByTestId("trip-route-options-wrap")).toBeHidden();
+    await expect(page.getByTestId("trip-single-route-note")).toBeHidden();
+  });
 });

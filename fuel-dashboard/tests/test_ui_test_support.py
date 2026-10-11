@@ -104,3 +104,18 @@ def test_insights_flags_enables_commodities_for_insights_all_fixture():
         assert commodities is True
     finally:
         ui_test.pop_fixture_set(token)
+
+
+def test_ui_test_support_trip_route_options():
+    request = TripPlanRequest(origin="Madrid", destination="Sevilla", fuel_type=FuelType.diesel_a_price)
+    token = ui_test.push_fixture_set("trip_route_options")
+    try:
+        plan = ui_test.trip_plan_response(request).plan
+        assert plan.route_badges == ["Más rápida"]
+        assert [p.route_summary for p in plan.route_alternatives] == ["A-5, A-66", "N-4"]
+        assert all(p.route_alternatives == [] for p in plan.route_alternatives)
+
+        round_trip = ui_test.trip_plan_response(request.model_copy(update={"round_trip": True})).plan
+        assert round_trip.route_alternatives == []
+    finally:
+        ui_test.pop_fixture_set(token)

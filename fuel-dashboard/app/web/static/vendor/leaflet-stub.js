@@ -7,6 +7,7 @@
       },
       bindPopup() { return this; },
       bindTooltip() { return this; },
+      on() { return this; },
       setStyle() { return this; },
       setRadius() { return this; },
       clearLayers() { this._layers = []; return this; },

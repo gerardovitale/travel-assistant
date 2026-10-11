@@ -179,7 +179,42 @@ def trip_plan_response(body: TripPlanRequest) -> TripPlanResponse:
         floor_unmet=fixture == "trip_floor_unmet",
         round_trip=body.round_trip,
     )
+    if fixture == "trip_route_options" and not body.round_trip:
+        _add_route_options(plan)
     return TripPlanResponse(plan=plan)
+
+
+def _add_route_options(plan: TripPlan) -> None:
+    """Madrid → Sevilla with two alternative OSRM routes, each with its own distance, time, cost and stops."""
+    plan.route_summary = "A-4"
+    plan.route_badges = ["Más rápida"]
+    plan.estimated_trip_fuel_cost = 54.9
+    plan.route_alternatives = [
+        plan.model_copy(
+            update={
+                "route_summary": "A-5, A-66",
+                "route_badges": ["Menor coste"],
+                "total_distance_km": 561.0,
+                "duration_minutes": 338.0,
+                "estimated_trip_fuel_cost": 53.6,
+                "total_fuel_cost": 31.42,
+                "stops": plan.stops[:1],
+                "alternative_plans": [],
+                "route_coordinates": [[-3.7038, 40.4168], [-4.95, 39.6], [-6.1, 38.9], [-5.99, 37.39]],
+            }
+        ),
+        plan.model_copy(
+            update={
+                "route_summary": "N-4",
+                "route_badges": ["Más corta"],
+                "total_distance_km": 521.0,
+                "duration_minutes": 371.0,
+                "estimated_trip_fuel_cost": 55.8,
+                "alternative_plans": [],
+                "route_coordinates": [[-3.7038, 40.4168], [-3.4, 39.5], [-3.6, 38.3], [-5.99, 37.39]],
+            }
+        ),
+    ]
 
 
 def route_response() -> RouteResponse:
@@ -836,7 +871,7 @@ def _trip_plan(
         stop_rows = candidate_rows[: min(2, len(candidate_rows))]
         stops = [
             TripStop(
-                station=_station(row),
+                station=_stop_station(row),
                 route_km=float(row["route_km"]),
                 detour_minutes=float(row["detour_minutes"]),
                 fuel_at_arrival_pct=21.0 - index * 8.0,
@@ -880,7 +915,7 @@ def _trip_plan(
     return_stops = (
         [
             TripStop(
-                station=_station(row),
+                station=_stop_station(row),
                 route_km=float(row["route_km"]),
                 detour_minutes=float(row["detour_minutes"]),
                 fuel_at_arrival_pct=24.0,
@@ -991,6 +1026,11 @@ def _base_station_rows() -> list[dict[str, Any]]:
             "pct_vs_avg": 1.4,
         },
     ]
+
+
+def _stop_station(row: dict[str, Any]) -> StationResult:
+    """Station as plan_trip's _build_trip_stop returns it: route_km/detour_minutes live on the TripStop only."""
+    return _station({**row, "route_km": None, "detour_minutes": None})
 
 
 def _station(row: dict[str, Any]) -> StationResult:

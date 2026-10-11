@@ -167,3 +167,93 @@ def test_get_sync_client_concurrent_first_calls_create_one_client(monkeypatch):
 
     assert len(created) == 1
     assert all(r is created[0] for r in results)
+
+
+def _osrm_routes_response(routes: list[dict]) -> MagicMock:
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"code": "Ok", "routes": routes}
+    return response
+
+
+@patch("services.routing._get_sync_client")
+def test_get_route_options_parses_every_route(mock_get_client):
+    routing._cached_route_options.cache_clear()
+    mock_client = MagicMock()
+    mock_client.get.return_value = _osrm_routes_response(
+        [
+            {
+                "geometry": {"coordinates": [[-3.7, 40.4], [-5.9, 37.4]]},
+                "distance": 533000,
+                "duration": 18720,
+                "legs": [{"summary": "A-4"}],
+            },
+            {
+                "geometry": {"coordinates": [[-3.7, 40.4], [-6.1, 38.9]]},
+                "distance": 561400,
+                "duration": 20280,
+                "legs": [{"summary": ""}],
+            },
+        ]
+    )
+    mock_get_client.return_value = mock_client
+
+    routes = routing.get_route_options((40.4, -3.7), (37.4, -5.9), 2)
+
+    url = mock_client.get.call_args.args[0]
+    assert "alternatives=2" in url
+    assert "steps=true" in url
+    assert routes == (
+        {
+            "coordinates": [[-3.7, 40.4], [-5.9, 37.4]],
+            "distance_km": 533.0,
+            "duration_minutes": 312.0,
+            "summary": "A-4",
+        },
+        {"coordinates": [[-3.7, 40.4], [-6.1, 38.9]], "distance_km": 561.4, "duration_minutes": 338.0, "summary": ""},
+    )
+
+
+@patch("services.routing._get_sync_client")
+def test_get_full_route_returns_main_route_without_alternatives(mock_get_client):
+    routing._cached_route_options.cache_clear()
+    mock_client = MagicMock()
+    mock_client.get.return_value = _osrm_routes_response(
+        [{"geometry": {"coordinates": [[0, 0], [1, 1]]}, "distance": 1000, "duration": 60, "legs": []}]
+    )
+    mock_get_client.return_value = mock_client
+
+    route = routing.get_full_route((10.0, 20.0), (11.0, 21.0))
+
+    url = mock_client.get.call_args.args[0]
+    assert "alternatives" not in url
+    assert "steps" not in url
+    assert route == {"coordinates": [[0, 0], [1, 1]], "distance_km": 1.0, "duration_minutes": 1.0, "summary": ""}
+
+
+@patch("services.routing._get_sync_client")
+def test_get_route_options_returns_empty_on_error(mock_get_client):
+    routing._cached_route_options.cache_clear()
+    mock_client = MagicMock()
+    mock_client.get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"code": "NoRoute"}))
+    mock_get_client.return_value = mock_client
+
+    assert routing.get_route_options((12.0, 22.0), (13.0, 23.0), 2) == ()
+    assert routing.get_full_route((12.0, 22.0), (13.0, 23.0)) is None
+
+
+@patch("services.routing._get_sync_client")
+def test_get_route_options_does_not_cache_failures(mock_get_client):
+    routing._cached_route_options.cache_clear()
+    ok = _osrm_routes_response(
+        [{"geometry": {"coordinates": [[0, 0], [1, 1]]}, "distance": 1000, "duration": 60, "legs": []}]
+    )
+    mock_client = MagicMock()
+    mock_client.get.side_effect = [MagicMock(status_code=503), ok]
+    mock_get_client.return_value = mock_client
+
+    assert routing.get_route_options((14.0, 24.0), (15.0, 25.0), 2) == ()
+    assert len(routing.get_route_options((14.0, 24.0), (15.0, 25.0), 2)) == 1
+    # Success is cached: no third OSRM call.
+    assert len(routing.get_route_options((14.0, 24.0), (15.0, 25.0), 2)) == 1
+    assert mock_client.get.call_count == 2

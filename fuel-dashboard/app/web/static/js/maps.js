@@ -103,11 +103,11 @@ export function drawZipBoundary(map, group, geojson) {
   return group;
 }
 
-export function drawRoute(map, coords, { color = "#001642", dashArray = null } = {}) {
+export function drawRoute(map, coords, { color = "#001642", dashArray = null, weight = 5, opacity = 0.8 } = {}) {
   if (!coords || coords.length < 2) return null;
   // Expect [lon, lat] pairs from OSRM; Leaflet expects [lat, lon]
   const latlngs = coords.map((c) => [c[1], c[0]]);
-  return L.polyline(latlngs, { color, weight: 5, opacity: 0.8, dashArray }).addTo(map);
+  return L.polyline(latlngs, { color, weight, opacity, dashArray }).addTo(map);
 }
 
 export function drawGeoJSON(map, geojson, { valueKey = "avg_price", onEachFeature = null, maxZoom = 12 } = {}) {

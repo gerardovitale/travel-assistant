@@ -17,6 +17,11 @@ let map, stationsLayer, routeLayer, returnRouteLayer, markersLayer;
 let stopMarkerRefs = [];
 let activeStopIdx = -1;
 let currentNavUrls = null;  // Latest buildNavUrls() result; read by nav click handlers.
+let altRouteLayers = [];
+// One plan per OSRM route option (index 0 = main/fastest route); the selected one drives every panel.
+let routePlans = [];
+let selectedRouteIdx = 0;
+let lastBody = null;
 const selectedLabels = new Set();
 const APP_CONFIG = window.__APP_CONFIG__ || {};
 
@@ -33,6 +38,7 @@ function buildShareUrl(formData, publicUrl) {
   params.set("min_fuel_at_destination_pct", formData.min_fuel_at_destination_pct);
   if (formData.round_trip) params.set("round_trip", "1");
   (formData.labels || []).forEach((l) => params.append("labels[]", l));
+  if (formData.route) params.set("route", String(formData.route));
   return `${base}?${params.toString()}`;
 }
 
@@ -52,6 +58,7 @@ function readShareParams() {
     min_fuel_at_destination_pct: p.get("min_fuel_at_destination_pct") ? parseFloat(p.get("min_fuel_at_destination_pct")) : null,
     labels: p.getAll("labels[]"),
     round_trip: p.get("round_trip") === "1",
+    route: parseInt(p.get("route"), 10) || 0,
   };
 }
 
@@ -178,7 +185,7 @@ function stopCard(s, i, roundTrip = false) {
         </div>
         <p class="text-[12px] text-on-surface-variant truncate mt-0.5">${escapeHtml([st.address, st.municipality].filter(Boolean).join(", "))}</p>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[12px] text-outline">
-          <span>Km ${st.route_km?.toFixed?.(1) ?? "—"}</span>
+          <span>Km ${s.route_km?.toFixed?.(1) ?? "—"}</span>
           <span>Desvío ${formatMin(s.detour_minutes)}</span>
           <span>Repostar ${s.liters_to_fill?.toFixed?.(1) ?? "—"} l</span>
           <span class="font-semibold text-on-surface">${formatEur(s.cost_eur)}</span>
@@ -220,6 +227,66 @@ function renderAlternatives(plan) {
   if (!plan.alternative_plans?.length) { wrap.classList.add("hidden"); return; }
   el.innerHTML = plan.alternative_plans.map((a) => altCard(a, plan.total_fuel_cost)).join("");
   wrap.classList.remove("hidden");
+}
+
+function routeName(plan, i) {
+  return plan.route_summary ? `Vía ${plan.route_summary}` : `Ruta ${i + 1}`;
+}
+
+function routeCard(plan, i, selected) {
+  const badges = (plan.route_badges || [])
+    .map((b) => `<span data-testid="trip-route-badge" class="rounded-full bg-tertiary-container/15 text-tertiary-container px-2 py-0.5 text-[10px] font-label font-bold uppercase tracking-wide">${escapeHtml(b)}</span>`)
+    .join("");
+  // Same 2px border in both states (no layout shift); selection = brand border + light tint, not a ring
+  // (box-shadow rings get clipped by the horizontal scroller).
+  const state = selected
+    ? "border-primary-container bg-primary-container/5 shadow-md"
+    : "border-outline-variant/40 bg-surface-container-lowest shadow-sm hover:border-primary-container/40";
+  return `
+    <button type="button" role="radio" aria-checked="${selected}" data-testid="trip-route-option" data-route-index="${i}"
+      class="snap-start shrink-0 w-72 flex flex-col text-left rounded-2xl border-2 ${state} p-4 transition">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-[18px] ${selected ? "text-primary-container" : "text-outline"}">${selected ? "radio_button_checked" : "radio_button_unchecked"}</span>
+        <h3 class="font-headline font-bold truncate" title="${escapeHtml(routeName(plan, i))}">${escapeHtml(routeName(plan, i))}</h3>
+      </div>
+      <div class="mt-2 flex flex-wrap gap-1 min-h-[20px]">${badges}</div>
+      <div class="mt-auto pt-3 grid grid-cols-2 gap-2 text-sm">
+        <div><span class="text-outline text-[11px] block">Distancia</span><b>${formatKm(plan.total_distance_km)}</b></div>
+        <div><span class="text-outline text-[11px] block"${plan.stops.length ? ' title="Incluye los desvíos a las paradas"' : ""}>${plan.stops.length ? "Duración total" : "Duración"}</span><b data-testid="trip-route-duration">${formatMin(plan.door_to_door_minutes ?? plan.duration_minutes)}</b></div>
+        <div><span class="text-outline text-[11px] block">Combustible est.</span><b>${plan.estimated_trip_fuel_cost > 0 ? formatEur(plan.estimated_trip_fuel_cost) : "—"}</b></div>
+        <div><span class="text-outline text-[11px] block">Paradas</span><b>${plan.stops.length}</b></div>
+      </div>
+      ${plan.floor_unmet ? `<p class="mt-2 text-[11px] text-amber-700">No garantiza el combustible mínimo al llegar</p>` : ""}
+    </button>`;
+}
+
+function renderRouteOptions() {
+  const wrap = document.getElementById("route-options-wrap");
+  const el = document.getElementById("route-options");
+  // One-way trip asked OSRM for alternatives but got none: say so, so the missing selector isn't a surprise.
+  const singleRoute = routePlans.length === 1 && !routePlans[0].round_trip && APP_CONFIG.trip_max_route_alternatives > 0;
+  document.getElementById("route-single-note").classList.toggle("hidden", !singleRoute);
+  if (routePlans.length < 2) { wrap.classList.add("hidden"); el.innerHTML = ""; return; }
+  el.innerHTML = routePlans.map((p, i) => routeCard(p, i, i === selectedRouteIdx)).join("");
+  wrap.classList.remove("hidden");
+}
+
+function renderSelectedRoute({ replaceHistory = false } = {}) {
+  const plan = routePlans[selectedRouteIdx];
+  renderRouteOptions();
+  renderKpis(plan, lastBody);
+  renderStops(plan);
+  renderAlternatives(plan);
+  renderFuelChart(plan, lastBody);
+  renderMap(plan);
+  showShare({ ...lastBody, route: selectedRouteIdx }, plan, { replaceHistory });
+}
+
+function selectRoute(idx) {
+  if (idx === selectedRouteIdx || !routePlans[idx]) return;
+  selectedRouteIdx = idx;
+  // Replace, not push: switching routes should not add a back-button step per click.
+  renderSelectedRoute({ replaceHistory: true });
 }
 
 const clampPct = (v) => Math.max(0, Math.min(100, Number.isFinite(v) ? v : 0));
@@ -283,7 +350,7 @@ function renderFuelChart(plan, body) {
   });
 }
 
-function showShare(formData, plan) {
+function showShare(formData, plan, { replaceHistory = false } = {}) {
   const publicUrl = window.__APP_CONFIG__?.public_url || "";
   const shareUrl = buildShareUrl(formData, publicUrl);
   const route = formData.round_trip
@@ -314,7 +381,9 @@ function showShare(formData, plan) {
 
   // Always push a relative URL — using the canonical publicUrl here would throw
   // a SecurityError when public_url differs from the current origin (e.g. staging).
-  history.pushState({}, "", window.location.pathname + shareUrl.slice(shareUrl.indexOf("?")));
+  const relativeUrl = window.location.pathname + shareUrl.slice(shareUrl.indexOf("?"));
+  if (replaceHistory) history.replaceState({}, "", relativeUrl);
+  else history.pushState({}, "", relativeUrl);
   document.getElementById("trip-actions").classList.remove("hidden");
 }
 
@@ -395,12 +464,18 @@ function resetPlanView(message = "Introduce origen y destino para planificar.") 
     <div class="bg-surface-container-low rounded-2xl p-8 text-center text-outline text-sm">${escapeHtml(message)}</div>`;
   document.getElementById("alt-plans-wrap").classList.add("hidden");
   document.getElementById("alt-plans").innerHTML = "";
+  document.getElementById("route-options-wrap").classList.add("hidden");
+  document.getElementById("route-options").innerHTML = "";
+  document.getElementById("route-single-note").classList.add("hidden");
+  routePlans = [];
+  selectedRouteIdx = 0;
   document.getElementById("trip-fuel-chart-wrap").classList.add("hidden");
   document.getElementById("trip-fuel-chart").innerHTML = "";
   hideShare();
   routeLayer && map.removeLayer(routeLayer);
   returnRouteLayer && map.removeLayer(returnRouteLayer);
   markersLayer && map.removeLayer(markersLayer);
+  clearAltRouteLayers();
   stationsLayer = clearLayer(map, stationsLayer);
   routeLayer = null;
   returnRouteLayer = null;
@@ -463,10 +538,17 @@ function attachStopInteraction() {
   });
 }
 
+function clearAltRouteLayers() {
+  altRouteLayers.forEach((layer) => map.removeLayer(layer));
+  altRouteLayers = [];
+}
+
 function fitPlanBounds(plan) {
   const points = [];
+  // Fit every route option so the non-selected alternatives stay in view too.
+  const otherRoutes = routePlans.filter((p) => p !== plan).flatMap((p) => p.route_coordinates || []);
 
-  for (const coord of [...(plan.route_coordinates || []), ...(plan.return_route_coordinates || [])]) {
+  for (const coord of [...(plan.route_coordinates || []), ...(plan.return_route_coordinates || []), ...otherRoutes]) {
     if (coord?.length >= 2) points.push([coord[1], coord[0]]);
   }
   for (const station of plan.candidate_stations || []) {
@@ -492,10 +574,22 @@ function renderMap(plan) {
   returnRouteLayer && map.removeLayer(returnRouteLayer);
   markersLayer && map.removeLayer(markersLayer);
   stationsLayer = clearLayer(map, stationsLayer);
+  clearAltRouteLayers();
   routeLayer = null;
   returnRouteLayer = null;
   stopMarkerRefs = [];
   activeStopIdx = -1;
+
+  // Non-selected route options first so the selected route draws on top; click one to select it.
+  routePlans.forEach((p, i) => {
+    if (p === plan) return;
+    const layer = drawRoute(map, p.route_coordinates, { color: "#9aa5b1", weight: 4, opacity: 0.6 });
+    if (!layer) return;
+    // Leaflet renders string tooltips as HTML; road names come from user-editable OSM data.
+    layer.bindTooltip(`${escapeHtml(routeName(p, i))} · ${formatMin(p.door_to_door_minutes ?? p.duration_minutes)}`, { sticky: true });
+    layer.on("click", () => selectRoute(i));
+    altRouteLayers.push(layer);
+  });
 
   if (plan.route_coordinates?.length) {
     routeLayer = drawRoute(map, plan.route_coordinates);
@@ -510,7 +604,7 @@ function renderMap(plan) {
   if (stops.length || plan.origin_coords) {
     const hl = [];
     for (const st of stops) {
-      const marker = L.circleMarker([st.latitude, st.longitude], { radius: 10, ...STOP_BASE_STYLE }).bindTooltip(st.label);
+      const marker = L.circleMarker([st.latitude, st.longitude], { radius: 10, ...STOP_BASE_STYLE }).bindTooltip(escapeHtml(st.label));
       stopMarkerRefs.push(marker);
       hl.push(marker);
     }
@@ -522,7 +616,7 @@ function renderMap(plan) {
   fitPlanBounds(plan);
 }
 
-async function runPlan(form) {
+async function runPlan(form, { routeIdx = 0 } = {}) {
   const submitBtn = form.querySelector('[type="submit"]');
   if (!submitBtn) return;
   const originalHTML = submitBtn.innerHTML;
@@ -547,13 +641,11 @@ async function runPlan(form) {
     const resp = await api("/trip/plan", { method: "POST", body: JSON.stringify(body) });
     hideBanner();
     const plan = resp.plan;
+    routePlans = [plan, ...(plan.route_alternatives || [])];
+    selectedRouteIdx = routePlans[routeIdx] ? routeIdx : 0;
+    lastBody = body;
     renderAssumptions(body);
-    renderKpis(plan, body);
-    renderStops(plan);
-    renderAlternatives(plan);
-    renderFuelChart(plan, body);
-    renderMap(plan);
-    showShare(body, plan);
+    renderSelectedRoute();
   } catch (err) {
     resetPlanView(err.message || "No se pudo generar una nueva ruta.");
     banner("error", err.message || "Error calculando el viaje");
@@ -654,6 +746,11 @@ async function init() {
   });
 
   attachStopInteraction();
+
+  document.getElementById("route-options").addEventListener("click", (e) => {
+    const option = e.target.closest("[data-route-index]");
+    if (option) selectRoute(parseInt(option.dataset.routeIndex, 10));
+  });
 
   // "Ajustar parámetros" in the assumptions disclosure opens the form's
   // Opciones avanzadas section so users can refine the inputs that shaped
@@ -761,7 +858,7 @@ async function init() {
       });
       updateBrandsLabel(document.getElementById("brands-label"), selectedLabels);
     }
-    runPlan(form);
+    runPlan(form, { routeIdx: params.route });
   }
 }
 

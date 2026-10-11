@@ -3,10 +3,15 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from api.schemas import StationResult
+from api.schemas import TripPlan
 from services.trip_planner import _build_trip_stop
+from services.trip_planner import _estimated_trip_fuel_cost
 from services.trip_planner import _find_stops_with_strategy
 from services.trip_planner import _floor_unmet
 from services.trip_planner import _fuel_at_destination_pct
+from services.trip_planner import _label_routes
+from services.trip_planner import _median_price
 from services.trip_planner import _plan_signature
 from services.trip_planner import find_min_detour
 from services.trip_planner import find_min_stops
@@ -210,15 +215,17 @@ def test_min_fuel_at_destination_zero_matches_baseline():
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_basic(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
-    mock_route.return_value = {
-        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
-        "distance_km": 650,
-        "duration_minutes": 360,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+            "distance_km": 650,
+            "duration_minutes": 360,
+        },
+    )
 
     corridor_df = pd.DataFrame(
         {
@@ -252,15 +259,17 @@ def test_plan_trip_bad_origin(mock_geocode):
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_passes_labels(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
-    mock_route.return_value = {
-        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
-        "distance_km": 650,
-        "duration_minutes": 360,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+            "distance_km": 650,
+            "duration_minutes": 360,
+        },
+    )
 
     corridor_df = pd.DataFrame(
         {
@@ -284,15 +293,17 @@ def test_plan_trip_passes_labels(mock_geocode, mock_route, mock_corridor):
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_without_labels_defaults_to_none(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
-    mock_route.return_value = {
-        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
-        "distance_km": 650,
-        "duration_minutes": 360,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+            "distance_km": 650,
+            "duration_minutes": 360,
+        },
+    )
     mock_corridor.return_value = pd.DataFrame()
 
     plan_trip("Madrid", "Cadiz", "diesel_a_price", 7.0, 40, 50, 5.0)
@@ -312,15 +323,17 @@ def test_floor_unmet_helper_boundaries():
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_empty_corridor_sets_floor_unmet(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
-    mock_route.return_value = {
-        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
-        "distance_km": 650,
-        "duration_minutes": 360,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+            "distance_km": 650,
+            "duration_minutes": 360,
+        },
+    )
     mock_corridor.return_value = pd.DataFrame()
 
     # 650 km on 40 L tank at 7 L/100km from 50% fuel arrives empty -> floor of 50% cannot be met.
@@ -331,15 +344,17 @@ def test_plan_trip_empty_corridor_sets_floor_unmet(mock_geocode, mock_route, moc
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_floor_met_sets_flag_false(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.4, -3.7), (40.5, -3.6)]
-    mock_route.return_value = {
-        "coordinates": [[-3.7, 40.4], [-3.6, 40.5]],
-        "distance_km": 50,
-        "duration_minutes": 40,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.7, 40.4], [-3.6, 40.5]],
+            "distance_km": 50,
+            "duration_minutes": 40,
+        },
+    )
     corridor_df = pd.DataFrame(
         {
             "label": ["S1"],
@@ -364,15 +379,17 @@ def test_plan_trip_floor_met_sets_flag_false(mock_geocode, mock_route, mock_corr
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_floor_zero_never_unmet(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
-    mock_route.return_value = {
-        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
-        "distance_km": 650,
-        "duration_minutes": 360,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+            "distance_km": 650,
+            "duration_minutes": 360,
+        },
+    )
     mock_corridor.return_value = pd.DataFrame()
 
     # Same arrives-empty trip, but a 0% floor can never be unmet.
@@ -380,11 +397,11 @@ def test_plan_trip_floor_zero_never_unmet(mock_geocode, mock_route, mock_corrido
     assert result.floor_unmet is False
 
 
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_no_route(mock_geocode, mock_route):
     mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
-    mock_route.return_value = None
+    mock_route.return_value = ()
     with pytest.raises(ValueError, match="ruta"):
         plan_trip("Madrid", "Cadiz", "diesel_a_price", 7.0, 40, 50, 5.0)
 
@@ -542,15 +559,17 @@ def test_build_trip_stop():
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_generates_alternative_plans(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.4, -3.7), (36.5, -6.3)]
-    mock_route.return_value = {
-        "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
-        "distance_km": 650,
-        "duration_minutes": 360,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.7, 40.4], [-5.0, 38.5], [-6.3, 36.5]],
+            "distance_km": 650,
+            "duration_minutes": 360,
+        },
+    )
 
     # Create enough stations to allow different strategies to pick differently
     corridor_df = pd.DataFrame(
@@ -895,11 +914,11 @@ def test_plan_trip_round_trip_missing_outbound_route(mock_geocode, mock_route):
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_one_way_keeps_round_trip_fields_empty(mock_geocode, mock_route, mock_corridor):
     mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
-    mock_route.return_value = _meridian_route(40.0, 43.6, 400, 240)
+    mock_route.return_value = (_meridian_route(40.0, 43.6, 400, 240),)
     mock_corridor.return_value = _corridor_df([("S1", 1.40, 2), ("S2", 1.60, 3)])
 
     result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 60, 5.0, min_fuel_at_destination_pct=20)
@@ -972,7 +991,7 @@ def test_plan_trip_round_trip_empty_corridor_sets_turnaround(mock_geocode, mock_
 
 
 @patch("services.trip_planner.query_stations_along_corridor")
-@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.get_route_options")
 @patch("services.trip_planner.geocode_address")
 def test_plan_trip_keeps_alternative_with_same_brand_at_other_station(mock_geocode, mock_route, mock_corridor):
     """Recommended and 'Menos paradas' both use one REPSOL stop, at different stations: the alternative must show.
@@ -982,11 +1001,13 @@ def test_plan_trip_keeps_alternative_with_same_brand_at_other_station(mock_geoco
     """
     mock_geocode.side_effect = [(40.0, -3.0), (45.4, -3.0)]
     # Points every 0.09° lat (~10 km), so waypoint index i sits at ~i × 10 km.
-    mock_route.return_value = {
-        "coordinates": [[-3.0, 40.0 + i * 0.09] for i in range(61)],
-        "distance_km": 600,
-        "duration_minutes": 360,
-    }
+    mock_route.return_value = (
+        {
+            "coordinates": [[-3.0, 40.0 + i * 0.09] for i in range(61)],
+            "distance_km": 600,
+            "duration_minutes": 360,
+        },
+    )
     mock_corridor.return_value = _corridor_df([("REPSOL", 1.30, 10), ("REPSOL", 1.45, 19)])
 
     result = plan_trip("A", "B", "diesel_a_price", 7.0, 40, 50, 5.0, min_fuel_at_destination_pct=0)
@@ -995,3 +1016,156 @@ def test_plan_trip_keeps_alternative_with_same_brand_at_other_station(mock_geoco
     menos_paradas = [a for a in result.alternative_plans if a.strategy_name == "Menos paradas"]
     assert len(menos_paradas) == 1
     assert [(s.station.label, s.station.price) for s in menos_paradas[0].stops] == [("REPSOL", 1.45)]
+
+
+# --- route alternatives (one-way) ---
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_route_options")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_plans_each_route_option(mock_geocode, mock_route, mock_corridor):
+    """Main route is fastest; the alternative is shorter and has a cheaper station, so it gets two badges."""
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    main = {**_meridian_route(40.0, 43.6, 400, 240), "summary": "A-1"}
+    alt = {**_meridian_route(40.0, 43.6, 380, 270), "summary": "N-1"}
+    alt["coordinates"] = [[-3.1, lat] for _, lat in alt["coordinates"]]
+    mock_route.return_value = (main, alt)
+    corridors = iter([_corridor_df([("S1", 1.60, 2)]), _corridor_df([("S2", 1.40, 2)])])
+    mock_corridor.side_effect = lambda *args, **kwargs: next(corridors)
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 60, 5.0, min_fuel_at_destination_pct=20)
+
+    assert mock_corridor.call_count == 2
+    assert result.route_summary == "A-1"
+    assert result.total_distance_km == 400
+    assert [s.station.label for s in result.stops] == ["S1"]
+    assert result.route_badges == ["Más rápida"]
+
+    assert len(result.route_alternatives) == 1
+    other = result.route_alternatives[0]
+    assert other.route_summary == "N-1"
+    assert other.total_distance_km == 380
+    assert other.route_coordinates == alt["coordinates"]
+    assert [s.station.label for s in other.stops] == ["S2"]
+    assert other.route_badges == ["Más corta", "Menor coste"]
+    assert other.route_alternatives == []
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_route_options")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_single_route_has_no_badges(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    mock_route.return_value = (_meridian_route(40.0, 43.6, 400, 240),)
+    mock_corridor.return_value = _corridor_df([("S1", 1.40, 2)])
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 60, 5.0, min_fuel_at_destination_pct=20)
+
+    assert result.route_alternatives == []
+    assert result.route_badges == []
+    assert result.route_summary == ""
+
+
+@patch("services.trip_planner.settings")
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_route_options")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_requests_configured_alternatives(mock_geocode, mock_route, mock_corridor, mock_settings):
+    mock_settings.trip_max_route_alternatives = 0
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    mock_route.return_value = (_meridian_route(40.0, 43.6, 400, 240),)
+    mock_corridor.return_value = pd.DataFrame()
+
+    plan_trip("A", "B", "diesel_a_price", 8.0, 40, 60, 5.0)
+
+    mock_route.assert_called_once_with((40.0, -3.0), (43.6, -3.0), 0)
+
+
+@patch("services.trip_planner.get_route_options")
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_full_route")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_round_trip_skips_route_alternatives(mock_geocode, mock_full, mock_corridor, mock_options):
+    mock_geocode.side_effect = [(40.0, -3.0), (40.9, -3.0)]
+    mock_full.side_effect = _routes_by_direction(
+        {
+            ((40.0, -3.0), (40.9, -3.0)): _meridian_route(40.0, 40.9, 100, 60),
+            ((40.9, -3.0), (40.0, -3.0)): _meridian_route(40.9, 40.0, 100, 60),
+        }
+    )
+    mock_corridor.return_value = pd.DataFrame()
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 100, 5.0, round_trip=True)
+
+    mock_options.assert_not_called()
+    assert result.route_alternatives == []
+    assert result.route_badges == []
+
+
+def test_estimated_trip_fuel_cost_uses_median_price():
+    candidates = [
+        StationResult(
+            label=f"S{i}", address="a", municipality="m", province="p", zip_code="1", latitude=0, longitude=0, price=p
+        )
+        for i, p in enumerate([1.60, 1.40, 1.50])
+    ]
+    assert _median_price(candidates) == 1.50
+    assert _median_price([]) is None
+    # 400 km × 8 L/100 km = 32 L burnt at 1.50 €/L.
+    assert _estimated_trip_fuel_cost(400, 8.0, 1.50) == 48.0
+    assert _estimated_trip_fuel_cost(400, 8.0, None) == 0.0
+
+
+@patch("services.trip_planner.query_stations_along_corridor")
+@patch("services.trip_planner.get_route_options")
+@patch("services.trip_planner.geocode_address")
+def test_plan_trip_drops_alternative_that_fails(mock_geocode, mock_route, mock_corridor):
+    mock_geocode.side_effect = [(40.0, -3.0), (43.6, -3.0)]
+    mock_route.return_value = (_meridian_route(40.0, 43.6, 400, 240), _meridian_route(40.0, 43.6, 380, 270))
+    calls = iter([_corridor_df([("S1", 1.40, 2)]), RuntimeError("duckdb boom")])
+
+    def corridor(*args, **kwargs):
+        result = next(calls)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    mock_corridor.side_effect = corridor
+
+    result = plan_trip("A", "B", "diesel_a_price", 8.0, 40, 60, 5.0, min_fuel_at_destination_pct=20)
+
+    assert result.total_distance_km == 400
+    assert result.route_alternatives == []
+    assert result.route_badges == []
+
+
+def test_label_routes_fastest_counts_stop_detours():
+    """A drives 300 min + 2 × 7 min detours (314); B drives 305 min with no stop, so B is fastest door to door."""
+
+    def plan(duration: float, detours: list[float], km: float) -> TripPlan:
+        stops = []
+        for d in detours:
+            stop = {**_make_station("S", 100, 1.40), "detour_minutes": d}
+            stop.update(fuel_at_arrival_pct=20.0, liters_to_fill=30.0, cost_eur=42.0)
+            stops.append(_build_trip_stop(stop))
+        return TripPlan(
+            stops=stops,
+            total_fuel_cost=0,
+            total_distance_km=km,
+            duration_minutes=duration,
+            total_fuel_liters=0,
+            savings_eur=0,
+            route_coordinates=[],
+            candidate_stations=[],
+            origin_coords=[0, 0],
+            destination_coords=[1, 1],
+        )
+
+    a, b = plan(300, [7, 7], 400), plan(305, [], 410)
+    _label_routes([a, b])
+    assert a.route_badges == ["Más corta"]
+    assert b.route_badges == ["Más rápida"]
+    # The card shows door_to_door_minutes, so the badge and the shown time agree.
+    assert a.model_dump()["door_to_door_minutes"] == 314.0
+    assert b.model_dump()["door_to_door_minutes"] == 305.0

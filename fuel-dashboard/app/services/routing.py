@@ -44,36 +44,69 @@ def _osrm_get(url: str, timeout: float = 30.0) -> httpx.Response:
     raise last_err  # type: ignore[misc]
 
 
-@functools.lru_cache(maxsize=128)
+class _OSRMUnavailable(Exception):
+    """Raised inside the cached fetch so lru_cache never stores a failed lookup."""
+
+
+# Small cache: each entry can hold up to 3 full-resolution geometries (~1 MB each on long routes).
+@functools.lru_cache(maxsize=32)
+def _cached_route_options(
+    origin: tuple[float, float],
+    destination: tuple[float, float],
+    max_alternatives: int,
+) -> tuple[dict, ...]:
+    origin_str = f"{origin[1]},{origin[0]}"
+    dest_str = f"{destination[1]},{destination[0]}"
+    url = f"{settings.osrm_base_url}/route/v1/driving/{origin_str};{dest_str}?overview=full&geometries=geojson"
+    if max_alternatives > 0:
+        # steps=true is required for OSRM to fill legs[].summary (road names), only shown when comparing routes
+        url += f"&alternatives={max_alternatives}&steps=true"
+    try:
+        response = _osrm_get(url)
+    except Exception as exc:
+        raise _OSRMUnavailable("request failed") from exc
+    if response.status_code != 200:
+        raise _OSRMUnavailable(f"status {response.status_code}")
+
+    data = response.json()
+    if data.get("code") != "Ok":
+        raise _OSRMUnavailable(f"response code {data.get('code')}")
+
+    return tuple(
+        {
+            "coordinates": route["geometry"]["coordinates"],
+            "distance_km": round(route["distance"] / 1000, 2),
+            "duration_minutes": round(route["duration"] / 60, 1),
+            "summary": ", ".join(leg["summary"] for leg in route.get("legs", []) if leg.get("summary")),
+        }
+        for route in data["routes"][: max_alternatives + 1]
+    )
+
+
+def get_route_options(
+    origin: tuple[float, float],
+    destination: tuple[float, float],
+    max_alternatives: int = 0,
+) -> tuple[dict, ...]:
+    """Fetch OSRM route plus up to max_alternatives alternatives; empty tuple on failure (failures are not cached).
+
+    Each route dict has 'coordinates', 'distance_km', 'duration_minutes' and 'summary' (main road names; only
+    filled when max_alternatives > 0). Successful results are cached and shared: treat them as read-only.
+    """
+    try:
+        return _cached_route_options(origin, destination, max(max_alternatives, 0))
+    except Exception:
+        logger.warning("OSRM full route request failed", exc_info=True)
+        return ()
+
+
 def get_full_route(
     origin: tuple[float, float],
     destination: tuple[float, float],
 ) -> dict | None:
-    """Fetch full OSRM route; return dict with 'coordinates', 'distance_km', 'duration_minutes', or None."""
-    origin_str = f"{origin[1]},{origin[0]}"
-    dest_str = f"{destination[1]},{destination[0]}"
-    url = f"{settings.osrm_base_url}/route/v1/driving/{origin_str};{dest_str}?overview=full&geometries=geojson"
-    try:
-        response = _osrm_get(url)
-        if response.status_code != 200:
-            logger.warning("OSRM full route returned status %d", response.status_code)
-            return None
-
-        data = response.json()
-        if data.get("code") != "Ok":
-            logger.warning("OSRM full route response code: %s", data.get("code"))
-            return None
-
-        route = data["routes"][0]
-        return {
-            "coordinates": route["geometry"]["coordinates"],
-            "distance_km": round(route["distance"] / 1000, 2),
-            "duration_minutes": round(route["duration"] / 60, 1),
-        }
-
-    except Exception:
-        logger.warning("OSRM full route request failed", exc_info=True)
-        return None
+    """Fetch the main OSRM route; return dict with 'coordinates', 'distance_km', 'duration_minutes', or None."""
+    routes = get_route_options(origin, destination)
+    return routes[0] if routes else None
 
 
 async def _fetch_single_route(

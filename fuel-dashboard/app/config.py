@@ -1,5 +1,6 @@
 from typing import Any
 
+from pydantic import Field
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings
 from pydantic_settings import EnvSettingsSource
@@ -60,6 +61,9 @@ class Settings(BaseSettings):
     osrm_base_url: str = "https://router.project-osrm.org"
     osrm_timeout: float = 5.0
     osrm_enabled: bool = True
+    # Extra OSRM routes planned for one-way trips; 0 disables.
+    # OSRM rejects more than its --max-alternatives (default 3).
+    trip_max_route_alternatives: int = Field(default=2, ge=0, le=3)
 
     rate_limit: str = "60/minute"
 

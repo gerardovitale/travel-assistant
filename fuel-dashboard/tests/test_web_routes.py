@@ -484,6 +484,44 @@ def test_trip_plan_endpoint(mock_service):
 
 
 @patch("api.router.plan_trip")
+def test_trip_plan_endpoint_returns_route_alternatives(mock_service):
+    base = {
+        "stops": [],
+        "total_fuel_cost": 0.0,
+        "total_fuel_liters": 30.0,
+        "savings_eur": 0.0,
+        "candidate_stations": [],
+        "origin_coords": [40.4, -3.7],
+        "destination_coords": [37.4, -5.9],
+    }
+    mock_service.return_value = {
+        **base,
+        "total_distance_km": 533.0,
+        "duration_minutes": 312.0,
+        "route_coordinates": [[-3.7, 40.4], [-5.9, 37.4]],
+        "route_summary": "A-4",
+        "route_badges": ["Más rápida"],
+        "route_alternatives": [
+            {
+                **base,
+                "total_distance_km": 521.0,
+                "duration_minutes": 371.0,
+                "route_coordinates": [[-3.7, 40.4], [-3.6, 38.3], [-5.9, 37.4]],
+                "route_summary": "N-4",
+                "route_badges": ["Más corta"],
+            }
+        ],
+    }
+    body = {"origin": "Madrid", "destination": "Sevilla", "fuel_type": "diesel_a_price"}
+    resp = _get_client().post("/api/v1/trip/plan", json=body)
+    assert resp.status_code == 200
+    plan = resp.json()["plan"]
+    assert plan["route_badges"] == ["Más rápida"]
+    assert [p["route_summary"] for p in plan["route_alternatives"]] == ["N-4"]
+    assert plan["route_alternatives"][0]["route_badges"] == ["Más corta"]
+
+
+@patch("api.router.plan_trip")
 def test_trip_plan_uses_settings_defaults_when_fields_omitted(mock_service):
     mock_service.return_value = {
         "stops": [],

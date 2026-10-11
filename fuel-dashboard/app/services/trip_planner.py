@@ -8,8 +8,10 @@ from api.schemas import AlternativePlan
 from api.schemas import StationResult
 from api.schemas import TripPlan
 from api.schemas import TripStop
+from config import settings
 from services.geocoding import geocode_address
 from services.routing import get_full_route
+from services.routing import get_route_options
 
 from data.duckdb_engine import query_stations_along_corridor
 
@@ -503,14 +505,19 @@ def _fetch_routes(
     origin_coords: tuple[float, float],
     dest_coords: tuple[float, float],
     round_trip: bool,
-) -> tuple[dict | None, dict | None]:
-    """Return (outbound, return) OSRM routes; for round trips both requests run concurrently."""
+) -> tuple[list[dict], dict | None]:
+    """Return (outbound route options, return route).
+
+    One-way trips get the main OSRM route plus alternatives; round trips get one route per leg,
+    both requested concurrently.
+    """
     if not round_trip:
-        return get_full_route(origin_coords, dest_coords), None
+        return list(get_route_options(origin_coords, dest_coords, settings.trip_max_route_alternatives)), None
     with ThreadPoolExecutor(max_workers=2) as pool:
         outbound = pool.submit(get_full_route, origin_coords, dest_coords)
         back = pool.submit(get_full_route, dest_coords, origin_coords)
-        return outbound.result(), back.result()
+        outbound_route = outbound.result()
+        return ([outbound_route] if outbound_route is not None else []), back.result()
 
 
 def _offset_waypoints(
@@ -606,6 +613,9 @@ def plan_trip(
 ) -> TripPlan:
     """Main trip planning orchestrator.
 
+    One-way trips are planned on every OSRM route option: the main (fastest) route is the returned plan and
+    the other routes are full plans in its route_alternatives.
+
     With round_trip, plans origin → destination → origin as one continuous drive: the return leg's
     route_km continues after the outbound distance, and the arrival floor applies at the final return.
 
@@ -619,12 +629,86 @@ def plan_trip(
     if dest_coords is None:
         raise ValueError(f"No se pudo geocodificar el destino: {destination_address}")
 
-    route, return_route = _fetch_routes(origin_coords, dest_coords, round_trip)
-    if route is None:
+    routes, return_route = _fetch_routes(origin_coords, dest_coords, round_trip)
+    if not routes:
         raise ValueError("No se pudo obtener la ruta entre origen y destino.")
     if round_trip and return_route is None:
         raise ValueError("No se pudo obtener la ruta de vuelta.")
 
+    plan_kwargs: dict[str, Any] = {
+        "return_route": return_route,
+        "origin_coords": origin_coords,
+        "dest_coords": dest_coords,
+        "fuel_type": fuel_type,
+        "consumption_lper100km": consumption_lper100km,
+        "tank_liters": tank_liters,
+        "fuel_level_pct": fuel_level_pct,
+        "max_detour_minutes": max_detour_minutes,
+        "min_fuel_at_destination_pct": min_fuel_at_destination_pct,
+        "labels": labels,
+    }
+    plans = [_plan_for_route(routes[0], **plan_kwargs)]
+    # Alternatives are best-effort: a failure on one must not lose the main plan.
+    for route in routes[1:]:
+        try:
+            plans.append(_plan_for_route(route, **plan_kwargs))
+        except Exception:
+            logger.warning("Skipping alternative route %r: planning failed", route.get("summary"), exc_info=True)
+    _label_routes(plans)
+    main_plan = plans[0]
+    main_plan.route_alternatives = plans[1:]
+    return main_plan
+
+
+def _median_price(candidates: list[StationResult]) -> float | None:
+    """Upper median of candidate prices, or None without candidates."""
+    if not candidates:
+        return None
+    prices = sorted(c.price for c in candidates)
+    return prices[len(prices) // 2]
+
+
+def _estimated_trip_fuel_cost(total_km: float, consumption_lper100km: float, median_price: float | None) -> float:
+    """Cost of the fuel the trip burns, priced at the route's median candidate price (0 without candidates).
+
+    Every route is priced on the same basis so routes compare fairly; the refuel cost does not, since it
+    depends on how much each plan tops up and on which stations the optimiser picked.
+    """
+    if median_price is None:
+        return 0.0
+    return round(total_km * consumption_lper100km / 100 * median_price, 2)
+
+
+def _label_routes(plans: list[TripPlan]) -> None:
+    """Badge the fastest, shortest and cheapest route when there is more than one route to compare."""
+    if len(plans) < 2:
+        return
+    for plan in plans:
+        plan.route_badges = []
+    # Door-to-door (drive + stop detours) — the same time the route cards show.
+    min(plans, key=lambda p: p.door_to_door_minutes).route_badges.append("Más rápida")
+    min(plans, key=lambda p: p.total_distance_km).route_badges.append("Más corta")
+    priced = [p for p in plans if p.estimated_trip_fuel_cost > 0]
+    if priced:
+        min(priced, key=lambda p: p.estimated_trip_fuel_cost).route_badges.append("Menor coste")
+
+
+def _plan_for_route(
+    route: dict,
+    *,
+    return_route: dict | None,
+    origin_coords: tuple[float, float],
+    dest_coords: tuple[float, float],
+    fuel_type: str,
+    consumption_lper100km: float,
+    tank_liters: float,
+    fuel_level_pct: float,
+    max_detour_minutes: float,
+    min_fuel_at_destination_pct: float,
+    labels: list[str] | None,
+) -> TripPlan:
+    """Plan fuel stops along one outbound route (plus the return leg for round trips)."""
+    round_trip = return_route is not None
     route_coords = route["coordinates"]
     outbound_km = route["distance_km"]
     total_km = outbound_km
@@ -674,6 +758,7 @@ def plan_trip(
             destination_coords=list(dest_coords),
             fuel_at_destination_pct=dest_fuel,
             floor_unmet=_floor_unmet(dest_fuel, min_fuel_at_destination_pct),
+            route_summary=route.get("summary", ""),
             fuel_at_turnaround_pct=(
                 _turnaround_fuel_pct([], outbound_km, tank_liters, consumption_lper100km, fuel_level_pct)
                 if round_trip
@@ -697,9 +782,8 @@ def plan_trip(
     total_fuel_liters = sum(s.liters_to_fill for s in trip_stops)
 
     # Baseline savings: compare with median price across candidates
-    if candidate_stations:
-        prices = sorted(c.price for c in candidate_stations)
-        median_price = prices[len(prices) // 2]
+    median_price = _median_price(candidate_stations)
+    if median_price is not None:
         baseline_cost = total_fuel_liters * median_price
         savings = max(0, round(baseline_cost - total_fuel_cost, 2))
     else:
@@ -753,6 +837,8 @@ def plan_trip(
         fuel_at_destination_pct=dest_fuel,
         floor_unmet=_floor_unmet(dest_fuel, min_fuel_at_destination_pct),
         alternative_plans=alternative_plans,
+        route_summary=route.get("summary", ""),
+        estimated_trip_fuel_cost=_estimated_trip_fuel_cost(total_km, consumption_lper100km, median_price),
         fuel_at_turnaround_pct=(
             _turnaround_fuel_pct(trip_stops, outbound_km, tank_liters, consumption_lper100km, fuel_level_pct)
             if round_trip

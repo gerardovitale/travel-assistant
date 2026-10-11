@@ -132,6 +132,17 @@
     <a id="trip-assumptions-edit" href="#advanced-section" data-testid="trip-assumptions-edit" class="inline-block mt-2 text-[12px] font-label font-bold text-primary-container">Ajustar parámetros →</a>
   </div>
 
+  <div id="route-options-wrap" data-testid="trip-route-options-wrap" class="hidden">
+    <h2 class="font-headline font-bold text-xl mb-1">Rutas disponibles</h2>
+    <p class="text-[12px] text-on-surface-variant mb-3">Elige una ruta para ver sus paradas, costes y recorrido en el mapa.</p>
+    <div id="route-options" data-testid="trip-route-options" role="radiogroup" aria-label="Rutas disponibles" class="flex gap-4 overflow-x-auto no-scrollbar snap-x -mx-1 px-1 pt-1 pb-2"></div>
+  </div>
+
+  <p id="route-single-note" data-testid="trip-single-route-note" class="hidden flex items-center gap-2 text-[12px] text-on-surface-variant">
+    <span class="material-symbols-outlined text-[18px] text-outline">alt_route</span>
+    <span>Solo hemos encontrado una ruta razonable para este viaje.</span>
+  </p>
+
   <div id="trip-kpis" data-testid="trip-kpis" class="hidden grid grid-cols-2 md:grid-cols-5 gap-3"></div>
 
   <div id="trip-floor-warning" data-testid="trip-floor-warning" class="hidden rounded-xl px-4 py-3 text-sm bg-amber-600/15 text-amber-700 border border-amber-600/30 flex items-center gap-2">
@@ -168,7 +179,7 @@
   </div>
 
   <div id="alt-plans-wrap" data-testid="trip-alt-plans-wrap" class="hidden">
-    <h2 class="font-headline font-bold text-xl mb-3">Alternativas</h2>
+    <h2 class="font-headline font-bold text-xl mb-3">Otras estrategias de repostaje</h2>
     <div id="alt-plans" data-testid="trip-alt-plans" class="flex gap-4 overflow-x-auto no-scrollbar snap-x pb-2"></div>
   </div>
 

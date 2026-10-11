@@ -242,6 +242,7 @@ def _build_app_config() -> dict:
         "default_max_detour_minutes": settings.default_max_detour_minutes,
         "default_refill_liters": settings.default_refill_liters,
         "default_min_fuel_at_destination_pct": settings.default_min_fuel_at_destination_pct,
+        "trip_max_route_alternatives": settings.trip_max_route_alternatives,
         "public_url": settings.public_url,
     }
 

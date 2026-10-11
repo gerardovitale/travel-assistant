@@ -4,6 +4,7 @@ from typing import Literal
 
 from config import settings
 from pydantic import BaseModel
+from pydantic import computed_field
 from pydantic import Field
 
 
@@ -191,6 +192,17 @@ class TripPlan(BaseModel):
     outbound_distance_km: float | None = None
     return_route_coordinates: list[list[float]] = []
     fuel_at_turnaround_pct: float | None = None
+    route_summary: str = ""
+    route_badges: list[str] = []
+    estimated_trip_fuel_cost: float = 0.0
+    # Full plans on the other OSRM routes (one-way trips only); empty on the nested plans themselves
+    route_alternatives: list["TripPlan"] = []
+
+    @computed_field
+    @property
+    def door_to_door_minutes(self) -> float:
+        """Drive time plus the detours to reach each fuel stop."""
+        return round(self.duration_minutes + sum(s.detour_minutes for s in self.stops), 1)
 
 
 class SearchLocation(BaseModel):
