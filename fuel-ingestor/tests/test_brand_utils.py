@@ -38,7 +38,7 @@ class TestNormalizeBrand:
         assert normalize_brand(None) is None
 
     def test_non_string_returns_none(self):
-        assert normalize_brand(123) is None
+        assert normalize_brand(123) is None  # ty: ignore[invalid-argument-type]
 
 
 class TestBrandFamilies:

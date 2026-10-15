@@ -105,7 +105,7 @@ fuel-dashboard.typecheck:
 
 # IMAGE SCANNING
 define scan-service
-	docker buildx build -f $(1)/Dockerfile -t travass-$(1):local . && \
+	docker buildx build --pull --no-cache-filter runtime -f $(1)/Dockerfile -t travass-$(1):local . && \
 	docker run --rm \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v $(PWD)/.trivyignore:/root/.trivyignore \

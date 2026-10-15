@@ -36,7 +36,7 @@ class _FixedWindowLimiter:
     # behind a public Cloudflare Tunnel, where scanners/bots each mint a new bucket entry.
     _PRUNE_EVERY_N_WINDOWS = 2
 
-    def __init__(self, max_requests: int, window_seconds: int):
+    def __init__(self, max_requests: int, window_seconds: float):
         self._max_requests = max_requests
         self._window_seconds = window_seconds
         self._lock = threading.Lock()

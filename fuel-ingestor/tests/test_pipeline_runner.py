@@ -65,7 +65,7 @@ class TestPipelineRunner(TestCase):
         result = TaskRunner().run([_make_failing_task()])[0]
         self.assertEqual(result.status, "failed")
         self.assertIsNotNone(result.error)
-        self.assertIn("intentional failure", result.error)
+        self.assertIn("intentional failure", str(result.error))
 
     def test_failing_pipeline_does_not_stop_subsequent_pipelines(self):
         pipelines = [_make_failing_task("fail"), _make_ok_task("after_fail")]

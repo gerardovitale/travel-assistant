@@ -28,6 +28,11 @@ spain-fuel-fetcher = { workspace = true }
 # -- they're run via `cd fuel-dashboard && uv run python ../scripts/<script>.py` in practice, so this
 # is the venv that already has their deps (pandas, httpx, google-cloud-storage).
 pythonpath = ["app", "../scripts"]
+# starlette 1.3 deprecates driving its TestClient with `httpx` in favour of `httpx2`. Emitted on
+# import by fastapi.testclient; drop once tests move to httpx2.
+filterwarnings = [
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
 
 [dependency-groups]
 dev = [

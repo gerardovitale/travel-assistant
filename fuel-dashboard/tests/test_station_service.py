@@ -748,6 +748,7 @@ def test_get_brand_win_rate_report_computes_weighted_average(mock_agg):
     mock_agg.return_value = _make_win_rate_df()
     rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
 
+    assert rows is not None
     assert len(rows) == 2
     ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
     # weighted: (70.0*100 + 75.0*50) / 150 = 71.67
@@ -765,6 +766,7 @@ def test_get_brand_win_rate_report_respects_config_brands(mock_agg, monkeypatch)
     monkeypatch.setattr(settings, "report_brands", ["ballenoil"])
     rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
 
+    assert rows is not None
     assert len(rows) == 1
     assert rows[0]["brand"] == "ballenoil"
 
@@ -787,6 +789,7 @@ def test_get_brand_price_comparison_report_computes_weighted_average(mock_agg):
     mock_agg.return_value = _make_comparison_df()
     rows = get_brand_price_comparison_report("gasoline_95_e5_price")
 
+    assert rows is not None
     assert len(rows) == 2
     ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
     assert ballenoil["price_delta_pct"] == pytest.approx(-5.0, abs=0.01)
@@ -803,6 +806,7 @@ def test_get_brand_price_comparison_report_respects_config_brands(mock_agg, monk
     monkeypatch.setattr(settings, "report_brands", ["repsol"])
     rows = get_brand_price_comparison_report("gasoline_95_e5_price")
 
+    assert rows is not None
     assert len(rows) == 1
     assert rows[0]["brand"] == "repsol"
 
@@ -825,6 +829,7 @@ def test_get_brand_coverage_report_counts_geo_values_per_level(mock_agg):
     mock_agg.return_value = _make_comparison_df()
     rows = get_brand_coverage_report("gasoline_95_e5_price")
 
+    assert rows is not None
     assert len(rows) == 2
     ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
     assert ballenoil["zip_codes"] == 2  # 28001 + 28002
@@ -841,6 +846,7 @@ def test_get_brand_coverage_report_respects_config_brands(mock_agg, monkeypatch)
     monkeypatch.setattr(settings, "report_brands", ["ballenoil"])
     rows = get_brand_coverage_report("gasoline_95_e5_price")
 
+    assert rows is not None
     assert len(rows) == 1
     assert rows[0]["brand"] == "ballenoil"
 
@@ -885,6 +891,7 @@ def test_get_brand_price_comparison_report_filters_by_requested_brands(mock_agg)
     mock_agg.return_value = _make_comparison_df()
     rows = get_brand_price_comparison_report("gasoline_95_e5_price", brands=["repsol"])
 
+    assert rows is not None
     assert len(rows) == 1
     assert rows[0]["brand"] == "repsol"
 
@@ -898,6 +905,7 @@ def test_get_brand_price_comparison_report_caps_at_four_brands(mock_agg):
         "gasoline_95_e5_price", brands=["repsol", "cepsa", "ballenoil", "costco", "plenoil", "bp"]
     )
 
+    assert rows is not None
     assert len(rows) == 4  # only the first four selected brands are honoured
 
 
@@ -909,6 +917,7 @@ def test_get_brand_win_rate_report_brands_param_overrides_config_default(mock_ag
     monkeypatch.setattr(settings, "report_brands", ["ballenoil"])  # default would show only ballenoil
     rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest", brands=["repsol"])
 
+    assert rows is not None
     assert len(rows) == 1
     assert rows[0]["brand"] == "repsol"
 
@@ -960,6 +969,7 @@ def test_get_report_available_brands_stays_bounded_on_realistic_label_volume(moc
 
     brands = get_report_available_brands("gasoline_95_e5_price")
 
+    assert brands is not None
     assert not [b for b in brands if b.startswith("station")]
     assert len(brands) <= REPORT_PICKER_MAX_BRANDS + len(settings.report_brands)
     assert brands[:3] == ["repsol", "cepsa", "ballenoil"]
@@ -976,6 +986,7 @@ def test_get_report_available_brands_caps_picker_size_when_many_brands_clear_the
 
     brands = get_report_available_brands("gasoline_95_e5_price")
 
+    assert brands is not None
     assert len(brands) == REPORT_PICKER_MAX_BRANDS
 
 

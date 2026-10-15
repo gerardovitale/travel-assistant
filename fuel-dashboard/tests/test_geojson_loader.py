@@ -1,11 +1,12 @@
 import gzip
 import json
+from typing import Any
 from unittest.mock import patch
 
 import data.geojson_loader as loader_module
 
 
-SAMPLE_GEOJSON = {
+SAMPLE_GEOJSON: dict[str, Any] = {
     "type": "FeatureCollection",
     "features": [
         {

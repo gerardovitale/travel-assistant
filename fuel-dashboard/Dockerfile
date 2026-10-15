@@ -27,7 +27,7 @@ with gzip.open(dst, mode="wt", encoding="utf-8", compresslevel=9) as f:
 src.unlink()
 PY
 
-FROM python:3.13-slim
+FROM python:3.13-slim AS runtime
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
 # Runtime never invokes pip (deps are already synced into the venv copied below); strip the
 # base image's ensurepip install to drop its vendored msgpack/setuptools CVEs (unused attack surface).
