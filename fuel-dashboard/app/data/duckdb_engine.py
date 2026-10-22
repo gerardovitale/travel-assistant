@@ -31,6 +31,27 @@ def _label_filter_clause(labels: list[str] | None, next_param_idx: int) -> tuple
     return f"AND label = ANY(${next_param_idx}::VARCHAR[])", [labels]
 
 
+_EARTH_RADIUS_KM = 6371.0
+# Widens the bounding box by 1% plus a tiny absolute pad so float rounding can never drop a station
+# the exact Haversine check would keep.
+_BBOX_SAFETY = 1.01
+_BBOX_PAD_DEG = 1e-6
+
+
+def _bbox_half_widths(lat: float, radius_km: float) -> tuple[float, float]:
+    """Return (lat, lon) half-widths in degrees of a box that contains every point within *radius_km*.
+
+    Exact spherical-cap bounds on the same sphere as the Haversine SQL (R=6371 km), so prefiltering on
+    the box and then applying the Haversine check keeps exactly the same rows.
+    """
+    angular = max(radius_km, 0.0) / _EARTH_RADIUS_KM
+    dlat = math.degrees(angular) * _BBOX_SAFETY + _BBOX_PAD_DEG
+    cos_lat = math.cos(math.radians(lat))
+    ratio = math.sin(min(angular, math.pi / 2)) / cos_lat if cos_lat > 1e-12 else 2.0
+    dlon = math.degrees(math.asin(ratio)) * _BBOX_SAFETY + _BBOX_PAD_DEG if ratio < 1.0 else 360.0
+    return dlat, dlon
+
+
 def filter_public_stations(df: pd.DataFrame) -> pd.DataFrame:
     if "sale_type" not in df.columns:
         logger.warning("sale_type column missing from parquet; skipping public-only filter")
@@ -201,6 +222,7 @@ def query_stations_within_radius(
 ) -> pd.DataFrame:
     fuel_type = _validate_fuel_column(fuel_type)
     label_clause, label_params = _label_filter_clause(labels, 4)
+    bbox_idx = 4 + len(label_params)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -215,11 +237,13 @@ def query_stations_within_radius(
                 FROM latest_stations
                 WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
                     AND latitude IS NOT NULL AND longitude IS NOT NULL
+                    AND latitude BETWEEN $1 - ${bbox_idx} AND $1 + ${bbox_idx}
+                    AND longitude BETWEEN $2 - ${bbox_idx + 1} AND $2 + ${bbox_idx + 1}
                     {label_clause}
             ) WHERE distance_km <= $3
             ORDER BY distance_km ASC
             """,
-            [lat, lon, radius_km] + label_params,
+            [lat, lon, radius_km] + label_params + list(_bbox_half_widths(lat, radius_km)),
         ).fetchdf()
 
 
@@ -326,6 +350,7 @@ def query_stations_within_radius_group(
     fuel_cols = ", ".join(fuel_types)
     predicate = _primary_availability_predicate(primary_fuel)
     label_clause, label_params = _label_filter_clause(labels, 4)
+    bbox_idx = 4 + len(label_params)
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -340,11 +365,13 @@ def query_stations_within_radius_group(
                 FROM latest_stations
                 WHERE {predicate}
                     AND latitude IS NOT NULL AND longitude IS NOT NULL
+                    AND latitude BETWEEN $1 - ${bbox_idx} AND $1 + ${bbox_idx}
+                    AND longitude BETWEEN $2 - ${bbox_idx + 1} AND $2 + ${bbox_idx + 1}
                     {label_clause}
             ) WHERE distance_km <= $3
             ORDER BY distance_km ASC
             """,
-            [lat, lon, radius_km] + label_params,
+            [lat, lon, radius_km] + label_params + list(_bbox_half_widths(lat, radius_km)),
         ).fetchdf()
 
 
@@ -631,7 +658,7 @@ def query_stations_along_corridor(
     corridor_km: float,
     labels: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Return stations within corridor_km of any waypoint via cross-join Haversine.
+    """Return stations within corridor_km of any waypoint via a bounding-box range join + Haversine.
 
     Adds min_distance_km + closest_waypoint_idx columns to result.
     """
@@ -642,17 +669,28 @@ def query_stations_along_corridor(
 
     lats = [w[0] for w in waypoints]
     lons = [w[1] for w in waypoints]
-    avg_lat_rad = math.radians(sum(lats) / len(lats))
-    lon_degree_km = 111.0 * math.cos(avg_lat_rad)
-    lat_offset = corridor_km / 111.0
-    lon_offset = corridor_km / max(0.01, lon_degree_km)
+    # Per-waypoint bounding boxes turn the station x waypoint cross join into a range join, so the
+    # Haversine is only evaluated for station/waypoint pairs that can be within corridor_km. The outer
+    # box is their union, so it never drops a station that some waypoint's box would keep.
+    half_widths = [_bbox_half_widths(lat, corridor_km) for lat in lats]
+    lat_lo = [lat - dlat for lat, (dlat, _) in zip(lats, half_widths)]
+    lat_hi = [lat + dlat for lat, (dlat, _) in zip(lats, half_widths)]
+    lon_lo = [lon - dlon for lon, (_, dlon) in zip(lons, half_widths)]
+    lon_hi = [lon + dlon for lon, (_, dlon) in zip(lons, half_widths)]
+    min_lat, max_lat = min(lat_lo), max(lat_hi)
+    min_lon, max_lon = min(lon_lo), max(lon_hi)
 
-    min_lat = min(lats) - lat_offset
-    max_lat = max(lats) + lat_offset
-    min_lon = min(lons) - lon_offset
-    max_lon = max(lons) + lon_offset
-
-    wp_df = pd.DataFrame({"wp_idx": range(len(waypoints)), "wp_lat": lats, "wp_lon": lons})  # noqa: F841
+    wp_df = pd.DataFrame(  # noqa: F841
+        {
+            "wp_idx": range(len(waypoints)),
+            "wp_lat": lats,
+            "wp_lon": lons,
+            "wp_lat_lo": lat_lo,
+            "wp_lat_hi": lat_hi,
+            "wp_lon_lo": lon_lo,
+            "wp_lon_hi": lon_hi,
+        }
+    )
 
     with _lock:
         conn = get_connection()
@@ -677,7 +715,9 @@ def query_stations_along_corridor(
                         POWER(SIN(RADIANS(s.longitude - w.wp_lon) / 2), 2)
                     )) AS dist_km
                 FROM corridor_stations s
-                CROSS JOIN wp_df w
+                JOIN wp_df w
+                    ON s.latitude BETWEEN w.wp_lat_lo AND w.wp_lat_hi
+                    AND s.longitude BETWEEN w.wp_lon_lo AND w.wp_lon_hi
             )
             SELECT label, address, municipality, province, zip_code,
                    latitude, longitude, {fuel_type},

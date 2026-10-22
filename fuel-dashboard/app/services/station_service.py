@@ -17,7 +17,7 @@ from api.schemas import TrendPoint
 from api.schemas import ZoneResult
 from config import settings
 from services.geo_utils import assign_districts
-from services.geo_utils import point_in_multipolygon
+from services.geo_utils import locate_features
 from services.routing import get_road_distances
 from services.routing import get_route_geometries
 
@@ -109,13 +109,13 @@ def _trend_points_from_df(df: pd.DataFrame) -> list[TrendPoint]:
             min_price=row["min_price"],
             max_price=row["max_price"],
         )
-        for _, row in df.iterrows()
+        for row in df.to_dict(orient="records")
     ]
 
 
 def _df_to_station_results(df: pd.DataFrame, fuel_type: str, national_avg: float | None = None) -> list[StationResult]:
     results = []
-    for _, row in df.iterrows():
+    for row in df.to_dict(orient="records"):
         pct_vs_avg = None
         if national_avg and national_avg > 0:
             pct_vs_avg = round((row[fuel_type] - national_avg) / national_avg * 100, 1)
@@ -148,7 +148,7 @@ def _df_to_station_results_group(
     df: pd.DataFrame, primary_fuel: str, all_fuels: list[str], national_avg: float | None = None
 ) -> list[StationResult]:
     results = []
-    for _, row in df.iterrows():
+    for row in df.to_dict(orient="records"):
         primary_price = float(row[primary_fuel])
         pct_vs_avg = None
         if national_avg and national_avg > 0:
@@ -421,7 +421,7 @@ def get_cheapest_zones(province: str, fuel_type: FuelType) -> list[ZoneResult]:
             min_price=row["min_price"],
             station_count=row["station_count"],
         )
-        for _, row in df.iterrows()
+        for row in df.to_dict(orient="records")
     ]
 
 
@@ -433,7 +433,7 @@ def get_province_price_map(fuel_type: FuelType) -> list[ProvincePriceResult]:
             avg_price=row["avg_price"],
             station_count=row["station_count"],
         )
-        for _, row in df.iterrows()
+        for row in df.to_dict(orient="records")
     ]
 
 
@@ -475,8 +475,8 @@ def get_district_price_map(province: str, fuel_type: FuelType) -> list[DistrictP
     if df.empty:
         return []
     aggregated = assign_districts(
-        df["latitude"].tolist(),
-        df["longitude"].tolist(),
+        df["latitude"].to_numpy(),
+        df["longitude"].to_numpy(),
         df["price"].tolist(),
         geojson["features"],
     )
@@ -516,7 +516,7 @@ def get_municipalities(province: str) -> list[str]:
 
 
 def get_zip_code_price_map_by_municipality(province: str, fuel_type: FuelType, municipality: str) -> list[ZoneResult]:
-    df = query_cheapest_zones_by_municipality(province, fuel_type.value, municipality)
+    df = query_cheapest_zones_by_municipality(province, municipality, fuel_type.value)
     return [
         ZoneResult(
             zip_code=str(row["zip_code"]),
@@ -524,7 +524,7 @@ def get_zip_code_price_map_by_municipality(province: str, fuel_type: FuelType, m
             min_price=row["min_price"],
             station_count=row["station_count"],
         )
-        for _, row in df.iterrows()
+        for row in df.to_dict(orient="records")
     ]
 
 
@@ -536,23 +536,10 @@ def get_zip_codes_for_district(province: str, fuel_type: FuelType, district_name
     df = query_zip_codes_by_district(province, fuel_type.value)
     if df.empty:
         return []
-    aggregated = assign_districts(
-        df["latitude"].tolist(),
-        df["longitude"].tolist(),
-        df["price"].tolist(),
-        geojson["features"],
-    )
-    if district_name not in aggregated:
-        return []
     # Collect zip codes for stations that were assigned to the target district
-    target_zips: set = set()
-    for feature in geojson["features"]:
-        if feature["properties"]["nombre"] == district_name:
-            for _, row in df.iterrows():
-                if point_in_multipolygon(row["latitude"], row["longitude"], feature["geometry"]):
-                    target_zips.add(str(row["zip_code"]))
-            break
-    return sorted(target_zips)
+    districts = locate_features(df["latitude"].to_numpy(), df["longitude"].to_numpy(), geojson["features"])
+    in_district = [name == district_name for name in districts]
+    return sorted(set(df.loc[in_district, "zip_code"].astype(str)))
 
 
 def get_zip_code_price_map_for_zips(province: str, fuel_type: FuelType, zip_codes: list[str]) -> list[ZoneResult]:

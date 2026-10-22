@@ -123,7 +123,7 @@ def test_get_zip_code_price_map_by_municipality(mock_query):
     assert len(results) == 2
     assert results[0].zip_code == "28901"
     assert results[0].avg_price == 1.40
-    mock_query.assert_called_once_with("MADRID", SAMPLE_FUEL_TYPE, "GETAFE")
+    mock_query.assert_called_once_with("MADRID", "GETAFE", SAMPLE_FUEL_TYPE)
 
 
 @patch("services.station_service.get_cheapest_zones")

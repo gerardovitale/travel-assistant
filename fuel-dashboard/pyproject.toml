@@ -18,6 +18,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "spain-fuel-fetcher",
     "mcp>=1.16,<2",
+    "numpy>=2.4.6",
 ]
 
 [tool.uv.sources]
