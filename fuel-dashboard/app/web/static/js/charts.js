@@ -1,7 +1,27 @@
 /* global Plotly */
 // Thin Plotly wrappers with app-themed layouts.
 
+// Spanish locale for every chart: month names, date order and "," decimals. Registered
+// inline so it needs no extra CDN script (guarded: the UI-test Plotly stub has no register).
+if (typeof Plotly !== "undefined" && typeof Plotly.register === "function") {
+  Plotly.register({
+    moduleType: "locale",
+    name: "es",
+    dictionary: {},
+    format: {
+      days: ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"],
+      shortDays: ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"],
+      months: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+      shortMonths: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"],
+      date: "%d/%m/%Y",
+      decimal: ",",
+      thousands: ".",
+    },
+  });
+}
+
 const COMMON_LAYOUT = {
+  separators: ",.",
   font: { family: "Inter, sans-serif", size: 12, color: "#191c20" },
   paper_bgcolor: "rgba(0,0,0,0)",
   plot_bgcolor: "rgba(0,0,0,0)",
@@ -10,7 +30,21 @@ const COMMON_LAYOUT = {
   xaxis: { gridcolor: "#e1e2e8", linecolor: "#c4c6d2", tickfont: { size: 11 } },
   yaxis: { gridcolor: "#e1e2e8", linecolor: "#c4c6d2", tickfont: { size: 11 } },
 };
-const CONFIG = { responsive: true, displaylogo: false, displayModeBar: false };
+const CONFIG = { responsive: true, displaylogo: false, displayModeBar: false, locale: "es" };
+// Date x-axes read day-first in Spanish ("13 abr") instead of Plotly's US "Apr 13, 2026".
+const DAY_MS = 86400000;
+const DATE_XAXIS = {
+  ...COMMON_LAYOUT.xaxis,
+  hoverformat: "%-d %b %Y",
+  // Coarse → fine: Plotly takes the first stop whose (inclusive) range matches, so a tick
+  // spacing of exactly 1 day must hit the day format before the hour one (same for 1 month).
+  tickformatstops: [
+    { dtickrange: ["M12", null], value: "%Y" },
+    { dtickrange: ["M1", "M12"], value: "%b %Y" },
+    { dtickrange: [DAY_MS, "M1"], value: "%-d %b" },
+    { dtickrange: [null, DAY_MS], value: "%-d %b, %H:%M" },
+  ],
+};
 
 // Every chart renders through here so the reveal transition (and any future
 // motion tweak) stays in one place instead of five separate call sites.
@@ -18,7 +52,9 @@ function _renderChart(el, traces, layout, config) {
   el.classList.remove("fade-in");
   void el.offsetHeight; // force reflow so the animation restarts
   el.classList.add("fade-in");
-  Plotly.newPlot(el, traces, layout, config);
+  // Plotly writes zoom/autorange state back into the layout it is given; clone so the shared
+  // axis objects (COMMON_LAYOUT.xaxis, DATE_XAXIS) never carry one chart's zoom into the next.
+  Plotly.newPlot(el, traces, structuredClone(layout), config);
 }
 
 export function loadingSkeleton() {
@@ -40,7 +76,7 @@ export function lineTrend(el, points, { label = "Precio", overlay = null, overla
     { x, y: min, name: "Min", mode: "lines", line: { color: "#b2c5ff", width: 1 }, fill: "tonexty", fillcolor: "rgba(178,197,255,0.25)", hoverinfo: "skip" },
     { x, y: avg, name: label, mode: "lines+markers", line: { color: "#001642", width: 2.5 }, marker: { size: 5 } },
   ];
-  const layout = { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } };
+  const layout = { ...COMMON_LAYOUT, xaxis: DATE_XAXIS, showlegend: true, legend: { orientation: "h", y: -0.2 } };
   if (overlay && overlay.length) {
     traces.push({
       x: overlay.map((p) => p.date),
@@ -70,7 +106,7 @@ export function multiLine(el, seriesMap, { labels = {} } = {}) {
       line: { color: palette[i % palette.length], width: 2 },
     };
   });
-  _renderChart(el, traces, { ...COMMON_LAYOUT, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
+  _renderChart(el, traces, { ...COMMON_LAYOUT, xaxis: DATE_XAXIS, showlegend: true, legend: { orientation: "h", y: -0.2 } }, CONFIG);
 }
 
 // Same as multiLine, plus one extra trace plotted on a secondary right-hand y-axis (%).
@@ -106,6 +142,7 @@ export function multiLineWithDiff(el, seriesMap, diffSeries, { labels = {}, diff
     traces,
     {
       ...COMMON_LAYOUT,
+      xaxis: DATE_XAXIS,
       showlegend: true,
       legend: { orientation: "h", y: -0.2 },
       // Hidden (not just the trace) when the diff line is toggled off — an unused axis with no

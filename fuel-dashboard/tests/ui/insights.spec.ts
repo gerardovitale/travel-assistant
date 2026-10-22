@@ -182,7 +182,7 @@ test("trends tab shows an insufficient-data state when the forecast is unavailab
   await insightsPage.zipInput.fill("28001");
   await responsePromise;
 
-  await expect(insightsPage.forecastBanner).toContainText("No hay suficiente historico");
+  await expect(insightsPage.forecastBanner).toContainText("no hay suficiente histórico diario");
   await expect(page.getByTestId("forecast-probabilities")).toContainText("Sin datos");
 });
 
@@ -207,6 +207,7 @@ test("forecast ignores partial zip codes and falls back to province", async ({ p
   expect(lastRequest).toContain("province=madrid");
   expect(lastRequest).not.toContain("zip_code=28");
   await expect(insightsPage.forecastBanner).toContainText("Reposta hoy");
+  await expect(page.getByTestId("forecast-scope")).toHaveText("Provincia: Madrid");
 });
 
 test("forecast sends the selected period as the forecast window", async ({ page }) => {

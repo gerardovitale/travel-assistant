@@ -1,7 +1,7 @@
 import { api, qs, toast } from "./app.js";
 import { populateFuelSelect, getLabels } from "./fuel.js";
 import { createMap, drawStationsTracked, drawSearchPin, drawZipBoundary, drawRoute, priceColor } from "./maps.js";
-import { formatPrice, formatKm, formatEur, escapeHtml } from "./format.js";
+import { formatPrice, formatKm, formatEur, formatSignedPct, displaySign, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels } from "./brands.js";
 import { attachAutocomplete } from "./addressAutocomplete.js";
 import { buildNavUrls, openSmartNav } from "./openInMaps.js";
@@ -99,7 +99,9 @@ function renderList(results) {
   const rows = results.map((s, i) => {
     const dist = s.distance_km != null ? formatKm(s.distance_km) : "";
     const cost = s.estimated_total_cost != null ? `· ${formatEur(s.estimated_total_cost)} total` : "";
-    const pct = s.pct_vs_avg != null ? `<span class="${s.pct_vs_avg < 0 ? 'text-tertiary-container' : 'text-error'} text-[11px] font-bold">${s.pct_vs_avg > 0 ? '+' : ''}${s.pct_vs_avg.toFixed(1)}% vs media</span>` : "";
+    const pctSign = displaySign(s.pct_vs_avg);
+    const pctCls = pctSign < 0 ? "text-tertiary-container" : pctSign > 0 ? "text-error" : "text-outline";
+    const pct = s.pct_vs_avg != null ? `<span class="${pctCls} text-[11px] font-bold">${formatSignedPct(s.pct_vs_avg)} vs media</span>` : "";
     // Render the directions affordance only when coords are valid. A
     // non-finite lat/lon would make buildNavUrls throw and abort the whole
     // results list; gracefully drop just the link instead.
@@ -178,7 +180,7 @@ function renderRecommendation(results) {
   const rec = document.getElementById("recommendation");
   if (!results.length) { rec.classList.add("hidden"); return; }
   const best = results[0];
-  const dist = best.distance_km != null ? ` a ${best.distance_km.toFixed(1)} km` : "";
+  const dist = best.distance_km != null ? ` a ${formatKm(best.distance_km)}` : "";
   const cost = best.estimated_total_cost != null ? `, con un coste estimado de ${formatEur(best.estimated_total_cost)}` : "";
   const msg = `La mejor opción es <b>${escapeHtml(best.label)}</b>${dist} al precio de <b>${formatPrice(best.price)}</b>${cost}.`;
   document.getElementById("recommendation-text").innerHTML = msg;

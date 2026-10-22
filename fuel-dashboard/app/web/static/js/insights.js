@@ -3,7 +3,7 @@ import { registerShareBuilder, initShare } from "./share.js";
 import { populateFuelSelect, populateGroupSelect, getProvinces, getCatalog, FUEL_LABELS, GROUP_DEFAULT_VARIANT_PAIR } from "./fuel.js";
 import { lineTrend, multiLine, multiLineWithDiff, mergePctDiff, horizontalBar, heatmap, emptyMsg, loadingSkeleton } from "./charts.js";
 import { createMap, drawGeoJSON } from "./maps.js";
-import { formatPrice, escapeHtml } from "./format.js";
+import { formatPrice, formatNum, formatDelta, displaySign, escapeHtml, titleCase } from "./format.js";
 
 // ----------------------------- URL STATE + SHARE -----------------------------
 // Deep-linkable views: the active tab lives in the path (/insights/{tab}) and only filters that
@@ -320,7 +320,7 @@ async function loadCommodityOverlay(fuelType, period) {
       kpiEl.classList.remove("hidden");
       kpiEl.textContent = corrResp.insufficient_data || corrResp.correlation === null
         ? "Correlación con el Brent: datos insuficientes"
-        : `Correlación con el Brent (${corrResp.window_days} días): ${corrResp.correlation.toFixed(2)}`;
+        : `Correlación con el Brent (${corrResp.window_days} días): ${formatNum(corrResp.correlation, 2)}`;
     }
     return trendResp.series || [];
   } catch {
@@ -357,7 +357,7 @@ async function loadTrends() {
       kpi("Actual", formatPrice(curr), "local_offer"),
       kpi("Mínimo", formatPrice(min), "south"),
       kpi("Máximo", formatPrice(max), "north"),
-      kpi("Variación", `${pct.toFixed(2)} %`, pct >= 0 ? "trending_up" : "trending_down"),
+      kpi("Variación", formatDelta(pct), [ "trending_down", "trending_flat", "trending_up" ][displaySign(pct, 2) + 1]),
     ].join("");
     const overlay = await loadCommodityOverlay(fuelType, data.get("period"));
     lineTrend(chartEl, pts, { label: FUEL_LABELS[fuelType] || "Precio", overlay });
@@ -727,7 +727,8 @@ function renderForecast(resp) {
   const kpisEl = document.getElementById("forecast-kpis");
   const scopeEl = document.getElementById("forecast-scope");
   const geoLabel = GEOGRAPHY_LABELS[resp.geography_type] || resp.geography_type;
-  scopeEl.textContent = `${geoLabel}: ${resp.geography_value}`;
+  const geoValue = resp.geography_type === "province" ? titleCase(resp.geography_value) : resp.geography_value;
+  scopeEl.textContent = `${geoLabel}: ${geoValue}`;
 
   if (resp.insufficient_data) {
     bannerEl.className = "rounded-xl px-4 py-3 text-sm mb-4 bg-surface-container text-on-surface";
@@ -743,7 +744,7 @@ function renderForecast(resp) {
   bannerEl.classList.remove("hidden");
   kpisEl.innerHTML = [
     kpi("Régimen", escapeHtml(REGIME_LABELS[resp.current_regime] || resp.current_regime || "—"), "local_offer"),
-    kpi("Precio actual", resp.current_avg_price != null ? formatPrice(resp.current_avg_price) : "—", "euro"),
+    kpi("Precio actual", formatPrice(resp.current_avg_price), "euro"),
     kpi("Más barato en 3d", resp.cheaper_within_3d != null ? percent(resp.cheaper_within_3d) : "—", "schedule"),
     kpi("Confianza", percent(resp.confidence), "analytics"),
   ].join("");
@@ -861,7 +862,7 @@ async function loadQuality() {
   try {
     const r = await api("/quality/inventory");
     const inv = r.inventory || {}; const latest = r.latest_day || {}; const rt = r.realtime || {};
-    const sizeMb = inv.total_size_bytes ? (inv.total_size_bytes / (1024 * 1024)).toFixed(1) + " MB" : "—";
+    const sizeMb = inv.total_size_bytes ? `${formatNum(inv.total_size_bytes / (1024 * 1024), 1)} MB` : "—";
     const daysAgo = inv.max_date
       ? Math.floor((Date.now() - new Date(inv.max_date)) / 86_400_000)
       : null;
@@ -1108,13 +1109,13 @@ function renderSavings(rows) {
       return `<div class="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl p-4 shadow-sm">
         <p class="text-[11px] font-label font-bold tracking-wider uppercase text-outline">${escapeHtml(brandLabel(c.brand))}</p>
         <p class="mt-2 font-headline font-extrabold text-2xl ${valueCls}">${value}</p>
-        <p class="mt-1 text-xs text-on-surface-variant">${positive ? `${eurFmt(c.savingsPerL, 3)}/L vs. mercado` : ""}</p></div>`;
+        <p class="mt-1 text-xs text-on-surface-variant">${positive ? `${formatPrice(c.savingsPerL)} vs. mercado` : ""}</p></div>`;
     })
     .join("");
 }
 
 function eurFmt(n, decimals = 2) {
-  return `${(n || 0).toLocaleString("es-ES", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })} €`;
+  return `${formatNum(n || 0, decimals)} €`;
 }
 
 // Cepsa rebranded to Moeve; display the new name (with the old one for recognition) everywhere a
@@ -1442,14 +1443,13 @@ function clearFuelTypeText(...testIds) {
 function renderFuelTypeInputs(data) {
   const el = document.getElementById("fuel-type-inputs");
   if (!el) return;
-  const numFmt = (n, d) => n.toLocaleString("es-ES", { minimumFractionDigits: d, maximumFractionDigits: d });
   const rows = [data.gasoline, data.diesel].map((v) => {
     const unit = v.consumption_unit.replace("/100km", "/100 km");
     return `<tr>
       <td class="py-1.5 pr-4">${escapeHtml(v.label)}</td>
-      <td class="py-1.5 pr-4 text-right whitespace-nowrap">${numFmt(v.consumption, 1)} ${escapeHtml(unit)}</td>
+      <td class="py-1.5 pr-4 text-right whitespace-nowrap">${formatNum(v.consumption, 1)} ${escapeHtml(unit)}</td>
       <td class="py-1.5 pr-4 text-right whitespace-nowrap text-on-surface-variant">×</td>
-      <td class="py-1.5 pr-4 text-right whitespace-nowrap">${eurFmt(v.price_per_unit, 3)}/l</td>
+      <td class="py-1.5 pr-4 text-right whitespace-nowrap">${formatPrice(v.price_per_unit)}</td>
       <td class="py-1.5 pr-4 text-right whitespace-nowrap text-on-surface-variant">=</td>
       <td class="py-1.5 text-right whitespace-nowrap font-medium">${eurFmt(v.cost_per_100km)}/100 km</td>
     </tr>`;
@@ -1462,8 +1462,8 @@ function renderFuelTypeInputs(data) {
     <div class="overflow-x-auto"><table class="min-w-full text-sm"><tbody>${rows.join("")}</tbody></table></div>
     <p class="mt-2 text-xs text-on-surface-variant">
       Consumo WLTP del fabricante · Precios de ${escapeHtml(where)} a ${escapeHtml(data.price_date)} ·
-      Punto de equilibrio ${numFmt(data.breakeven_ratio, 2)} (el diésel gana mientras cueste menos de
-      ${eurFmt(data.breakeven_diesel_price, 3)}/l)
+      Punto de equilibrio ${formatNum(data.breakeven_ratio, 2)} (el diésel gana mientras cueste menos de
+      ${formatPrice(data.breakeven_diesel_price)})
     </p>`;
 }
 
@@ -1479,8 +1479,8 @@ function renderFuelTypeVerdict(data) {
   }[data.winner];
   summaryEl.textContent = `${data.model} · ${winnerText}`;
   const kpis = [
-    { label: "Diésel hasta", value: `${eurFmt(data.breakeven_diesel_price, 3)}/L`, note: `Por encima gana la gasolina (hoy ${eurFmt(data.diesel.price_per_unit, 3)}/L)` },
-    { label: "Margen", value: `${eurFmt(data.diesel_headroom_eur_l, 3)}/L`, note: "Lo que puede subir el diésel antes de perder" },
+    { label: "Diésel hasta", value: `${formatPrice(data.breakeven_diesel_price)}`, note: `Por encima gana la gasolina (hoy ${formatPrice(data.diesel.price_per_unit)})` },
+    { label: "Margen", value: `${formatPrice(data.diesel_headroom_eur_l)}`, note: "Lo que puede subir el diésel antes de perder" },
     { label: "Consumo de equilibrio", value: `${data.breakeven_diesel_consumption} l/100 km`, note: `El diésel gana mientras consuma menos en real (WLTP: ${data.diesel.consumption})` },
     { label: "Datos de", value: data.price_date, note: "Último día con precios de ambos combustibles" },
   ];
@@ -1537,8 +1537,8 @@ let provinceSort = { key: "signed_gap", dir: "desc" };
 
 const PROVINCE_COLUMNS = [
   { key: "province", label: "Provincia", align: "left" },
-  { key: "gasoline_price", label: "Gasolina", fmt: (r) => `${eurFmt(r.gasoline_price, 3)}/l` },
-  { key: "diesel_price", label: "Diésel", fmt: (r) => `${eurFmt(r.diesel_price, 3)}/l` },
+  { key: "gasoline_price", label: "Gasolina", fmt: (r) => `${formatPrice(r.gasoline_price)}` },
+  { key: "diesel_price", label: "Diésel", fmt: (r) => `${formatPrice(r.diesel_price)}` },
   { key: "cost_gasoline_per_100km", label: "Gasolina €/100 km", fmt: (r) => eurFmt(r.cost_gasoline_per_100km) },
   { key: "cost_diesel_per_100km", label: "Diésel €/100 km", fmt: (r) => eurFmt(r.cost_diesel_per_100km) },
   { key: "signed_gap", label: "Dif.", fmt: (r) => eurFmt(r.signed_gap) },

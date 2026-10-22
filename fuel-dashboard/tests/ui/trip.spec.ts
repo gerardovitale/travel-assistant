@@ -38,7 +38,7 @@ test("trip planner renders KPIs, stops, and alternatives from the happy path fix
 
   const stopCard = page.getByTestId("trip-stop-card").first();
   // route_km comes from the stop, not its station (the backend leaves station.route_km unset).
-  await expect(stopCard).toContainText("Km 48.0");
+  await expect(stopCard).toContainText("Km 48,0");
   const mapsLink = stopCard.locator('a[title="Cómo llegar"]');
   // Href stays Google Maps (desktop / right-click affordance); the click is
   // intercepted at runtime and routed through the platform-aware opener.

@@ -1,7 +1,7 @@
 import { api, toast } from "./app.js";
 import { populateFuelSelect, getLabels } from "./fuel.js";
 import { createMap, drawStations, drawRoute, clearLayer } from "./maps.js";
-import { formatPrice, formatKm, formatEur, formatMin, escapeHtml } from "./format.js";
+import { formatPrice, formatKm, formatEur, formatMin, formatNum, escapeHtml } from "./format.js";
 import { initBrandsDropdown, populateBrandsList, getSelectedLabels, updateBrandsLabel } from "./brands.js";
 import { attachAutocomplete } from "./addressAutocomplete.js";
 import { fuelByDistance, FUEL_LOW_PCT, FUEL_MID_PCT } from "./charts.js";
@@ -185,9 +185,9 @@ function stopCard(s, i, roundTrip = false) {
         </div>
         <p class="text-[12px] text-on-surface-variant truncate mt-0.5">${escapeHtml([st.address, st.municipality].filter(Boolean).join(", "))}</p>
         <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[12px] text-outline">
-          <span>Km ${s.route_km?.toFixed?.(1) ?? "—"}</span>
+          <span>Km ${formatNum(s.route_km, 1)}</span>
           <span>Desvío ${formatMin(s.detour_minutes)}</span>
-          <span>Repostar ${s.liters_to_fill?.toFixed?.(1) ?? "—"} l</span>
+          <span>Repostar ${formatNum(s.liters_to_fill, 1)} l</span>
           <span class="font-semibold text-on-surface">${formatEur(s.cost_eur)}</span>
         </div>
       </div>

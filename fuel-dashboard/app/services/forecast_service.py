@@ -7,8 +7,12 @@ from data.geojson_loader import normalize_data_province_name
 
 REGIMES = ("cheap", "normal", "expensive")
 REGIME_INDEX = {regime: idx for idx, regime in enumerate(REGIMES)}
-REGIME_LABELS = {"cheap": "barato", "normal": "normal", "expensive": "caro"}
-GEOGRAPHY_LABELS = {"zip_code": "Código postal", "province": "Provincia"}
+INSUFFICIENT_HISTORY_RECOMMENDATION = "Sin suficiente histórico"
+INSUFFICIENT_HISTORY_EXPLANATION = (
+    "Todavía no hay suficiente histórico diario en esta zona para estimar cómo evolucionarán los precios."
+)
+# How the current regime reads in a sentence: "los precios están bajos".
+REGIME_PHRASES = {"cheap": "bajos", "normal": "en su nivel habitual", "expensive": "altos"}
 ZIP_CODE_AGGREGATE = "zip_code_daily_stats.parquet"
 PROVINCE_AGGREGATE = "province_daily_stats.parquet"
 MIN_OBSERVATION_DAYS = 60
@@ -172,7 +176,7 @@ def _confidence_score(counts: dict[str, dict[str, int]]) -> float:
     return round((0.6 * count_score) + (0.4 * concentration), 3)
 
 
-def _explanation(
+def forecast_explanation(
     geography_type: str,
     geography_value: str,
     current_regime: str,
@@ -180,17 +184,24 @@ def _explanation(
     cheaper_7d: float,
     confidence: float,
 ) -> str:
-    geo_label = GEOGRAPHY_LABELS.get(geography_type, geography_type)
-    regime_label = REGIME_LABELS.get(current_regime, current_regime)
-    location_label = f"{geo_label} {geography_value}"
+    regime_phrase = REGIME_PHRASES.get(current_regime, current_regime)
     message = (
-        f"El área {location_label} está en un régimen {regime_label}. "
-        f"La probabilidad de ver un régimen más barato en 3 días es del {cheaper_3d * 100:.0f}% "
-        f"y en 7 días del {cheaper_7d * 100:.0f}%."
+        f"Ahora mismo los precios {_location_phrase(geography_type, geography_value)} están {regime_phrase}. "
+        f"La probabilidad de que bajen a un nivel más barato es del {cheaper_3d * 100:.0f}% en 3 días "
+        f"y del {cheaper_7d * 100:.0f}% en 7 días."
     )
     if confidence < 0.45:
-        return f"{message} La confianza es baja por la variabilidad o escasez de transiciones."
+        return f"{message} La confianza es baja porque los precios de la zona han variado mucho o hay pocos datos."
     return message
+
+
+def _location_phrase(geography_type: str, geography_value: str) -> str:
+    if geography_type == "province":
+        # Same Title Case as the province dropdown (get_distinct_provinces).
+        return f"en la provincia de {geography_value.title()}"
+    if geography_type == "zip_code":
+        return f"en el código postal {geography_value}"
+    return f"en {geography_value}"
 
 
 def _recommendation(current_regime: str, cheaper_3d: float, cheaper_7d: float) -> str:
@@ -213,7 +224,7 @@ def _insufficient_response(
         geography_type=geography_type,
         geography_value=geography_value,
         source=source,
-        recommendation="Sin suficiente historico",
+        recommendation=INSUFFICIENT_HISTORY_RECOMMENDATION,
         explanation=explanation,
         insufficient_data=True,
     )
@@ -235,7 +246,7 @@ def _build_response(
             geography_type,
             geography_value,
             source,
-            "No hay suficiente historico diario consistente para construir una cadena de Markov util.",
+            INSUFFICIENT_HISTORY_EXPLANATION,
         )
 
     matrix = _transition_matrix(counts)
@@ -262,7 +273,7 @@ def _build_response(
         expected_days_in_current_regime=_expected_days_in_regime(matrix, current_regime),
         confidence=confidence,
         recommendation=_recommendation(current_regime, cheaper_3d, cheaper_7d),
-        explanation=_explanation(
+        explanation=forecast_explanation(
             geography_type,
             geography_value,
             current_regime,
@@ -300,7 +311,7 @@ def get_historical_forecast(
                 "zip_code",
                 str(zip_code),
                 "zip_code",
-                "No hay historico agregado para ese codigo postal y no se ha indicado una provincia alternativa.",
+                "No hay histórico de precios para ese código postal y no se ha indicado una provincia alternativa.",
             )
 
     if province:
@@ -310,7 +321,7 @@ def get_historical_forecast(
                 "province",
                 str(province),
                 "province",
-                "No hay historico agregado para la provincia seleccionada.",
+                "No hay histórico de precios para la provincia seleccionada.",
             )
         return _build_response(province_history[["date", "avg_price"]], "province", str(province), "province")
 

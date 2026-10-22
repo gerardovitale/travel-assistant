@@ -12,6 +12,7 @@ from services.forecast_service import _normalize_zip
 from services.forecast_service import _probability_of_cheaper_regime_within_days
 from services.forecast_service import _recommendation
 from services.forecast_service import _transition_matrix
+from services.forecast_service import forecast_explanation
 from services.forecast_service import get_historical_forecast
 
 
@@ -158,7 +159,7 @@ def test_get_historical_forecast_returns_insufficient_data_when_no_usable_histor
     result = get_historical_forecast(FuelType.diesel_a_price, zip_code="28001")
 
     assert result.insufficient_data is True
-    assert result.recommendation == "Sin suficiente historico"
+    assert result.recommendation == "Sin suficiente histórico"
 
 
 @patch("services.forecast_service.download_aggregate")
@@ -280,3 +281,19 @@ def test_build_response_rejects_when_transitions_below_floor():
     response = _build_response(history, "province", "madrid", "province")
 
     assert response.insufficient_data is True
+
+
+def test_explanation_reads_as_plain_spanish_for_province():
+    text = forecast_explanation("province", "santa cruz de tenerife", "cheap", 0.0, 0.123, confidence=0.8)
+
+    assert text == (
+        "Ahora mismo los precios en la provincia de Santa Cruz De Tenerife están bajos. "
+        "La probabilidad de que bajen a un nivel más barato es del 0% en 3 días y del 12% en 7 días."
+    )
+
+
+def test_explanation_for_zip_code_with_low_confidence():
+    text = forecast_explanation("zip_code", "28001", "expensive", 0.4, 0.6, confidence=0.3)
+
+    assert text.startswith("Ahora mismo los precios en el código postal 28001 están altos.")
+    assert text.endswith("La confianza es baja porque los precios de la zona han variado mucho o hay pocos datos.")

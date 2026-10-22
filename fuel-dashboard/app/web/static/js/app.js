@@ -1,4 +1,6 @@
 // Shared: fetch wrapper, toast, data status.
+import { escapeHtml, formatFreshness } from "./format.js";
+
 const API = "/api/v1";
 
 export async function api(path, opts = {}) {
@@ -50,16 +52,6 @@ export function toast(msg, kind = "info") {
   }, 3200);
 }
 
-function toLocalISOString(isoUtc) {
-  const d = new Date(isoUtc);
-  const pad = n => String(n).padStart(2, "0");
-  const offsetMin = -d.getTimezoneOffset();
-  const sign = offsetMin >= 0 ? "+" : "-";
-  const abs = Math.abs(offsetMin);
-  const off = `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${off}`;
-}
-
 // Data freshness indicator in top bar
 async function refreshDataStatus() {
   const el = document.getElementById("data-status");
@@ -70,13 +62,11 @@ async function refreshDataStatus() {
     const dotOk  = '<span class="text-tertiary-container">●</span>';
     const dotErr = '<span class="text-error">●</span>';
     if (r.ok) {
-      const raw = body.data_datetime || body.file_date || "—";
-      const dt  = raw.includes("T") ? toLocalISOString(raw) : raw;
-      const src = body.source === "realtime" ? "near realtime" : (body.source || "—");
-      el.innerHTML = `${dotOk} ${src} · ${dt}`;
+      const label = formatFreshness(body.data_datetime || body.file_date, { realtime: body.source === "realtime" });
+      el.innerHTML = label ? `${dotOk} ${escapeHtml(label)}` : `${dotErr} Datos no disponibles`;
       el.className = "hidden md:inline-flex items-center gap-1 text-[11px] font-label text-on-surface-variant";
     } else {
-      el.innerHTML = `${dotErr} datos ${body.file_date || "obsoletos"}`;
+      el.innerHTML = `${dotErr} ${escapeHtml(formatFreshness(body.file_date, { stale: true }))}`;
       el.className = "hidden md:inline-flex items-center gap-1 text-[11px] font-label text-on-surface-variant";
     }
   } catch {

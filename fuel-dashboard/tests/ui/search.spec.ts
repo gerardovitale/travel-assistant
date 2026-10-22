@@ -21,6 +21,8 @@ test("best-option search renders KPIs, recommendation, and results", async ({ pa
   expect(url.searchParams.get("fuel_type")).toBe("gasoline_95_e5_price");
 
   await expect(page.getByTestId("search-kpis")).toBeVisible();
+  // Realtime freshness badge reads as Spanish copy, not the raw source + ISO timestamp.
+  await expect(page.getByTestId("data-status")).toContainText("Tiempo real");
   await expect(page.getByTestId("search-recommendation")).toContainText("Plenoil Atocha");
   await expect(searchPage.results).toHaveCount(4);
   await expect(page.getByTestId("search-map")).toBeVisible();

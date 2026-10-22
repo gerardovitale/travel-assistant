@@ -1,6 +1,6 @@
 /* global L */
 // Leaflet helpers. Uses OpenStreetMap tiles.
-import { escapeHtml } from "./format.js";
+import { escapeHtml, formatKm, formatPrice } from "./format.js";
 
 const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const TILE_ATTRIB = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
@@ -42,9 +42,9 @@ export function stationMarker(station, { highlight = false } = {}) {
 }
 
 function renderPopup(s) {
-  const price = s.price != null ? `${s.price.toFixed(3)} €/l` : "—";
+  const price = formatPrice(s.price);
   const addr = [s.address, s.municipality].filter(Boolean).join(", ");
-  const dist = s.distance_km != null ? `${s.distance_km.toFixed(1)} km` : "";
+  const dist = s.distance_km != null ? formatKm(s.distance_km) : "";
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${s.latitude},${s.longitude}`;
   return `
     <div style="font-family: Inter, sans-serif; min-width: 200px;">
@@ -125,7 +125,7 @@ export function drawGeoJSON(map, geojson, { valueKey = "avg_price", onEachFeatur
     onEachFeature: (feature, layer) => {
       const props = feature.properties || {};
       const label = props.zip_code || props.province || props.district || props.municipality || props.name || "—";
-      const avg = props.avg_price != null ? `${props.avg_price.toFixed(3)} €/l` : "—";
+      const avg = formatPrice(props.avg_price);
       layer.bindPopup(`<b>${escapeHtml(label)}</b><br>${avg}`);
       onEachFeature && onEachFeature(feature, layer);
     },

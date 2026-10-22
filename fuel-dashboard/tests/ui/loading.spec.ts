@@ -23,5 +23,5 @@ test("stale health status is surfaced in the shell", async ({ page }) => {
   const response = await page.goto("/");
   expect(response?.ok()).toBeTruthy();
 
-  await expect(page.getByTestId("data-status")).toContainText("datos 2026-04-14");
+  await expect(page.getByTestId("data-status")).toContainText("Datos del 14 abr (sin actualizar)");
 });

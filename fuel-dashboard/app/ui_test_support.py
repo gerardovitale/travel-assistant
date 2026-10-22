@@ -57,6 +57,9 @@ from api.schemas import ZoneResult
 from config import settings
 from fastapi import HTTPException
 from fastapi import Request
+from services.forecast_service import forecast_explanation
+from services.forecast_service import INSUFFICIENT_HISTORY_EXPLANATION
+from services.forecast_service import INSUFFICIENT_HISTORY_RECOMMENDATION
 from services.vehicle_catalog import get_pair
 from services.vehicle_catalog import get_vehicle
 from services.vehicle_catalog import list_pairs
@@ -429,8 +432,8 @@ def historical_forecast_response(
             geography_type=geography_type,
             geography_value=geography_value,
             source=source,
-            recommendation="Sin suficiente historico",
-            explanation="No hay suficiente historico diario consistente para construir una cadena de Markov util.",
+            recommendation=INSUFFICIENT_HISTORY_RECOMMENDATION,
+            explanation=INSUFFICIENT_HISTORY_EXPLANATION,
             insufficient_data=True,
         )
 
@@ -449,10 +452,8 @@ def historical_forecast_response(
         expected_days_in_current_regime=2.7,
         confidence=0.74,
         recommendation="Reposta hoy",
-        explanation=(
-            f"El area {geography_type} {geography_value} esta en un regimen cheap. "
-            "La probabilidad de ver un regimen mas barato en 3 dias es del 0% y en 7 dias del 0%."
-        ),
+        # Built by the service itself so fixture copy can't drift from production wording.
+        explanation=forecast_explanation(geography_type, geography_value, "cheap", 0.0, 0.0, confidence=0.74),
         insufficient_data=False,
         transition_matrix={
             "cheap": {"cheap": 0.63, "normal": 0.29, "expensive": 0.08},
