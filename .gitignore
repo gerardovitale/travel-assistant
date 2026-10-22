@@ -253,3 +253,8 @@ fuel-dashboard/design_handoff_kofi_contribution/SupportBlock.jsx.txt
 idae-consumption-ingest-task.md
 .gitignore
 insights-newsletter-brainstorm.md
+
+# design-sync (Claude Design) build state
+.design-sync/.cache/
+.design-sync/pkg/node_modules/
+.design-sync/pkg/dist/
