@@ -1,0 +1,4 @@
+{
+    "projectId": "509476d5-cdbf-4fd6-9801-44b588b31a22",
+    "buildCmd": "cd .design-sync/pkg && npm ci && node build.mjs"
+}
