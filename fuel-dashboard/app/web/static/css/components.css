@@ -1,0 +1,179 @@
+/* ─── Component classes ───
+   Plain CSS on top of the --fp-* tokens in tokens.css, so the same look is available to
+   Jinja macros (templates/components/ui.html) and to HTML built in JS template strings.
+   Prefer these over long utility strings for anything reused; keep Tailwind for layout.
+   Every component is previewed at /styleguide (DASHBOARD_STYLEGUIDE_ENABLED=true). */
+
+/* Buttons */
+.fp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 1.25rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  font-family: Inter, sans-serif;
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-zen),
+    opacity var(--motion-duration-fast) var(--motion-ease-zen), transform 80ms ease;
+}
+.fp-btn:active { transform: scale(0.98); }
+.fp-btn:focus-visible,
+.fp-icon-btn:focus-visible,
+.fp-seg__item:focus-visible {
+  outline: 2px solid rgb(var(--fp-secondary));
+  outline-offset: 2px;
+}
+.fp-btn:disabled,
+.fp-btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; transform: none; }
+.fp-btn--primary {
+  min-height: 52px;
+  background: linear-gradient(90deg, rgb(var(--fp-primary)) 0%, rgb(var(--fp-primary-container)) 100%);
+  color: rgb(var(--fp-on-primary));
+  font-family: Manrope, sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+}
+.fp-btn--primary:hover:not(:disabled):not([aria-disabled="true"]) { opacity: 0.95; }
+.fp-btn--tonal { background: rgb(var(--fp-surface-container)); color: rgb(var(--fp-primary-container)); }
+.fp-btn--tonal:hover:not(:disabled):not([aria-disabled="true"]) { background: rgb(var(--fp-surface-container-high)); }
+.fp-btn--outline {
+  background: rgb(var(--fp-surface-container-lowest));
+  border-color: rgb(var(--fp-outline-variant));
+  color: rgb(var(--fp-on-surface));
+}
+.fp-btn--outline:hover:not(:disabled):not([aria-disabled="true"]) { background: rgb(var(--fp-surface-container-low)); }
+.fp-btn--support { background: rgb(var(--fp-support)); color: #fff; }
+.fp-btn--support:hover:not(:disabled):not([aria-disabled="true"]) { opacity: 0.92; }
+.fp-btn--block { width: 100%; }
+
+.fp-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0.75rem;
+  background: rgb(var(--fp-surface-container));
+  color: rgb(var(--fp-primary-container));
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) var(--motion-ease-zen);
+}
+.fp-icon-btn:hover { background: rgb(var(--fp-surface-container-high)); }
+.fp-icon-btn--ghost { background: transparent; }
+
+/* Form fields */
+.fp-field { display: flex; flex-direction: column; gap: 0.375rem; }
+.fp-label { font-family: Inter, sans-serif; font-size: 0.75rem; font-weight: 700; color: rgb(var(--fp-on-surface-variant)); }
+.fp-label__optional { font-weight: 400; }
+.fp-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid rgb(var(--fp-outline-variant));
+  border-radius: 0.5rem;
+  font: inherit;
+  font-size: 0.875rem;
+  color: rgb(var(--fp-on-surface));
+}
+.fp-input[aria-invalid="true"] { border-color: rgb(var(--fp-error)); }
+.fp-hint { font-size: 0.6875rem; color: rgb(var(--fp-on-surface-variant)); }
+.fp-hint--error { color: rgb(var(--fp-error)); }
+
+/* Segmented control (pairs with the existing .seg-active / .seg-inactive state classes) */
+.fp-seg { display: flex; gap: 0.25rem; padding: 0.25rem; border-radius: 0.75rem; background: rgb(var(--fp-surface-container)); }
+.fp-seg__item {
+  flex: 1;
+  min-height: 36px;
+  padding: 0 0.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  font-family: Inter, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* Only inactive items are transparent, so .seg-active (tokens.css) keeps its white pill. */
+.fp-seg__item:not(.seg-active) { background: transparent; }
+
+/* Surfaces */
+.fp-card {
+  background: rgb(var(--fp-surface-container-lowest));
+  border: 1px solid rgb(var(--fp-outline-variant) / 0.4);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgb(var(--fp-primary-container) / 0.06);
+}
+.fp-card--raised { box-shadow: 0 16px 40px rgb(var(--fp-primary-container) / 0.16); }
+.fp-card--selected { border: 2px solid rgb(var(--fp-secondary)); }
+
+.fp-section-title { margin: 0; font-family: Manrope, sans-serif; font-weight: 800; font-size: 1.25rem; color: rgb(var(--fp-on-surface)); }
+
+/* KPI tile */
+.fp-kpi { display: flex; flex-direction: column; gap: 0.375rem; padding: 1rem; }
+.fp-kpi__label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(var(--fp-on-surface-variant));
+}
+.fp-kpi__label .material-symbols-outlined { font-size: 18px; }
+.fp-kpi__value {
+  margin: 0;
+  font-family: Manrope, sans-serif;
+  font-weight: 800;
+  font-size: 1.625rem;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--fp-on-surface));
+}
+
+/* Prices and deltas: always tabular so columns of prices line up */
+.fp-price { font-family: Manrope, sans-serif; font-weight: 800; font-variant-numeric: tabular-nums; color: rgb(var(--fp-primary-container)); }
+.fp-delta--down { color: rgb(var(--fp-support)); font-weight: 700; }
+.fp-delta--up { color: rgb(var(--fp-on-error-container)); font-weight: 700; }
+
+/* Chips */
+.fp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.fp-chip--info { background: rgb(var(--fp-primary-fixed)); color: rgb(var(--fp-on-primary-fixed)); }
+.fp-chip--success { background: rgb(var(--fp-support) / 0.12); color: rgb(var(--fp-support)); }
+.fp-chip--danger { background: rgb(var(--fp-error-container)); color: rgb(var(--fp-on-error-container)); }
+.fp-chip--neutral { background: rgb(var(--fp-surface-container)); color: rgb(var(--fp-on-surface-variant)); }
+
+/* Banners */
+.fp-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.fp-banner .material-symbols-outlined { font-size: 18px; }
+.fp-banner--info { background: rgb(var(--fp-primary-fixed)); color: rgb(var(--fp-on-primary-fixed)); }
+.fp-banner--error { background: rgb(var(--fp-error-container)); color: rgb(var(--fp-on-error-container)); }
+.fp-banner--success { background: rgb(var(--fp-support) / 0.1); color: rgb(var(--fp-on-tertiary-fixed-variant)); }
+
+/* Hero eyebrow on the hero gradient. on-primary-container (#7893dc) drops to ~3.3:1 against
+   the gradient's #003d9b end, below WCAG AA for 11px text; primary-fixed-dim stays >= 5.7:1. */
+.fp-hero-eyebrow { color: rgb(var(--fp-primary-fixed-dim)); }

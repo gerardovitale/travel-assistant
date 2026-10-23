@@ -293,6 +293,35 @@ def page_acerca(request: Request):
     return _render_page(request, "about.html", "acerca")
 
 
+# Color roles shown on /styleguide, in palette order; values come from --fp-* in tokens.css.
+STYLEGUIDE_COLOR_ROLES = (
+    "primary",
+    "primary-container",
+    "secondary",
+    "primary-fixed",
+    "support",
+    "error",
+    "error-container",
+    "surface",
+    "surface-container-lowest",
+    "surface-container",
+    "surface-container-high",
+    "on-surface",
+    "on-surface-variant",
+    "outline",
+    "outline-variant",
+    "inverse-surface",
+)
+
+
+@app.get("/styleguide", include_in_schema=False)
+def page_styleguide(request: Request):
+    if not (settings.styleguide_enabled or settings.ui_test_mode):
+        raise HTTPException(status_code=404)
+    context = _base_context("styleguide") | {"color_roles": STYLEGUIDE_COLOR_ROLES}
+    return templates.TemplateResponse(request, "styleguide.html", context)
+
+
 INSIGHTS_TABS = ("trends", "zones", "historical", "reportes", "quality")
 
 

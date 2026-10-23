@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     ui_test_mode: bool = False
     ui_fixture_set: str = "happy_path"
     disable_external_assets: bool = False
+    # Dev-only component gallery at /styleguide (always on in ui_test_mode). 404 when off.
+    styleguide_enabled: bool = False
 
     insights_zones_enabled: bool = False
     insights_historical_enabled: bool = False

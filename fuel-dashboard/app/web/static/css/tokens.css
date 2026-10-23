@@ -1,3 +1,95 @@
+/* ─── Color tokens: single source of truth ───
+   Material 3 color roles stored as space-separated RGB channels so Tailwind's
+   config in base.html can map them with `rgb(var(--fp-x) / <alpha-value>)` and
+   alpha modifiers (bg-outline-variant/40) keep working. Plain CSS reads them as
+   `rgb(var(--fp-x))`. Change a color here, never in templates or JS. */
+:root {
+  --fp-primary: 0 22 66;                     /* #001642 */
+  --fp-on-primary: 255 255 255;                  /* #ffffff */
+  --fp-primary-container: 0 41 109;           /* #00296d */
+  --fp-on-primary-container: 120 147 220;        /* #7893dc */
+  --fp-primary-fixed: 218 226 255;               /* #dae2ff */
+  --fp-primary-fixed-dim: 178 197 255;           /* #b2c5ff */
+  --fp-on-primary-fixed: 0 24 72;            /* #001848 */
+  --fp-on-primary-fixed-variant: 37 68 135;    /* #254487 */
+  --fp-secondary: 4 83 205;                   /* #0453cd */
+  --fp-on-secondary: 255 255 255;                /* #ffffff */
+  --fp-secondary-container: 53 110 231;         /* #356ee7 */
+  --fp-on-secondary-container: 254 252 255;      /* #fefcff */
+  --fp-secondary-fixed: 218 226 255;             /* #dae2ff */
+  --fp-secondary-fixed-dim: 178 197 255;         /* #b2c5ff */
+  --fp-on-secondary-fixed: 0 24 72;          /* #001848 */
+  --fp-on-secondary-fixed-variant: 0 64 162;  /* #0040a2 */
+  --fp-tertiary: 0 30 17;                    /* #001e11 */
+  --fp-on-tertiary: 255 255 255;                 /* #ffffff */
+  --fp-tertiary-container: 0 53 33;          /* #003521 */
+  --fp-on-tertiary-container: 111 159 132;       /* #6f9f84 */
+  --fp-tertiary-fixed: 187 238 208;              /* #bbeed0 */
+  --fp-tertiary-fixed-dim: 160 210 181;          /* #a0d2b5 */
+  --fp-on-tertiary-fixed: 0 33 19;           /* #002113 */
+  --fp-on-tertiary-fixed-variant: 32 79 57;   /* #204f39 */
+  --fp-error: 186 26 26;                       /* #ba1a1a */
+  --fp-on-error: 255 255 255;                    /* #ffffff */
+  --fp-error-container: 255 218 214;             /* #ffdad6 */
+  --fp-on-error-container: 147 0 10;          /* #93000a */
+  --fp-background: 248 249 255;                  /* #f8f9ff */
+  --fp-on-background: 25 28 32;               /* #191c20 */
+  --fp-surface: 248 249 255;                     /* #f8f9ff */
+  --fp-surface-bright: 248 249 255;              /* #f8f9ff */
+  --fp-surface-dim: 216 218 224;                 /* #d8dae0 */
+  --fp-surface-tint: 64 92 161;                /* #405ca1 */
+  --fp-surface-variant: 225 226 232;             /* #e1e2e8 */
+  --fp-on-surface: 25 28 32;                  /* #191c20 */
+  --fp-on-surface-variant: 68 70 80;          /* #444650 */
+  --fp-surface-container-lowest: 255 255 255;    /* #ffffff */
+  --fp-surface-container-low: 242 243 249;       /* #f2f3f9 */
+  --fp-surface-container: 236 238 243;           /* #eceef3 */
+  --fp-surface-container-high: 231 232 238;      /* #e7e8ee */
+  --fp-surface-container-highest: 225 226 232;   /* #e1e2e8 */
+  --fp-outline: 116 119 130;                     /* #747782 */
+  --fp-outline-variant: 196 198 210;             /* #c4c6d2 */
+  --fp-inverse-surface: 46 49 53;             /* #2e3135 */
+  --fp-inverse-on-surface: 239 240 246;          /* #eff0f6 */
+  --fp-inverse-primary: 178 197 255;             /* #b2c5ff */
+  --fp-support: 14 123 82;                     /* #0e7b52 */
+  --fp-hero-end: 0 61 155;                  /* #003d9b, hero gradient end stop */
+}
+
+/* Dark palette (draft, not switched on yet): templates still hard-code bg-white /
+   text-white in places, so adding `class="dark"` to <html> needs those migrated to
+   surface-container-lowest / on-primary first. */
+.dark {
+  --fp-primary: 178 197 255;
+  --fp-on-primary: 0 43 117;
+  --fp-primary-container: 178 197 255;
+  --fp-on-primary-container: 0 24 72;
+  --fp-secondary: 178 197 255;
+  --fp-on-secondary: 0 43 117;
+  --fp-error: 255 180 171;
+  --fp-on-error: 105 0 5;
+  --fp-error-container: 147 0 10;
+  --fp-on-error-container: 255 218 214;
+  --fp-background: 17 19 24;
+  --fp-on-background: 225 226 232;
+  --fp-surface: 17 19 24;
+  --fp-surface-bright: 55 57 62;
+  --fp-surface-dim: 17 19 24;
+  --fp-surface-variant: 68 70 80;
+  --fp-on-surface: 225 226 232;
+  --fp-on-surface-variant: 196 198 210;
+  --fp-surface-container-lowest: 12 14 19;
+  --fp-surface-container-low: 25 28 32;
+  --fp-surface-container: 29 32 36;
+  --fp-surface-container-high: 39 42 47;
+  --fp-surface-container-highest: 50 53 58;
+  --fp-outline: 142 144 156;
+  --fp-outline-variant: 68 70 80;
+  --fp-inverse-surface: 225 226 232;
+  --fp-inverse-on-surface: 46 49 53;
+  --fp-inverse-primary: 0 41 109;
+  --fp-support: 111 211 164;
+}
+
 /* Base typography + icon tweaks not expressible in Tailwind config */
 body {
   font-family: "Inter", system-ui, sans-serif;
@@ -18,8 +110,8 @@ body {
 }
 
 /* Hero gradient reused on each page */
-.hero-gradient { background: linear-gradient(135deg, #00296d 0%, #003d9b 100%); }
-.cta-gradient { background: linear-gradient(90deg, #001642 0%, #00296d 100%); }
+.hero-gradient { background: linear-gradient(135deg, rgb(var(--fp-primary-container)) 0%, rgb(var(--fp-hero-end)) 100%); }
+.cta-gradient { background: linear-gradient(90deg, rgb(var(--fp-primary)) 0%, rgb(var(--fp-primary-container)) 100%); }
 
 /* Eyebrow / overline label (footer + Acerca). Color set per-use. */
 .fp-eyebrow { font-family: Inter, sans-serif; font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 0.1em; }
@@ -61,7 +153,7 @@ body {
 
 /* Skeleton shimmer */
 .skeleton {
-  background: linear-gradient(90deg, #e7e8ee 25%, #f2f3f9 50%, #e7e8ee 75%);
+  background: linear-gradient(90deg, rgb(var(--fp-surface-container-high)) 25%, rgb(var(--fp-surface-container-low)) 50%, rgb(var(--fp-surface-container-high)) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s var(--motion-ease-zen) infinite;
   border-radius: 0.5rem;
@@ -102,10 +194,10 @@ body {
 .leaflet-container { border-radius: 0.75rem; font-family: "Inter", sans-serif; position: relative; z-index: 1; }
 
 /* Forms: neutralise Tailwind-forms default ring */
-input, select, textarea { background-color: white; }
+input, select, textarea { background-color: rgb(var(--fp-surface-container-lowest)); }
 input:focus, select:focus, textarea:focus {
   outline: none;
-  box-shadow: 0 0 0 2px #b2c5ff;
+  box-shadow: 0 0 0 2px rgb(var(--fp-primary-fixed-dim));
 }
 
 /* Scrollbar hide */
@@ -113,11 +205,11 @@ input:focus, select:focus, textarea:focus {
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Segmented control pill */
-.seg-active { background: white; color: #00296d; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
-.seg-inactive { color: #747782; }
+.seg-active { background: rgb(var(--fp-surface-container-lowest)); color: rgb(var(--fp-primary-container)); box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.seg-inactive { color: rgb(var(--fp-outline)); }
 
 /* ─── Trip planner action row (pill buttons) + share/navigate dialogs ───
-   Hex values mirror the Tailwind tokens declared in base.html. */
+   Colors come from the --fp-* tokens at the top of this file. */
 
 .trip-action-pill {
   display: inline-flex;
@@ -125,14 +217,14 @@ input:focus, select:focus, textarea:focus {
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   border-radius: 9999px;
-  background: #eceef3;   /* surface-container */
-  color: #191c20;         /* on-surface */
+  background: rgb(var(--fp-surface-container));
+  color: rgb(var(--fp-on-surface));
   font-weight: 600;
   font-size: 0.9rem;
   border: 1px solid rgba(0, 0, 0, 0.04);
   transition: background-color 150ms ease, transform 80ms ease;
 }
-.trip-action-pill:hover  { background: #e7e8ee; }   /* surface-container-high */
+.trip-action-pill:hover  { background: rgb(var(--fp-surface-container-high)); }
 .trip-action-pill:active { transform: scale(0.97); }
 
 .trip-action-sheet {
@@ -147,7 +239,7 @@ input:focus, select:focus, textarea:focus {
   backdrop-filter: blur(2px);
 }
 .trip-action-sheet__inner {
-  background: #ffffff;    /* surface-container-lowest */
+  background: rgb(var(--fp-surface-container-lowest));
   padding: 1.25rem;
   border-radius: inherit;
   min-width: 18rem;
@@ -159,10 +251,10 @@ input:focus, select:focus, textarea:focus {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 9999px;
-  color: #444650;         /* on-surface-variant */
+  color: rgb(var(--fp-on-surface-variant));
   transition: background-color 150ms ease;
 }
-.trip-action-sheet__close:hover { background: #eceef3; }  /* surface-container */
+.trip-action-sheet__close:hover { background: rgb(var(--fp-surface-container)); }
 
 .trip-action-sheet__grid {
   display: grid;
@@ -181,11 +273,11 @@ input:focus, select:focus, textarea:focus {
   padding: 0.5rem 0.25rem;
   border-radius: 0.75rem;
   text-align: center;
-  color: #191c20;         /* on-surface */
+  color: rgb(var(--fp-on-surface));
   transition: background-color 150ms ease, transform 80ms ease;
   text-decoration: none;
 }
-.trip-action-tile:hover  { background: #f2f3f9; }   /* surface-container-low */
+.trip-action-tile:hover  { background: rgb(var(--fp-surface-container-low)); }
 .trip-action-tile:active { transform: scale(0.96); }
 .trip-action-tile__icon {
   display: inline-flex;

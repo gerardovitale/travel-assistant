@@ -27,9 +27,9 @@
 
     <!-- Mode segmented control -->
     <div class="bg-surface-container rounded-xl p-1 flex gap-1" role="tablist" id="mode-tabs" data-testid="search-mode-tabs">
-      <button type="button" data-mode="best_by_address" data-testid="search-mode-best_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-active">MEJOR OPCIÓN</button>
-      <button type="button" data-mode="cheapest_by_address" data-testid="search-mode-cheapest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS BARATA</button>
-      <button type="button" data-mode="nearest_by_address" data-testid="search-mode-nearest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS CERCANA</button>
+      <button type="button" role="tab" aria-selected="true" data-mode="best_by_address" data-testid="search-mode-best_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-active">MEJOR OPCIÓN</button>
+      <button type="button" role="tab" aria-selected="false" data-mode="cheapest_by_address" data-testid="search-mode-cheapest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS BARATA</button>
+      <button type="button" role="tab" aria-selected="false" data-mode="nearest_by_address" data-testid="search-mode-nearest_by_address" class="flex-1 text-[11px] font-bold font-label px-2 py-2 rounded-lg seg-inactive">MÁS CERCANA</button>
     </div>
 
     <!-- Main inputs — always visible -->

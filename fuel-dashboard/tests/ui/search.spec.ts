@@ -66,6 +66,8 @@ test("mode switching updates advanced fields and nearest search hits the nearest
   await searchPage.goto();
 
   await searchPage.selectMode("nearest_by_address");
+  await expect(page.getByTestId("search-mode-nearest_by_address")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("search-mode-best_by_address")).toHaveAttribute("aria-selected", "false");
   await expect(page.locator('[data-field="radius"]')).toBeHidden();
   await expect(page.locator('[data-field="consumption"]')).toBeHidden();
   await expect(page.locator('[data-field="tank"]')).toBeHidden();

@@ -125,6 +125,28 @@ def test_page_acerca_renders():
     assert 'href="https://ko-fi.com/fuelprecision"' in resp.text
 
 
+def test_styleguide_is_hidden_by_default():
+    with patch.object(settings, "styleguide_enabled", False), patch.object(settings, "ui_test_mode", False):
+        resp = _get_client().get("/styleguide")
+    assert resp.status_code == 404
+
+
+def test_styleguide_renders_when_enabled():
+    with patch.object(settings, "styleguide_enabled", True):
+        resp = _get_client().get("/styleguide")
+    assert resp.status_code == 200
+    assert 'data-testid="styleguide-page"' in resp.text
+    assert '<meta name="robots" content="noindex, nofollow">' in resp.text
+    assert "rgb(var(--fp-primary-container))" in resp.text
+    assert 'class="fp-btn fp-btn--primary"' in resp.text
+
+
+def test_styleguide_not_in_sitemap():
+    with patch.object(settings, "public_url", "https://fuelprecision.es"):
+        resp = _get_client().get("/sitemap.xml")
+    assert "/styleguide" not in resp.text
+
+
 def test_footer_renders_on_every_page():
     with patch("main.is_data_ready", return_value=True):
         for path in ("/", "/trip", "/insights", "/acerca"):

@@ -40,6 +40,7 @@ function switchMode(mode) {
     const active = b.dataset.mode === mode;
     b.classList.toggle("seg-active", active);
     b.classList.toggle("seg-inactive", !active);
+    b.setAttribute("aria-selected", String(active));
   });
 
   const advFields = new Set(ADVANCED_FIELDS_BY_MODE[mode]);

@@ -1,0 +1,94 @@
+{#- Fuel Precision UI components.
+    Usage: {% import "components/ui.html" as ui %} then {{ ui.button("Buscar estaciones", icon="search") }}.
+    Styles live in static/css/components.css; every macro is previewed at /styleguide.
+    Extra HTML attributes (data-testid, id, name, ...) go in `attrs` as a dict. -#}
+
+{%- macro _attrs(attrs, exclude=()) -%}
+{%- for key, value in (attrs or {}).items() if key not in exclude %} {{ key }}="{{ value }}"{% endfor -%}
+{%- endmacro -%}
+
+{#- Private so macros with an `icon` parameter can still render one. -#}
+{%- macro _symbol(name, filled=false, extra_class="") -%}
+<span class="material-symbols-outlined{% if filled %} filled-icon{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}" aria-hidden="true">{{ name }}</span>
+{%- endmacro -%}
+
+{%- macro icon(name, filled=false, extra_class="") -%}{{ _symbol(name, filled, extra_class) }}{%- endmacro -%}
+
+{#- variant: primary | tonal | outline | support. Pass href to render a link styled as a button.
+    A disabled link drops its href so it can't navigate. -#}
+{%- macro button(label, variant="tonal", icon=none, type="button", href=none, block=false, disabled=false, attrs=none) -%}
+{%- set cls = "fp-btn fp-btn--" ~ variant ~ (" fp-btn--block" if block else "") -%}
+{%- if href -%}
+<a {% if disabled %}role="link" aria-disabled="true"{% else %}href="{{ href }}"{% endif %} class="{{ cls }}"{{ _attrs(attrs) }}>{% if icon %}{{ _symbol(icon) }}{% endif %}<span>{{ label }}</span></a>
+{%- else -%}
+<button type="{{ type }}" class="{{ cls }}"{% if disabled %} disabled{% endif %}{{ _attrs(attrs) }}>{% if icon %}{{ _symbol(icon) }}{% endif %}<span>{{ label }}</span></button>
+{%- endif -%}
+{%- endmacro -%}
+
+{#- Icon-only buttons always need an accessible label. -#}
+{%- macro icon_button(icon, label, ghost=false, attrs=none) -%}
+<button type="button" class="fp-icon-btn{% if ghost %} fp-icon-btn--ghost{% endif %}" aria-label="{{ label }}" title="{{ label }}"{{ _attrs(attrs) }}>{{ _symbol(icon) }}</button>
+{%- endmacro -%}
+
+{%- macro field(label, name, type="text", value=none, placeholder=none, optional=false, hint=none, error=none, attrs=none) -%}
+{%- set field_id = (attrs or {}).get("id") or ("fp-" ~ name) -%}
+<div class="fp-field">
+  <label class="fp-label" for="{{ field_id }}">{{ label }}{% if optional %} <span class="fp-label__optional">(opcional)</span>{% endif %}</label>
+  <input id="{{ field_id }}" name="{{ name }}" type="{{ type }}" class="fp-input"{% if value is not none %} value="{{ value }}"{% endif %}{% if placeholder %} placeholder="{{ placeholder }}"{% endif %}{% if error %} aria-invalid="true" aria-describedby="{{ field_id }}-msg"{% elif hint %} aria-describedby="{{ field_id }}-msg"{% endif %}{{ _attrs(attrs, exclude=("id",)) }}>
+  {%- if error %}<span id="{{ field_id }}-msg" class="fp-hint fp-hint--error">{{ error }}</span>
+  {%- elif hint %}<span id="{{ field_id }}-msg" class="fp-hint">{{ hint }}</span>{% endif %}
+</div>
+{%- endmacro -%}
+
+{#- options: list of (value, label) pairs. -#}
+{%- macro select(label, name, options, selected=none, attrs=none) -%}
+{%- set field_id = (attrs or {}).get("id") or ("fp-" ~ name) -%}
+<div class="fp-field">
+  <label class="fp-label" for="{{ field_id }}">{{ label }}</label>
+  <select id="{{ field_id }}" name="{{ name }}" class="fp-input"{{ _attrs(attrs, exclude=("id",)) }}>
+    {%- for value, text in options %}
+    <option value="{{ value }}"{% if value == selected %} selected{% endif %}>{{ text }}</option>
+    {%- endfor %}
+  </select>
+</div>
+{%- endmacro -%}
+
+{#- items: list of (value, label) pairs. Reuses the .seg-active / .seg-inactive state classes the JS toggles. -#}
+{%- macro segmented(items, active, label, attrs=none) -%}
+<div class="fp-seg" role="tablist" aria-label="{{ label }}"{{ _attrs(attrs) }}>
+  {%- for value, text in items %}
+  <button type="button" role="tab" data-mode="{{ value }}" aria-selected="{{ 'true' if value == active else 'false' }}" class="fp-seg__item {{ 'seg-active' if value == active else 'seg-inactive' }}">{{ text }}</button>
+  {%- endfor %}
+</div>
+{%- endmacro -%}
+
+{#- Call-block container: {% call ui.card(title="Tendencia") %}...{% endcall %} -#}
+{%- macro card(title=none, raised=false, selected=false, attrs=none) -%}
+<section class="fp-card{% if raised %} fp-card--raised{% endif %}{% if selected %} fp-card--selected{% endif %}"{{ _attrs(attrs) }}>
+  {%- if title %}<h2 class="fp-section-title" style="margin-bottom: 0.75rem">{{ title }}</h2>{% endif %}
+  {{ caller() if caller else "" }}
+</section>
+{%- endmacro -%}
+
+{%- macro kpi(label, value, icon=none, delta=none, delta_direction="down", attrs=none) -%}
+<div class="fp-card fp-kpi"{{ _attrs(attrs) }}>
+  <span class="fp-kpi__label">{% if icon %}{{ _symbol(icon) }}{% endif %}{{ label }}</span>
+  <p class="fp-kpi__value">{{ value }}</p>
+  {%- if delta %}<span class="fp-delta--{{ delta_direction }}" style="font-size: 0.75rem">{{ delta }}</span>{% endif %}
+</div>
+{%- endmacro -%}
+
+{#- tone: info | success | danger | neutral -#}
+{%- macro chip(label, tone="neutral") -%}
+<span class="fp-chip fp-chip--{{ tone }}">{{ label }}</span>
+{%- endmacro -%}
+
+{#- tone: info | success | error. Errors are announced immediately, the rest politely. -#}
+{%- macro banner(message, tone="info", icon=none, attrs=none) -%}
+{%- set default_icons = {"info": "info", "success": "check_circle", "error": "error"} -%}
+<div class="fp-banner fp-banner--{{ tone }}" role="{{ 'alert' if tone == 'error' else 'status' }}"{{ _attrs(attrs) }}>{{ _symbol(icon or default_icons[tone]) }}<span>{{ message }}</span></div>
+{%- endmacro -%}
+
+{%- macro eyebrow(text, on_hero=false) -%}
+<p class="fp-eyebrow {{ 'fp-hero-eyebrow' if on_hero else 'text-on-surface-variant' }}">{{ text }}</p>
+{%- endmacro -%}

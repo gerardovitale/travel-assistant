@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% import "components/ui.html" as ui %}
+{% block title %}Styleguide · Fuel Precision{% endblock %}
+{% block head_extra %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+
+{% block content %}
+<section class="hero-gradient text-white px-5 md:px-8 pt-12 pb-12">
+  <div class="max-w-6xl mx-auto">
+    {{ ui.eyebrow("Design system", on_hero=true) }}
+    <h1 class="mt-3 text-4xl font-headline font-extrabold tracking-tight">Styleguide</h1>
+    <p class="mt-3 text-primary-fixed max-w-xl">Tokens from <code>static/css/tokens.css</code> and macros from <code>templates/components/ui.html</code>.</p>
+  </div>
+</section>
+
+<div data-testid="styleguide-page" class="max-w-6xl mx-auto px-5 md:px-8 mt-10 space-y-10">
+
+  <section data-testid="styleguide-colors" class="space-y-4">
+    <h2 class="fp-section-title">Color roles</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+      {% for role in color_roles %}
+      <div class="fp-card" style="padding: 0; overflow: hidden">
+        <div style="height: 56px; background: rgb(var(--fp-{{ role }}))"></div>
+        <p class="px-3 py-2 text-[11px] font-bold">{{ role }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="fp-section-title">Typography</h2>
+    {% call ui.card() %}
+    <div class="space-y-3">
+      <p class="font-headline font-extrabold text-4xl tracking-tight">Display · Manrope 800</p>
+      <p class="fp-section-title">Section title · Manrope 800</p>
+      <p class="text-base">Body · Inter 400. Encuentra la estación adecuada para ti.</p>
+      {{ ui.eyebrow("Eyebrow · Inter 700 caps") }}
+      <p class="fp-price text-2xl">1,489 €/l</p>
+    </div>
+    {% endcall %}
+  </section>
+
+  <section data-testid="styleguide-buttons" class="space-y-4">
+    <h2 class="fp-section-title">Buttons</h2>
+    <div class="flex flex-wrap items-center gap-3">
+      {{ ui.button("Buscar estaciones", variant="primary", icon="search") }}
+      {{ ui.button("Compartir", icon="share") }}
+      {{ ui.button("Contorno", variant="outline") }}
+      {{ ui.button("Contribuir", variant="support", icon="volunteer_activism") }}
+      {{ ui.button("Desactivado", disabled=true) }}
+      {{ ui.button("Enlace", variant="outline", href="#", icon="open_in_new") }}
+      {{ ui.icon_button("my_location", "Usar mi ubicación") }}
+      {{ ui.icon_button("directions", "Cómo llegar", ghost=true) }}
+    </div>
+  </section>
+
+  <section data-testid="styleguide-forms" class="space-y-4">
+    <h2 class="fp-section-title">Form controls</h2>
+    {% call ui.card() %}
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {{ ui.field("Ubicación", "sg_location", placeholder="28001 o Calle Alcalá, Madrid") }}
+      {{ ui.select("Combustible", "sg_fuel", [("g95", "Gasolina 95 E5"), ("diesel", "Gasóleo A")], selected="g95") }}
+      {{ ui.field("Radio (km)", "sg_radius", type="number", value="0", error="Introduce un valor entre 0,5 y 50") }}
+      {{ ui.field("Marca", "sg_brand", optional=true, hint="Déjalo vacío para ver todas") }}
+    </div>
+    <div class="mt-4">
+      {{ ui.segmented([("best", "MEJOR OPCIÓN"), ("cheapest", "MÁS BARATA"), ("nearest", "MÁS CERCANA")], active="best", label="Modo de búsqueda") }}
+    </div>
+    {% endcall %}
+  </section>
+
+  <section data-testid="styleguide-feedback" class="space-y-4">
+    <h2 class="fp-section-title">KPIs, chips, banners</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {{ ui.kpi("Estaciones", "18", icon="local_gas_station") }}
+      {{ ui.kpi("Precio medio", "1,491 €", icon="euro") }}
+      {{ ui.kpi("Más barata", "1,429 €", icon="south", delta="−4,1 % vs media") }}
+      {{ ui.kpi("Más cara", "1,559 €", icon="north", delta="+4,6 % vs media", delta_direction="up") }}
+    </div>
+    <div class="flex flex-wrap gap-2">
+      {{ ui.chip("Abierta 24h", "info") }}
+      {{ ui.chip("Más barata", "success") }}
+      {{ ui.chip("+3,1 %", "danger") }}
+      {{ ui.chip("Autoservicio") }}
+    </div>
+    <div class="space-y-2">
+      {{ ui.banner("Datos actualizados hoy.") }}
+      {{ ui.banner("Ahorras 3,60 € en 40 l.", tone="success") }}
+      {{ ui.banner("No encontramos esa dirección.", tone="error") }}
+    </div>
+  </section>
+
+  <section class="space-y-4">
+    <h2 class="fp-section-title">Cards</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {% call ui.card(title="Default") %}<p class="text-sm text-on-surface-variant">Listas y paneles.</p>{% endcall %}
+      {% call ui.card(title="Raised", raised=true) %}<p class="text-sm text-on-surface-variant">Formularios flotantes sobre el hero.</p>{% endcall %}
+      {% call ui.card(title="Selected", selected=true) %}<p class="text-sm text-on-surface-variant">Estación recomendada.</p>{% endcall %}
+    </div>
+  </section>
+</div>
+{% endblock %}
