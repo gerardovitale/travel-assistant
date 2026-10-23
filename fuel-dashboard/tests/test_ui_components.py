@@ -1,11 +1,13 @@
 import re
 from pathlib import Path
 
+import config
 from jinja2 import Environment
 from jinja2 import FileSystemLoader
 from jinja2 import StrictUndefined
 
-_WEB_DIR = Path(__file__).resolve().parents[1] / "app" / "web"
+# Resolve relative to the app code: the Docker test image flattens app/ into /app, so tests/../app/web is wrong there.
+_WEB_DIR = Path(config.__file__).resolve().parent / "web"
 
 
 def _ui():

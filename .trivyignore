@@ -97,3 +97,10 @@ CVE-2026-76642
 CVE-2026-78408
 CVE-2026-78409
 CVE-2026-78410
+
+# libbrotli1 — buffer overflow in the Brotli decoder (c/dec/decode.c). No Debian fix
+# available (Status: affected, Fixed Version: none). Present only as a libcurl4t64
+# dependency; the one curl call (spain_fuel_api.fetch) passes no --compressed /
+# Accept-Encoding, so curl never negotiates or decodes br. App code does not use Brotli.
+# Reviewed: 2026-10-23. Re-review by: 2027-01-23.
+CVE-2026-111497
