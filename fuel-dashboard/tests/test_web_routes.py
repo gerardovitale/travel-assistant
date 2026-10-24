@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+from api.schemas import Region
 from config import settings
 from fastapi.testclient import TestClient
 
@@ -148,7 +149,7 @@ def test_styleguide_not_in_sitemap():
 
 
 def test_footer_renders_on_every_page():
-    with patch("main.is_data_ready", return_value=True):
+    with patch("main.is_data_ready", return_value=True), patch("main.get_national_avg_stats", return_value=(1.5, 1)):
         for path in ("/", "/trip", "/insights", "/acerca"):
             resp = _get_client().get(path)
             assert resp.status_code == 200, path
@@ -198,11 +199,12 @@ def test_trip_share_section_in_html():
     assert 'data-testid="trip-min-fuel-dest"' in resp.text
 
 
-def test_page_insights_renders():
-    with patch("main.is_data_ready", return_value=True):
+def test_page_insights_renders_the_story_page():
+    with patch("main.is_data_ready", return_value=True), patch("main.get_national_avg_stats", return_value=(1.5, 1)):
         resp = _get_client().get("/insights")
     assert resp.status_code == 200
-    assert "/static/js/insights.js" in resp.text
+    assert "/static/js/insights_v2.js" in resp.text
+    assert "/static/js/insights.js" not in resp.text
 
 
 def test_insights_tab_routes_render_with_active_tab():
@@ -229,13 +231,14 @@ def test_insights_disabled_tab_falls_back_to_trends():
     assert 'data-active-tab="trends"' in resp.text
 
 
-def test_insights_trends_path_canonicalizes_to_bare_insights():
+def test_insights_trends_path_is_self_canonical():
+    # /insights is the redesigned page; /insights/trends is the previous page's trends tab.
     with patch.object(settings, "public_url", "https://fuelprecision.es"), patch(
         "main.is_data_ready", return_value=True
     ):
         resp = _get_client().get("/insights/trends")
     assert resp.status_code == 200
-    assert 'rel="canonical" href="https://fuelprecision.es/insights"' in resp.text
+    assert 'rel="canonical" href="https://fuelprecision.es/insights/trends"' in resp.text
 
 
 def test_insights_tab_path_is_self_canonical():
@@ -249,14 +252,14 @@ def test_insights_tab_path_is_self_canonical():
 
 def test_insights_renders_section_share_buttons():
     with patch("main.is_data_ready", return_value=True):
-        resp = _get_client().get("/insights")
+        resp = _get_client().get("/insights/trends")
     assert resp.status_code == 200
     assert 'data-share="sec-trends-price"' in resp.text
     assert 'data-share="sec-reportes-win-rate"' in resp.text
 
 
 def test_share_js_loaded_on_all_pages():
-    with patch("main.is_data_ready", return_value=True):
+    with patch("main.is_data_ready", return_value=True), patch("main.get_national_avg_stats", return_value=(1.5, 1)):
         client = _get_client()
         for path in ("/", "/trip", "/insights"):
             resp = client.get(path)
@@ -268,7 +271,7 @@ def test_sitemap_includes_enabled_insights_tabs_only():
         resp = _get_client().get("/sitemap.xml")
     assert "<loc>https://fuelprecision.es/insights/reportes</loc>" in resp.text
     assert "<loc>https://fuelprecision.es/insights/quality</loc>" in resp.text
-    # trends duplicates /insights; disabled tabs are omitted.
+    # /insights covers trends; disabled tabs are omitted.
     assert "/insights/trends</loc>" not in resp.text
     assert "/insights/zones</loc>" not in resp.text
 
@@ -910,3 +913,48 @@ def test_fuel_type_report_names_every_excluded_province():
         resp = _get_client().get("/insights/reportes")
     for excluded in ("Canarias", "Baleares", "Ceuta", "Melilla"):
         assert excluded in resp.text
+
+
+def test_insights_renders_story_page_with_server_side_price():
+    with patch("main.is_data_ready", return_value=True), patch(
+        "main.get_national_avg_stats",
+        side_effect=lambda fuel, region: (1.5294 if "gasoline" in fuel else 1.4521, 100),
+    ) as national_avg:
+        resp = _get_client().get("/insights")
+    assert resp.status_code == 200
+    # The default scope is the peninsula: islands, Ceuta and Melilla are never mixed in.
+    assert {call.args[1] for call in national_avg.call_args_list} == {Region.peninsula}
+    assert "Islas, Ceuta y Melilla" in resp.text
+    assert 'data-testid="insights-v2-page"' in resp.text
+    # Today's price is in the HTML before any JS runs, Spanish format.
+    assert "1,529" in resp.text
+    assert "1,452" in resp.text
+    assert 'id="tendencia"' in resp.text
+
+
+def test_insights_says_it_is_under_construction_and_links_the_previous_page():
+    with patch("main.is_data_ready", return_value=True), patch("main.get_national_avg_stats", return_value=(1.5, 1)):
+        resp = _get_client().get("/insights")
+    assert 'data-testid="insights-construction-note"' in resp.text
+    assert "Sección en construcción." in resp.text
+    assert 'href="/insights/trends"' in resp.text
+
+
+def test_insights_without_a_price_shows_a_dash():
+    with patch("main.is_data_ready", return_value=True), patch("main.get_national_avg_stats", return_value=(None, 0)):
+        resp = _get_client().get("/insights")
+    assert resp.status_code == 200
+    assert "<span data-kpi-value>—</span>" in resp.text
+
+
+def test_previous_insights_page_stays_on_tab_routes():
+    with patch("main.is_data_ready", return_value=True):
+        resp = _get_client().get("/insights/reportes")
+    assert resp.status_code == 200
+    assert "/static/js/insights.js" in resp.text
+
+
+def test_insights_shows_loading_page_until_data_is_ready():
+    with patch("main.is_data_ready", return_value=False):
+        resp = _get_client().get("/insights")
+    assert resp.status_code == 503

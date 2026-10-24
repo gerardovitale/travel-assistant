@@ -74,6 +74,15 @@ FUEL_SINGLETONS: list[FuelType] = [
 ]
 
 
+class Region(str, Enum):
+    """Geographic scope of a national aggregate. "special" = Canarias, Baleares, Ceuta and Melilla, whose
+    prices follow their own taxes and logistics; "peninsula" is everything else."""
+
+    all = "all"
+    peninsula = "peninsula"
+    special = "special"
+
+
 class TrendPeriod(str, Enum):
     week = "week"
     month = "month"
@@ -228,6 +237,10 @@ class TrendResponse(BaseModel):
     zip_code: str | None = None
     fuel_type: str
     period: str
+    # Inclusive window the period covers, ending on the latest day with data (national, region and
+    # province trends only). ``trend`` starts later than ``start_date`` when history is shorter.
+    start_date: str | None = None
+    end_date: str | None = None
 
 
 class GroupTrendResponse(BaseModel):

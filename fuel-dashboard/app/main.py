@@ -7,6 +7,7 @@ from pathlib import Path
 
 from api.router import limiter
 from api.router import router
+from api.schemas import Region
 from config import settings
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -19,11 +20,13 @@ from mcp_layer.auth import mcp_auth_middleware
 from mcp_layer.rate_limit import mcp_rate_limit_middleware
 from mcp_layer.server import build_mcp_route
 from mcp_layer.server import mcp as mcp_server
+from services.station_service import get_national_avg_stats
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from ui_test_support import health_data_response as ui_test_health_data_response
 from ui_test_support import insights_flags as ui_test_insights_flags
 from ui_test_support import is_data_ready as ui_test_is_data_ready
+from ui_test_support import national_avg_price as ui_test_national_avg_price
 from ui_test_support import pop_fixture_set
 from ui_test_support import push_fixture_set
 from ui_test_support import resolve_fixture_set
@@ -142,8 +145,8 @@ def sitemap_xml():
         f"  <url><loc>{base}/insights</loc><changefreq>daily</changefreq><priority>0.9</priority></url>",
         f"  <url><loc>{base}/acerca</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>",
     ]
-    # Distinct, crawlable deep links per enabled insights tab. /insights/trends is omitted because it
-    # canonicalises to /insights (identical content).
+    # Distinct, crawlable deep links per enabled tab of the previous insights page, still reachable while
+    # the /insights redesign ports its sections. /insights/trends is omitted: /insights covers trends.
     enabled_tabs = [
         ("reportes", settings.insights_reportes_enabled),
         ("zones", settings.insights_zones_enabled),
@@ -229,6 +232,14 @@ def health_data():
 
 app.mount("/static", StaticFiles(directory=str(_WEB_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
+
+
+def _format_price(value: float | None) -> str:
+    """Spanish €/l price with 3 decimals ("1,529"); em dash when there is no price."""
+    return "—" if value is None else f"{value:.3f}".replace(".", ",")
+
+
+templates.env.filters["price"] = _format_price
 
 
 def _build_app_config() -> dict:
@@ -376,14 +387,46 @@ def _render_insights(request: Request, active_tab: str):
     # Defaults for the fuel-type report (user-editable inputs).
     ctx["report_fuel_type_default_km_year"] = settings.report_fuel_type_default_km_year
     ctx["report_fuel_type_default_pair"] = settings.report_fuel_type_default_pair
-    # /insights/trends duplicates /insights — canonicalise it to the bare path; other tabs are distinct.
-    ctx["canonical_path"] = "/insights" if active_tab == "trends" else f"/insights/{active_tab}"
+    # The previous tabbed page, linked from the /insights redesign while its sections are ported.
+    ctx["canonical_path"] = f"/insights/{active_tab}"
     return templates.TemplateResponse(request, "insights.html", ctx)
+
+
+# Fuels compared side by side on the redesigned page; the first one is selected by default.
+INSIGHTS_V2_FUELS = (("gasoline_95_e5_price", "Gasolina 95"), ("diesel_a_price", "Diésel"))
+INSIGHTS_V2_PERIODS = (("month", "1M"), ("quarter", "3M"), ("half_year", "6M"), ("year", "1A"))
+
+
+def _render_insights_v2(request: Request):
+    data_ready = ui_test_is_data_ready() if settings.ui_test_mode else is_data_ready()
+    if not data_ready:
+        return templates.TemplateResponse(
+            request, "loading.html", _base_context("insights"), status_code=503, headers={"Retry-After": "5"}
+        )
+    # Server-rendered so the page shows today's price before any JS runs; JS refines it per scope.
+    # The default scope is the peninsula: islands, Ceuta and Melilla have their own option.
+    national_avg = {
+        fuel: (
+            ui_test_national_avg_price(fuel)
+            if settings.ui_test_mode
+            else get_national_avg_stats(fuel, Region.peninsula)[0]
+        )
+        for fuel, _ in INSIGHTS_V2_FUELS
+    }
+    ctx = _base_context("insights") | {
+        "fuels": INSIGHTS_V2_FUELS,
+        "periods": INSIGHTS_V2_PERIODS,
+        "default_fuel": INSIGHTS_V2_FUELS[0][0],
+        "default_period": "quarter",
+        "national_avg": national_avg,
+        "canonical_path": "/insights",
+    }
+    return templates.TemplateResponse(request, "insights_v2.html", ctx)
 
 
 @app.get("/insights")
 def page_insights(request: Request):
-    return _render_insights(request, "trends")
+    return _render_insights_v2(request)
 
 
 @app.get("/insights/{tab}")

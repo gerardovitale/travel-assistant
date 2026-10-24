@@ -30,6 +30,6 @@ export class InsightsPage {
   }
 
   async goto() {
-    return this.page.goto("/insights");
+    return this.page.goto("/insights/trends");
   }
 }

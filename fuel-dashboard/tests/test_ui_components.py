@@ -99,3 +99,28 @@ def test_disabled_hover_rules_do_not_apply():
     hover_rules = re.findall(r"\.fp-btn--[a-z]+:hover[^{]*", css)
     assert hover_rules
     assert all(':not(:disabled):not([aria-disabled="true"])' in rule for rule in hover_rules)
+
+
+def test_toggle_group_marks_only_the_active_item_pressed():
+    html = str(
+        _ui().toggle_group([("month", "1M"), ("quarter", "3M")], active="quarter", label="Periodo", name="period")
+    )
+    assert 'role="group" aria-label="Periodo" data-toggle-group="period"' in html
+    assert re.search(r'data-value="month" aria-pressed="false"', html)
+    assert re.search(r'data-value="quarter" aria-pressed="true"', html)
+    assert "fp-toggle--hero" not in html
+
+
+def test_toggle_group_hero_variant_with_swatches():
+    html = str(
+        _ui().toggle_group(
+            [("g", "Gasolina 95"), ("d", "Diésel")],
+            active="g",
+            label="Combustible",
+            name="fuel",
+            swatches={"g": "red"},
+            on_hero=True,
+        )
+    )
+    assert 'class="fp-toggle fp-toggle--hero"' in html
+    assert html.count("fp-toggle__swatch") == 1

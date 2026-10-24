@@ -48,7 +48,7 @@ def _setup_test_table(conn):
 def _recent_dates(count: int) -> list[date]:
     """`count` consecutive dates ending yesterday, oldest first.
 
-    The trend queries filter on `date >= CURRENT_DATE - INTERVAL (days_back) DAY`, so fixture
+    The zip-code trend queries filter on `date >= CURRENT_DATE - INTERVAL (days_back) DAY`, so fixture
     dates pinned to literals silently fall out of the window as wall-clock advances — the tests
     pass when written and start returning zero rows months later.
     """
@@ -567,6 +567,125 @@ def test_query_national_price_trend_without_province_returns_all(mock_conn):
     result = query_national_price_trend("diesel_a_price", 90)
 
     assert len(result) == 3
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_price_trend_window_ends_on_the_latest_data_day(mock_conn):
+    """A late ingestion must not shorten the window: 30 days back from the last day with data."""
+    from data.duckdb_engine import query_latest_trend_date
+    from data.duckdb_engine import query_national_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    last = date.today() - timedelta(days=10)
+    days = [last - timedelta(days=offset) for offset in range(40)]
+    df = pd.DataFrame(  # noqa: F841
+        {
+            "date": days,
+            "zip_code": ["28001"] * 40,
+            "province": ["madrid"] * 40,
+            "fuel_type": ["diesel_a_price"] * 40,
+            "avg_price": [1.5] * 40,
+            "min_price": [1.4] * 40,
+            "max_price": [1.6] * 40,
+            "station_count": [3] * 40,
+        }
+    )
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_national_price_trend("diesel_a_price", 30)
+
+    assert query_latest_trend_date() == last
+    assert len(result) == 30
+    assert result["date"].iloc[0].date() == last - timedelta(days=29)
+    assert result["date"].iloc[-1].date() == last
+
+
+def test_query_latest_trend_date_is_none_before_the_trend_cache_loads():
+    from data.duckdb_engine import query_latest_trend_date
+
+    duckdb_engine_module._zip_code_trend_ready.clear()
+    assert query_latest_trend_date() is None
+
+
+# --- region (peninsula / islands, Ceuta and Melilla) filter tests ---
+
+
+def _make_region_trend_df():
+    return pd.DataFrame(
+        {
+            "date": _recent_dates(1) * 4,
+            "zip_code": ["28001", "35001", "07001", "51001"],
+            "province": ["madrid", "palmas (las)", "balears (illes)", "ceuta"],
+            "fuel_type": ["diesel_a_price"] * 4,
+            "avg_price": [1.50, 1.30, 1.56, 1.20],
+            "min_price": [1.45, 1.25, 1.50, 1.15],
+            "max_price": [1.55, 1.35, 1.60, 1.25],
+            "station_count": [5, 4, 3, 2],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("region", "expected_avg"),
+    [("all", (1.50 + 1.30 + 1.56 + 1.20) / 4), ("peninsula", 1.50), ("special", (1.30 + 1.56 + 1.20) / 3)],
+)
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_price_trend_filters_by_region(mock_conn, region, expected_avg):
+    from data.duckdb_engine import query_national_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = _make_region_trend_df()  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_national_price_trend("diesel_a_price", 90, region=region)
+
+    assert result["avg_price"].iloc[0] == pytest.approx(expected_avg)
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_price_trend_province_wins_over_region(mock_conn):
+    from data.duckdb_engine import query_national_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = _make_region_trend_df()  # noqa: F841
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_national_price_trend("diesel_a_price", 90, province="palmas (las)", region="peninsula")
+
+    assert result["avg_price"].iloc[0] == pytest.approx(1.30)
+
+
+def test_query_national_price_trend_rejects_unknown_region():
+    from data.duckdb_engine import _region_clause
+
+    with pytest.raises(ValueError):
+        _region_clause("atlantis", 3)
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_avg_stats_by_region_matches_raw_uppercase_provinces(mock_conn):
+    from data.duckdb_engine import query_national_avg_stats
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = pd.DataFrame(  # noqa: F841
+        {"province": ["MADRID", "SANTA CRUZ DE TENERIFE", "MELILLA"], "diesel_a_price": [1.50, 1.30, 1.10]}
+    )
+    conn.execute("DROP TABLE IF EXISTS latest_stations")
+    conn.execute("CREATE TABLE latest_stations AS SELECT * FROM df")
+    query_national_avg_stats.cache_clear()
+    try:
+        assert query_national_avg_stats("diesel_a_price", "peninsula") == (pytest.approx(1.50), 1)
+        assert query_national_avg_stats("diesel_a_price", "special") == (pytest.approx(1.20), 2)
+        assert query_national_avg_stats("diesel_a_price") == (pytest.approx(1.30), 3)
+    finally:
+        query_national_avg_stats.cache_clear()
 
 
 # --- query_national_group_price_trend province filter tests ---

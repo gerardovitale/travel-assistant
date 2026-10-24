@@ -44,6 +44,11 @@ _LOWERCASE_GEOJSON_TO_DATA: dict[str, str] = {
 }
 
 
+def non_mainland_data_province_names() -> list[str]:
+    """Lowercased data names of the provinces outside mainland Spain (islands, Ceuta, Melilla)."""
+    return sorted(_NON_MAINLAND_DATA_NAMES)
+
+
 def is_mainland_province(province: str) -> bool:
     """Return True if the province name (data or GeoJSON) refers to mainland Spain."""
     return normalize_data_province_name(province) not in _NON_MAINLAND_DATA_NAMES

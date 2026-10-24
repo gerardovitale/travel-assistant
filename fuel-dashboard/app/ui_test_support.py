@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from contextvars import ContextVar
 from datetime import date
 from datetime import timedelta
@@ -39,10 +40,12 @@ from api.schemas import ProvincePriceResult
 from api.schemas import ProvincesResponse
 from api.schemas import QualityResponse
 from api.schemas import RealtimeStatus
+from api.schemas import Region
 from api.schemas import RouteResponse
 from api.schemas import SearchLocation
 from api.schemas import StationListResponse
 from api.schemas import StationResult
+from api.schemas import TREND_PERIOD_DAYS
 from api.schemas import TrendPeriod
 from api.schemas import TrendPoint
 from api.schemas import TrendResponse
@@ -103,6 +106,39 @@ def insights_flags() -> tuple[bool, bool, bool, bool, bool]:
     fuel_type_report = settings.report_fuel_type_enabled or fixture in {"insights_all"}
     commodities = settings.commodities_enabled or fixture in {"insights_all"}
     return zones, historical, reportes, fuel_type_report, commodities
+
+
+# Trend fixtures for the /insights story page: "insights_v2" serves one point per day for the whole
+# period; "insights_v2_short_history" holds only INSIGHTS_V2_SHORT_HISTORY_DAYS days, like a fresh
+# deployment before the backfill, so long periods show partial coverage.
+INSIGHTS_V2_FIXTURE_SETS = {"insights_v2", "insights_v2_short_history"}
+INSIGHTS_V2_SHORT_HISTORY_DAYS = 60
+INSIGHTS_V2_TREND_END = date(2026, 4, 17)
+
+
+def _insights_v2_trend(fuel_type: FuelType, period: TrendPeriod, price_offset: float) -> TrendResponse:
+    """One point per day for the whole period, ending on INSIGHTS_V2_TREND_END, so range bugs show up."""
+    days = TREND_PERIOD_DAYS[period]
+    start = INSIGHTS_V2_TREND_END - timedelta(days=days - 1)
+    if current_fixture_set() == "insights_v2_short_history":
+        days = min(days, INSIGHTS_V2_SHORT_HISTORY_DAYS)
+    points = []
+    for back in range(days - 1, -1, -1):  # days before the end, oldest first
+        # Steady fall plus a weekly ripple; ends at 1.452 + offset, like the 5-point fixture.
+        avg = round(1.452 + price_offset + 0.0004 * back + 0.004 * math.sin(back / 7 * 2 * math.pi), 4)
+        day = INSIGHTS_V2_TREND_END - timedelta(days=back)
+        points.append(TrendPoint(date=day.isoformat(), avg_price=avg, min_price=avg - 0.04, max_price=avg + 0.04))
+    return TrendResponse(
+        trend=points,
+        fuel_type=fuel_type.value,
+        period=period.value,
+        start_date=start.isoformat(),
+        end_date=INSIGHTS_V2_TREND_END.isoformat(),
+    )
+
+
+def national_avg_price(fuel_type: str) -> float:
+    return {"gasoline_95_e5_price": 1.529, "diesel_a_price": 1.452}.get(fuel_type, 1.5)
 
 
 def health_data_response() -> tuple[int, dict[str, Any]]:
@@ -255,8 +291,18 @@ def provinces_response() -> ProvincesResponse:
     )
 
 
-def trend_response(zip_code: Optional[str], fuel_type: FuelType, period: TrendPeriod) -> TrendResponse:
+def trend_response(
+    zip_code: Optional[str], fuel_type: FuelType, period: TrendPeriod, region: Region = Region.all
+) -> TrendResponse:
     price_offset = 0.02 if zip_code else 0.0
+    # Islands, Ceuta and Melilla run well below the peninsula (lower fuel taxes).
+    if region == Region.special:
+        price_offset -= 0.175
+    # Gasoline sits above diesel, as in real data, so side-by-side charts show two distinct lines.
+    if fuel_type == FuelType.gasoline_95_e5_price:
+        price_offset += 0.077
+    if current_fixture_set() in INSIGHTS_V2_FIXTURE_SETS and not zip_code:
+        return _insights_v2_trend(fuel_type, period, price_offset)
     points = [
         TrendPoint(date="2026-04-13", avg_price=1.479 + price_offset, min_price=1.439, max_price=1.519 + price_offset),
         TrendPoint(date="2026-04-14", avg_price=1.471 + price_offset, min_price=1.431, max_price=1.511 + price_offset),

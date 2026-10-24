@@ -62,6 +62,18 @@
 </div>
 {%- endmacro -%}
 
+{#- Single-choice filter chips (fuel, period). items: list of (value, label) pairs; state lives in
+    aria-pressed, which the page JS flips. swatches: optional {value: css color} dot before the label.
+    on_hero: light-on-navy variant for the hero gradient. -#}
+{%- macro toggle_group(items, active, label, name, swatches=none, on_hero=false, attrs=none) -%}
+<div class="fp-toggle{% if on_hero %} fp-toggle--hero{% endif %}" role="group" aria-label="{{ label }}" data-toggle-group="{{ name }}"{{ _attrs(attrs) }}>
+  {%- for value, text in items %}
+  <button type="button" class="fp-toggle__item" data-value="{{ value }}" aria-pressed="{{ 'true' if value == active else 'false' }}">
+    {%- if swatches and swatches.get(value) %}<span class="fp-toggle__swatch" style="background: {{ swatches[value] }}" aria-hidden="true"></span>{% endif %}{{ text }}</button>
+  {%- endfor %}
+</div>
+{%- endmacro -%}
+
 {#- Call-block container: {% call ui.card(title="Tendencia") %}...{% endcall %} -#}
 {%- macro card(title=none, raised=false, selected=false, attrs=none) -%}
 <section class="fp-card{% if raised %} fp-card--raised{% endif %}{% if selected %} fp-card--selected{% endif %}"{{ _attrs(attrs) }}>

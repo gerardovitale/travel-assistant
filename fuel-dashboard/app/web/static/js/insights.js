@@ -123,8 +123,9 @@ function serializeFilters(tab) {
   return out;
 }
 
+// /insights is the redesigned page, so every tab here, trends included, keeps its own path.
 function tabPath(tab) {
-  return tab === "trends" ? "/insights" : `/insights/${tab}`;
+  return `/insights/${tab}`;
 }
 
 function syncUrl(tab, keepHash = true) {

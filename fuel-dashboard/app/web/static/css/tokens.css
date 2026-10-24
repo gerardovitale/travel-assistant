@@ -53,6 +53,10 @@
   --fp-inverse-primary: 178 197 255;             /* #b2c5ff */
   --fp-support: 14 123 82;                     /* #0e7b52 */
   --fp-hero-end: 0 61 155;                  /* #003d9b, hero gradient end stop */
+  /* Chart series per fuel (charts.js SERIES_COLORS mirrors these). Pair checked for colour-blind
+     separation; always shown with a text label, never colour alone. */
+  --fp-series-gasoline: 4 83 205;           /* #0453cd */
+  --fp-series-diesel: 194 106 27;           /* #c26a1b */
 }
 
 /* Dark palette (draft, not switched on yet): templates still hard-code bg-white /

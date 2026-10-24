@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 from api.schemas import HistoricalForecastResponse
 from api.schemas import StationResult
+from api.schemas import TrendPeriod
 from config import settings
 from fastapi.testclient import TestClient
 
@@ -245,8 +246,9 @@ def test_price_trends_endpoint(mock_service):
     assert len(data["trend"]) == 1
 
 
+@patch("api.router.get_trend_window", return_value=None)
 @patch("api.router.get_price_trends")
-def test_price_trends_endpoint_with_province(mock_service):
+def test_price_trends_endpoint_with_province(mock_service, _mock_window):
     from api.schemas import TrendPoint
 
     mock_service.return_value = [TrendPoint(date="2025-01-01", avg_price=1.45, min_price=1.40, max_price=1.50)]
@@ -256,6 +258,52 @@ def test_price_trends_endpoint_with_province(mock_service):
     mock_service.assert_called_once()
     _, kwargs = mock_service.call_args
     assert kwargs.get("province") == "madrid"
+
+
+@patch("api.router.get_trend_window", return_value=None)
+@patch("api.router.get_price_trends")
+def test_price_trends_endpoint_passes_region(mock_service, _mock_window):
+    from api.schemas import Region
+
+    mock_service.return_value = []
+    response = _get_client().get("/api/v1/trends/price?fuel_type=diesel_a_price&period=week&region=special")
+    assert response.status_code == 200
+    assert mock_service.call_args.kwargs.get("region") == Region.special
+
+
+@patch("api.router.get_trend_window", return_value=None)
+@patch("api.router.get_price_trends")
+def test_price_trends_endpoint_defaults_to_all_regions(mock_service, _mock_window):
+    from api.schemas import Region
+
+    mock_service.return_value = []
+    response = _get_client().get("/api/v1/trends/price?fuel_type=diesel_a_price&period=week")
+    assert response.status_code == 200
+    assert mock_service.call_args.kwargs.get("region") == Region.all
+
+
+@patch("api.router.get_trend_window", return_value=("2026-01-18", "2026-04-17"))
+@patch("api.router.get_price_trends", return_value=[])
+def test_price_trends_endpoint_returns_period_window_for_national_trends(_mock_service, mock_window):
+    response = _get_client().get("/api/v1/trends/price?fuel_type=diesel_a_price&period=quarter&region=peninsula")
+    assert response.status_code == 200
+    assert response.json()["start_date"] == "2026-01-18"
+    assert response.json()["end_date"] == "2026-04-17"
+    mock_window.assert_called_once_with(TrendPeriod.quarter)
+
+
+@patch("api.router.get_trend_window")
+@patch("api.router.get_price_trends", return_value=[])
+def test_price_trends_endpoint_omits_window_for_zip_codes(_mock_service, mock_window):
+    response = _get_client().get("/api/v1/trends/price?zip_code=28001&fuel_type=diesel_a_price&period=quarter")
+    assert response.status_code == 200
+    assert response.json()["start_date"] is None
+    mock_window.assert_not_called()
+
+
+def test_price_trends_endpoint_rejects_unknown_region():
+    response = _get_client().get("/api/v1/trends/price?fuel_type=diesel_a_price&period=week&region=atlantis")
+    assert response.status_code == 422
 
 
 @patch("api.router.get_historical_forecast")

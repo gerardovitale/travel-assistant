@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% import "components/ui.html" as ui %}
+{% from "_share_button.html" import share_button %}
+{% set current_page = 'insights' %}
+{% set fuel_swatches = {"gasoline_95_e5_price": "rgb(var(--fp-series-gasoline))", "diesel_a_price": "rgb(var(--fp-series-diesel))"} %}
+{# Story sections, in page order. Each slice adds its own entry. #}
+{% set sections = [("tendencia", "Tendencia")] %}
+{% block title %}Insights y tendencias · Fuel Precision{% endblock %}
+{% block meta_description %}El pulso del combustible en España: precios de gasolina y diésel, tendencias y comparativas por provincia, actualizados a diario.{% endblock %}
+{% block og_title %}El pulso del combustible en España · Fuel Precision{% endblock %}
+{% block og_description %}Precios, marcas y tendencias para decidir cuándo, dónde y qué repostar.{% endblock %}
+{% block twitter_title %}El pulso del combustible en España · Fuel Precision{% endblock %}
+{% block twitter_description %}Precios, marcas y tendencias para decidir cuándo, dónde y qué repostar.{% endblock %}
+
+{% block content %}
+<section data-testid="insights-v2-page" class="hero-gradient text-white px-5 md:px-8 pt-10 pb-24 md:pt-14 md:pb-28">
+  <div class="max-w-6xl mx-auto">
+    {{ ui.eyebrow("Observatorio de precios · actualizado a diario", on_hero=true) }}
+    <h1 class="mt-3 max-w-3xl text-4xl md:text-[3.25rem] leading-[1.08] font-headline font-extrabold tracking-tight">El pulso del combustible en España</h1>
+    <p class="mt-3 max-w-2xl text-base md:text-lg text-primary-fixed">Precios, marcas y tendencias para decidir cuándo, dónde y qué repostar.</p>
+    <div id="insights-filters" data-testid="insights-filters" class="mt-7 flex flex-wrap items-center gap-3"
+         data-default-fuel="{{ default_fuel }}" data-default-period="{{ default_period }}" data-default-scope="peninsula">
+      {{ ui.toggle_group(fuels, active=default_fuel, label="Combustible", name="fuel", swatches=fuel_swatches, on_hero=true, attrs={"data-testid": "insights-fuel-toggle"}) }}
+      <label class="fp-hero-select">
+        {{ ui.icon("location_on") }}
+        <span class="sr-only">Zona</span>
+        {#- Islands, Ceuta and Melilla have their own taxes, so they are a separate scope, never mixed into the peninsula. #}
+        <select name="scope" data-testid="insights-scope-select">
+          <option value="peninsula">España peninsular</option>
+          <option value="special">Islas, Ceuta y Melilla</option>
+          <option value="compare">Península vs. islas, Ceuta y Melilla</option>
+          <optgroup label="Provincias" data-province-options></optgroup>
+        </select>
+      </label>
+    </div>
+  </div>
+</section>
+
+<div class="max-w-6xl mx-auto px-5 md:px-8 -mt-14 relative z-10">
+  <div data-testid="insights-kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    {% for fuel, label in fuels %}
+    <div class="fp-card fp-kpi{% if fuel != default_fuel %} hidden{% endif %}" data-kpi-price="{{ fuel }}" data-testid="kpi-price-{{ fuel }}">
+      <span class="fp-kpi__label">{{ ui.icon("local_gas_station") }}Precio medio hoy · {{ label }}</span>
+      <p class="fp-kpi__value"><span data-kpi-value>{{ national_avg[fuel] | price }}</span> <span class="text-sm font-body font-normal text-on-surface-variant">€/l</span></p>
+      <span data-kpi-delta class="text-xs text-on-surface-variant">Media peninsular</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<nav aria-label="Secciones de insights" class="sticky top-16 z-20 mt-6 bg-surface/90 backdrop-blur border-b border-outline-variant/40">
+  <div class="max-w-6xl mx-auto px-5 md:px-8 py-1.5 flex gap-1 overflow-x-auto no-scrollbar">
+    {% for anchor, label in sections %}
+    <a href="#{{ anchor }}" class="fp-section-link">{{ label }}</a>
+    {% endfor %}
+  </div>
+</nav>
+
+<main class="max-w-6xl mx-auto px-5 md:px-8 pt-8 pb-16 space-y-14">
+  {% set construction_note %}<strong>Sección en construcción.</strong> Estamos rediseñando los insights y añadiremos marcas, provincias y más en las próximas semanas. Mientras tanto, los informes anteriores siguen en la <a href="/insights/trends" class="underline font-semibold" data-testid="insights-previous-link">versión anterior</a>.{% endset %}
+  {{ ui.banner(construction_note, icon="construction", attrs={"data-testid": "insights-construction-note"}) }}
+  <section id="tendencia" data-testid="section-tendencia" class="fp-card md:p-6 scroll-mt-32" aria-labelledby="trend-headline">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="fp-eyebrow text-on-surface-variant">Tendencia · <span data-testid="trend-scope" id="trend-scope">Península</span></p>
+        <h2 id="trend-headline" data-testid="trend-headline" class="fp-story-title">Evolución del precio medio</h2>
+        <p class="mt-1 text-sm text-on-surface-variant">Media diaria de las estaciones de la zona. Pasa el cursor o toca el gráfico para ver cada día.</p>
+      </div>
+      {{ share_button("tendencia") }}
+    </div>
+    <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+      <ul id="trend-legend" class="flex flex-wrap gap-4 text-sm text-on-surface-variant" aria-label="Leyenda">
+        {% for fuel, label in fuels %}
+        <li class="inline-flex items-center gap-2"><span class="inline-block w-5 h-[3px] rounded" style="background: {{ fuel_swatches[fuel] }}" aria-hidden="true"></span>{{ label }}</li>
+        {% endfor %}
+      </ul>
+      {{ ui.toggle_group(periods, active=default_period, label="Periodo", name="period", attrs={"data-testid": "trend-period-toggle"}) }}
+    </div>
+    <div id="trend-pair-chart" data-testid="trend-pair-chart" class="h-80 mt-3" role="img" aria-label="Evolución del precio medio de la gasolina 95 y el diésel"></div>
+    <p id="trend-coverage" data-testid="trend-coverage" class="hidden mt-2 inline-flex items-center gap-1.5 text-xs text-on-surface-variant">{{ ui.icon("info", extra_class="text-[16px]") }}<span data-coverage-text></span></p>
+    <div data-testid="trend-facts" class="mt-4 pt-4 border-t border-surface-container flex flex-wrap gap-2 text-sm">
+      <span class="inline-flex items-center gap-2 rounded-lg bg-surface-container-low px-3 py-1.5">{{ ui.icon("swap_vert", extra_class="text-[18px] text-on-surface-variant") }}<span id="trend-spread-label">Diferencia gasolina − diésel:</span> <strong id="trend-spread" data-testid="trend-spread">—</strong></span>
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block page_scripts %}
+<script type="module" src="/static/js/insights_v2.js"></script>
+{% endblock %}

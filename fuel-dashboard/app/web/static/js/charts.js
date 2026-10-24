@@ -259,6 +259,73 @@ export function fuelByDistance(el, points, { floorPct = null, turnaroundKm = nul
   );
 }
 
+// Mirrors --fp-series-* in tokens.css; Plotly needs literal colours.
+export const SERIES_COLORS = { gasoline_95_e5_price: "#0453cd", diesel_a_price: "#c26a1b" };
+
+// Several fuels' daily averages on one axis. The selected fuel is drawn heavier; every line ends in a
+// direct label (name + latest price) so identity never depends on colour alone.
+// series: [{ key, label, points: [{date, avg_price}], color?, dash?, endLabel? }]; color defaults to the
+// fuel's SERIES_COLORS entry, endLabel (HTML) to label.
+// range: optional [startISO, endISO] the x axis always spans (the selected period), even when the
+// series start later; without it the axis autoranges to the data.
+export function fuelPair(el, series, { selected = null, range = null } = {}) {
+  const drawn = (series || []).filter((s) => s.points && s.points.length);
+  if (!drawn.length) { el.innerHTML = emptyMsg("Sin datos para este periodo"); return; }
+  el.innerHTML = "";
+  const lasts = drawn.map((s) => s.points[s.points.length - 1].avg_price);
+  const all = drawn.flatMap((s) => s.points.map((p) => p.avg_price));
+  const span = Math.max(...all) - Math.min(...all) || 0.01;
+  const traces = drawn.map((s) => {
+    const on = !selected || s.key === selected;
+    return {
+      x: s.points.map((p) => p.date),
+      y: s.points.map((p) => p.avg_price),
+      name: s.label,
+      mode: "lines",
+      line: { color: s.color || SERIES_COLORS[s.key] || "#001642", width: on ? 3 : 1.75, dash: s.dash || "solid" },
+      opacity: on ? 1 : 0.55,
+      hovertemplate: "%{y:.3f} €/l<extra>%{fullData.name}</extra>",
+    };
+  });
+  // Nudge the two end labels apart when the lines finish close together.
+  const close = drawn.length === 2 && Math.abs(lasts[0] - lasts[1]) < span * 0.08;
+  const annotations = drawn.map((s, i) => ({
+    // Paper x keeps the label in the right margin and out of the x autorange.
+    xref: "paper",
+    x: 1,
+    y: lasts[i],
+    xanchor: "left",
+    xshift: 8,
+    yshift: close ? (lasts[i] >= lasts[1 - i] ? 16 : -16) : 0,
+    showarrow: false,
+    align: "left",
+    text: `<b>${s.endLabel || s.label}</b><br>${lasts[i].toFixed(3).replace(".", ",")} €/l`,
+    font: { size: 12, color: "#191c20" },
+  }));
+  _renderChart(
+    el,
+    traces,
+    {
+      ...COMMON_LAYOUT,
+      margin: { l: 48, r: 100, t: 16, b: 40 },
+      xaxis: {
+        ...DATE_XAXIS,
+        ...(range ? { range, autorange: false } : {}),
+        showspikes: true,
+        spikemode: "across",
+        spikecolor: "#747782",
+        spikethickness: 1,
+        spikedash: "solid",
+      },
+      yaxis: { ...COMMON_LAYOUT.yaxis, tickformat: ".2f" },
+      hovermode: "x unified",
+      hoverlabel: { bgcolor: "#2e3135", bordercolor: "#2e3135", font: { color: "#eff0f6", family: "Inter, sans-serif" } },
+      annotations,
+    },
+    CONFIG,
+  );
+}
+
 export function heatmap(el, x, y, z) {
   if (!z || !z.length) { el.innerHTML = emptyMsg("Sin datos"); return; }
   el.innerHTML = "";

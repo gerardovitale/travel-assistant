@@ -65,6 +65,9 @@
     <div class="mt-4">
       {{ ui.segmented([("best", "MEJOR OPCIÓN"), ("cheapest", "MÁS BARATA"), ("nearest", "MÁS CERCANA")], active="best", label="Modo de búsqueda") }}
     </div>
+    <div class="mt-4" data-testid="styleguide-toggle-group">
+      {{ ui.toggle_group([("month", "1M"), ("quarter", "3M"), ("year", "1A")], active="quarter", label="Periodo", name="sg_period") }}
+    </div>
     {% endcall %}
   </section>
 

@@ -29,6 +29,13 @@ export const formatSignedPct = (v, digits = 1) => {
   const sign = s > 0 ? "+" : s < 0 ? "−" : "";
   return `${sign}${numFormat(digits).format(roundAbs(v, digits))}%`;
 };
+// A €/l price difference, always in euros and signed like formatSignedPct: formatSignedPriceDelta(-0.012) → "−0,012 €/l".
+export const formatSignedPriceDelta = (eurPerLitre, digits = 3) => {
+  if (!isNum(eurPerLitre)) return "—";
+  const s = displaySign(eurPerLitre, digits);
+  const sign = s > 0 ? "+" : s < 0 ? "−" : "";
+  return `${sign}${numFormat(digits).format(roundAbs(eurPerLitre, digits))} €/l`;
+};
 export const formatEur = (v) => (v == null || isNaN(v)) ? "—" : euro2.format(v);
 export const formatKm = (v) => (v == null || isNaN(v)) ? "—" : `${numFormat(1).format(v)} km`;
 export const formatMin = (v) => {
@@ -52,6 +59,9 @@ const parseDataDate = (raw) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
   return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(raw);
 };
+// "17 feb 2026": a data day (ISO date) in full, for sentences.
+export const formatDay = (iso) =>
+  iso ? parseDataDate(iso).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }).replace(".", "") : "—";
 const dayLabel = (d, now) => {
   const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diffDays = Math.round((startOf(now) - startOf(d)) / 86400000);

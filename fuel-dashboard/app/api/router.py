@@ -36,6 +36,7 @@ from api.schemas import ProvinceBreakevenResponse
 from api.schemas import ProvinceMapResponse
 from api.schemas import ProvincesResponse
 from api.schemas import QualityResponse
+from api.schemas import Region
 from api.schemas import RouteResponse
 from api.schemas import SearchLocation
 from api.schemas import StationListResponse
@@ -83,6 +84,7 @@ from services.station_service import get_province_ranking
 from services.station_service import get_provinces
 from services.station_service import get_report_available_brands
 from services.station_service import get_station_labels
+from services.station_service import get_trend_window
 from services.station_service import get_zip_code_price_map_by_municipality
 from services.station_service import get_zip_code_price_map_for_zips
 from services.station_service import get_zip_codes_for_district
@@ -228,11 +230,23 @@ def price_trends(
     fuel_type: FuelType = Query(..., description="Fuel type"),
     period: TrendPeriod = Query(TrendPeriod.month, description="Trend period"),
     province: str | None = Query(None, description="Province name (omit for national average)"),
+    region: Region = Query(
+        Region.all,
+        description="National scope when no province is given: all, peninsula or special (islands, Ceuta, Melilla)",
+    ),
 ):
     if settings.ui_test_mode:
-        return ui_test.trend_response(zip_code, fuel_type, period)
-    trend = get_price_trends(zip_code, fuel_type, period, province=province)
-    return TrendResponse(trend=trend, zip_code=zip_code, fuel_type=fuel_type.value, period=period.value)
+        return ui_test.trend_response(zip_code, fuel_type, period, region)
+    trend = get_price_trends(zip_code, fuel_type, period, province=province, region=region)
+    start_date, end_date = (None if zip_code else get_trend_window(period)) or (None, None)
+    return TrendResponse(
+        trend=trend,
+        zip_code=zip_code,
+        fuel_type=fuel_type.value,
+        period=period.value,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @router.get("/trends/group", response_model=GroupTrendResponse)

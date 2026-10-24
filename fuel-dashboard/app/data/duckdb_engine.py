@@ -3,6 +3,7 @@ import logging
 import math
 import threading
 import time
+from datetime import date
 
 import duckdb
 import pandas as pd
@@ -13,6 +14,7 @@ from data.gcs_client import download_aggregate
 from data.gcs_client import download_parquet_as_df
 from data.gcs_client import download_parquets_as_df
 from data.gcs_client import get_latest_parquet_file
+from data.geojson_loader import non_mainland_data_province_names
 
 logger = logging.getLogger(__name__)
 
@@ -484,13 +486,45 @@ def query_cached_zip_code_price_trend(zip_code: str, fuel_type: str, days_back: 
     return result
 
 
-def query_national_price_trend(fuel_type: str, days_back: int, province: str | None = None) -> pd.DataFrame:
-    """Query national daily price trend by aggregating all zip codes in the trend cache."""
+def _region_clause(region: str, param_index: int) -> tuple[str, list]:
+    """SQL filter on ``province`` for a Region value ("all" | "peninsula" | "special"), plus its parameter."""
+    if region == "all":
+        return "", []
+    if region not in ("peninsula", "special"):
+        raise ValueError(f"Unknown region: {region}")
+    operator = "NOT IN" if region == "peninsula" else "IN"
+    return f"AND LOWER(province) {operator} (SELECT UNNEST(${param_index}::VARCHAR[]))", [
+        non_mainland_data_province_names()
+    ]
+
+
+def query_latest_trend_date() -> date | None:
+    """Latest day in the trend cache: where national trend windows end."""
+    if not _zip_code_trend_ready.is_set():
+        return None
+    with _lock:
+        conn = get_connection()
+        row = conn.execute(f"SELECT MAX(date) FROM {ZIP_CODE_TREND_TABLE}").fetchone()
+    return row[0] if row else None
+
+
+def query_national_price_trend(
+    fuel_type: str, days_back: int, province: str | None = None, region: str = "all"
+) -> pd.DataFrame:
+    """Query national daily price trend by aggregating all zip codes in the trend cache.
+
+    Covers the ``days_back`` days ending on the latest day with data (see ``query_latest_trend_date``),
+    so a late ingestion never shortens the window. A province takes precedence over ``region``; with
+    neither, every province is included.
+    """
     fuel_type = _validate_fuel_column(fuel_type)
     if not _zip_code_trend_ready.is_set():
         return pd.DataFrame(columns=["date", "avg_price", "min_price", "max_price"])
-    province_clause = "AND province = $3" if province else ""
-    params = [fuel_type, days_back] + ([province] if province else [])
+    if province:
+        province_clause, params = "AND province = $3", [fuel_type, days_back, province]
+    else:
+        province_clause, region_params = _region_clause(region, 3)
+        params = [fuel_type, days_back] + region_params
     with _lock:
         conn = get_connection()
         return conn.execute(
@@ -501,7 +535,7 @@ def query_national_price_trend(fuel_type: str, days_back: int, province: str | N
                 MAX(max_price) AS max_price
             FROM {ZIP_CODE_TREND_TABLE}
             WHERE fuel_type = $1
-                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                AND date > (SELECT MAX(date) FROM {ZIP_CODE_TREND_TABLE}) - INTERVAL ($2) DAY
                 {province_clause}
             GROUP BY date
             ORDER BY date ASC
@@ -736,12 +770,13 @@ def query_stations_along_corridor(
 
 
 @functools.lru_cache(maxsize=16)
-def query_national_avg_stats(fuel_type: str) -> tuple[float | None, int]:
-    """Return (avg_price, station_count) for a fuel type nationally.
+def query_national_avg_stats(fuel_type: str, region: str = "all") -> tuple[float | None, int]:
+    """Return (avg_price, station_count) for a fuel type nationally, optionally limited to a Region.
 
-    Cached per fuel type; cache is cleared on ``replace_latest_stations()``.
+    Cached per fuel type and region; cache is cleared on ``replace_latest_stations()``.
     """
     fuel_type = _validate_fuel_column(fuel_type)
+    region_clause, params = _region_clause(region, 1)
     with _lock:
         conn = get_connection()
         result = conn.execute(
@@ -749,7 +784,9 @@ def query_national_avg_stats(fuel_type: str) -> tuple[float | None, int]:
             SELECT AVG({fuel_type}) AS avg_price, COUNT(*) AS cnt
             FROM latest_stations
             WHERE {fuel_type} IS NOT NULL AND {fuel_type} > 0
+                {region_clause}
             """,
+            params,
         ).fetchone()
     if result and result[0] is not None:
         return result[0], result[1]

@@ -1,3 +1,4 @@
+from datetime import date
 from unittest.mock import call
 from unittest.mock import patch
 
@@ -224,6 +225,29 @@ def test_get_price_trends(mock_ready, mock_query):
     mock_query.assert_called_once_with("28001", FuelType.diesel_a_price.value, 7)
 
 
+@pytest.mark.parametrize(
+    ("period", "start"),
+    [
+        (TrendPeriod.month, "2026-03-19"),
+        (TrendPeriod.quarter, "2026-01-18"),
+        (TrendPeriod.half_year, "2025-10-20"),
+        (TrendPeriod.year, "2025-04-18"),
+    ],
+)
+@patch("services.station_service.query_latest_trend_date", return_value=date(2026, 4, 17))
+def test_get_trend_window_spans_the_period_up_to_the_latest_data_day(_mock_latest, period, start):
+    from services.station_service import get_trend_window
+
+    assert get_trend_window(period) == (start, "2026-04-17")
+
+
+@patch("services.station_service.query_latest_trend_date", return_value=None)
+def test_get_trend_window_is_none_without_trend_data(_mock_latest):
+    from services.station_service import get_trend_window
+
+    assert get_trend_window(TrendPeriod.month) is None
+
+
 @patch("services.station_service.query_cached_zip_code_price_trend")
 @patch("services.station_service.is_zip_code_trend_ready")
 def test_get_price_trends_zip_takes_precedence_over_province(mock_ready, mock_query):
@@ -280,7 +304,7 @@ def test_get_price_trends_national(mock_query):
     results = get_price_trends(None, FuelType.diesel_a_price, TrendPeriod.week)
     assert len(results) == 2
     assert results[0].date == "2025-01-01"
-    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7, province=None)
+    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7, province=None, region="all")
 
 
 @patch("services.station_service.load_postal_code_boundary")
@@ -455,7 +479,7 @@ def test_get_price_trends_with_province(mock_query):
     )
     results = get_price_trends(None, FuelType.diesel_a_price, TrendPeriod.week, province="madrid")
     assert len(results) == 2
-    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7, province="madrid")
+    mock_query.assert_called_once_with(FuelType.diesel_a_price.value, 7, province="madrid", region="all")
 
 
 @patch("services.station_service.query_national_group_price_trend")

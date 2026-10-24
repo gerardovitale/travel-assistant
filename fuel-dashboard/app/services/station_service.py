@@ -2,6 +2,7 @@ import logging
 import re
 import time
 from copy import deepcopy
+from datetime import timedelta
 
 import pandas as pd
 from api.schemas import DistrictPriceResult
@@ -10,6 +11,7 @@ from api.schemas import FUEL_GROUP_PRIMARY
 from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import ProvincePriceResult
+from api.schemas import Region
 from api.schemas import StationResult
 from api.schemas import TREND_PERIOD_DAYS
 from api.schemas import TrendPeriod
@@ -31,6 +33,7 @@ from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_by_zip_group
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_cheapest_zones_by_municipality
+from data.duckdb_engine import query_latest_trend_date
 from data.duckdb_engine import query_municipalities_by_province
 from data.duckdb_engine import query_national_avg_price
 from data.duckdb_engine import query_national_avg_stats
@@ -324,9 +327,9 @@ def get_station_labels(top_n: int = 0) -> dict[str, str]:
     return get_distinct_labels(top_n=top_n)
 
 
-def get_national_avg_stats(fuel_type: str) -> tuple[float | None, int]:
-    """Return (avg_price, station_count) for the national average."""
-    return query_national_avg_stats(fuel_type)
+def get_national_avg_stats(fuel_type: str, region: Region = Region.all) -> tuple[float | None, int]:
+    """Return (avg_price, station_count) for the national average, optionally limited to a Region."""
+    return query_national_avg_stats(fuel_type, region.value)
 
 
 def get_cheapest_by_zip_group(
@@ -554,14 +557,18 @@ def get_postal_code_geojson(zip_codes: list[str]) -> dict:
 
 
 def get_price_trends(
-    zip_code: str | None, fuel_type: FuelType, period: TrendPeriod, province: str | None = None
+    zip_code: str | None,
+    fuel_type: FuelType,
+    period: TrendPeriod,
+    province: str | None = None,
+    region: Region = Region.all,
 ) -> list[TrendPoint]:
     days_back = TREND_PERIOD_DAYS[period]
     started = time.perf_counter()
 
     if not zip_code:
         source = "national_aggregate"
-        df = query_national_price_trend(fuel_type.value, days_back, province=province)
+        df = query_national_price_trend(fuel_type.value, days_back, province=province, region=region.value)
     elif is_zip_code_trend_ready():
         source = "duckdb_trend_cache"
         _validate_zip_code(zip_code)
@@ -582,6 +589,14 @@ def get_price_trends(
         duration_ms,
     )
     return trend
+
+
+def get_trend_window(period: TrendPeriod) -> tuple[str, str] | None:
+    """Inclusive (start, end) ISO dates of a national trend period, ending on the latest day with data."""
+    end = query_latest_trend_date()
+    if end is None:
+        return None
+    return (end - timedelta(days=TREND_PERIOD_DAYS[period] - 1)).isoformat(), end.isoformat()
 
 
 def get_group_price_trends(
