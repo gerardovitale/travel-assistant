@@ -71,6 +71,9 @@ cd <service> && uv add <pkg>    # add dependency
 
 ## Adding Features
 
+**Follow `docs/CONVENTIONS.md`** for planning, vertical slices, feature flags, testing, Definition of Done and release.
+Summary:
+
 1. Add tests in `tests/` — use `tests/fixture.py` for shared unit test data
 2. Dashboard endpoints: route in `app/api/router.py`, logic in `app/services/`, test in `tests/`
 3. Dashboard UI: Jinja2 templates in `app/web/templates/`, static in `app/web/static/`

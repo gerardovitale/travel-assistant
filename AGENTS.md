@@ -5,7 +5,7 @@
 Repo has two Python services plus infra:
 
 - `fuel-ingestor/`: batch ingestion job (`app/`) and tests (`tests/`).
-- `fuel-dashboard/`: FastAPI/NiceGUI dashboard (`app/api`, `app/services`, `app/ui`, `app/data`) and tests (`tests/`).
+- `fuel-dashboard/`: FastAPI + Jinja2 dashboard (`app/api`, `app/services`, `app/web`, `app/data`) and tests (`tests/`).
 - `infra/`: Terraform for runtime resources; `infra/backend_support/` for Terraform backend/bootstrap.
 - `scripts/`: helper scripts (for example Dockerized test runner).
 - `maps/` and `data/`: static geospatial and data assets.
@@ -36,20 +36,19 @@ Docker default for tests and local runs.
 - Container invocation: `pytest --durations=5 -vv /app/tests/`.
 - No coverage threshold. Add/extend tests for every behavior change and regression fix.
 
-## Commit & Pull Request Guidelines
+## Commit Guidelines
 
-- Commit style: `feat:`, `fix:`, `refactor:`, `chore:`, `actions:` + concise imperative summary.
-- Scope commits by service (`fuel-ingestor`, `fuel-dashboard`, or `infra`) when possible.
-- PRs must include:
-  - What changed and why.
-  - Affected paths/services.
-  - Validation steps run (e.g. `make test`, `pre-commit run --all-files`).
-  - Screenshots for dashboard UI changes; Terraform plan notes for infra changes.
+Full rules in `docs/CONVENTIONS.md`. Trunk-based on `main`: no branches or PRs, changes stay uncommitted until the owner
+approves.
+
+- Conventional Commits scoped by service: `feat(fuel-dashboard): …`, `fix(fuel-ingestor): …`, `chore(infra): …`.
+- Before asking for approval, share: what changed and why, affected paths, validation run (`make done`,
+  `pre-commit run --all-files`), screenshots for UI changes, Terraform plan notes for infra changes.
 
 ## Data Source API
 
 - Spain fuel API returns JSON with Spanish field names.
-- Column mapping (Spanish → English) in `fuel-ingestor/app/entity.py`.
+- Column mapping (Spanish → English) in `fuel-ingestor/app/ingestor/entity.py`.
 - Schema changes: update entity mapping in ingestor and downstream consumers in `fuel-dashboard/app/services/`.
 
 ## Testing Priorities
