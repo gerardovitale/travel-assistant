@@ -20,7 +20,7 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       spain-fuel-fetcher: ${{ steps.filter.outputs.spain-fuel-fetcher }}
       commodity-fetcher: ${{ steps.filter.outputs.commodity-fetcher }}
@@ -78,7 +78,7 @@ jobs:
     if: >-
       needs.detect-changes.outputs.spain-fuel-fetcher == 'true' ||
       inputs.force_all == true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -94,7 +94,7 @@ jobs:
     if: >-
       needs.detect-changes.outputs.commodity-fetcher == 'true' ||
       inputs.force_all == true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -110,7 +110,7 @@ jobs:
     if: >-
       needs.detect-changes.outputs.fuel-ingestor == 'true' ||
       inputs.force_all == true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -126,7 +126,7 @@ jobs:
     if: >-
       needs.detect-changes.outputs.fuel-dashboard == 'true' ||
       inputs.force_all == true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -146,7 +146,7 @@ jobs:
       always() && !failure() && !cancelled() &&
       (needs.detect-changes.outputs.fuel-dashboard == 'true' ||
         inputs.force_all == true)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,7 +187,7 @@ jobs:
     if: >-
       always() && !failure() && !cancelled() &&
       needs.build-fuel-dashboard.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -209,7 +209,7 @@ jobs:
   # Terraform deploy
   # ---------------------------------------------------------------------------
   terraform-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - detect-changes
       - build-fuel-dashboard

@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   Terraform-Destroy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       TF_VAR_PREFIX: travass
       TF_VAR_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
