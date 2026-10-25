@@ -101,3 +101,38 @@ export function tomorrowHeadline(currentRegime, probabilities) {
   const verb = regime === currentRegime ? "que siga" : "que pase a estar";
   return `Lo más probable mañana: ${verb} ${REGIME_WORD[regime]} (${formatNum(p * 100, 0)} %)`;
 }
+
+// Brands from /brands/scorecard: [{brand, name, kind, stations, price_gap, below_market_pct, win_pct}],
+// price_gap in €/l against the other stations of the brand's zip codes (negative = cheaper).
+
+// The `limit` biggest chains of one kind ("all", "low_cost" or "traditional"), cheapest first. The
+// cheapest brand and the cheapest low-cost brand are always kept, so the headline's brand is listed.
+export function visibleBrands(brands, kind = "all", limit = 12) {
+  const ofKind = (brands || []).filter((b) => kind === "all" || b.kind === kind);
+  const biggest = [...ofKind].sort((a, b) => b.stations - a.stations).slice(0, limit);
+  const pinned = [cheapestBrand(ofKind), cheapestBrand(ofKind.filter((b) => b.kind === "low_cost"))];
+  const shown = new Set([...biggest, ...pinned.filter(Boolean)]);
+  return [...shown].sort((a, b) => a.price_gap - b.price_gap);
+}
+
+// Brand with the lowest price gap, if it is actually cheaper than its zip codes.
+export function cheapestBrand(brands) {
+  const best = [...(brands || [])].sort((a, b) => a.price_gap - b.price_gap)[0];
+  return best && displaySign(best.price_gap, PRICE_DIGITS) < 0 ? best : null;
+}
+
+// "Las low-cost cuestan hasta 0,190 €/l menos que la competencia de su código postal"; without a cheaper
+// low-cost brand, the cheapest brand of any kind.
+export function brandsHeadline(brands) {
+  const lowCost = cheapestBrand((brands || []).filter((b) => b.kind === "low_cost"));
+  if (lowCost) return `Las low-cost cuestan hasta ${formatNum(-lowCost.price_gap, PRICE_DIGITS)} €/l menos que la competencia de su código postal`;
+  const best = cheapestBrand(brands);
+  if (best) return `${best.name} es la marca más barata: ${formatNum(-best.price_gap, PRICE_DIGITS)} €/l menos que la competencia de su código postal`;
+  return brands?.length ? "Ninguna marca es más barata que la competencia de su código postal" : "Marcas: sin datos suficientes en esta zona";
+}
+
+// What a brand's gap means in euros, for one 50 l tank and a year of 1.200 l.
+export function brandSavings(priceGap, { tank = 50, year = 1200 } = {}) {
+  const sign = displaySign(priceGap, PRICE_DIGITS);
+  return { sign, tank: Math.abs(priceGap) * tank, year: Math.abs(priceGap) * year };
+}

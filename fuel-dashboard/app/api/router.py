@@ -9,6 +9,7 @@ from api.schemas import BrandHistoricalResponse
 from api.schemas import BrandOptionsResponse
 from api.schemas import BrandPriceComparisonRow
 from api.schemas import BrandReportFuelType
+from api.schemas import BrandScorecardResponse
 from api.schemas import BrandWinRateRow
 from api.schemas import BreakevenHistoryResponse
 from api.schemas import BreakevenResponse
@@ -55,6 +56,7 @@ from fastapi import HTTPException
 from fastapi import Query
 from fastapi import Request
 from net_utils import get_real_client_ip
+from services.brand_service import get_brand_scorecard
 from services.commodity_service import get_commodity_trend
 from services.commodity_service import get_fuel_vs_brent_correlation
 from services.data_quality_service import get_quality_report
@@ -263,6 +265,23 @@ def refuel_timing(
     if settings.ui_test_mode:
         return ui_test.refuel_timing_response(fuel_type, province, region)
     return get_refuel_timing(fuel_type, province=province, region=region)
+
+
+@router.get("/brands/scorecard", response_model=BrandScorecardResponse)
+@limiter.limit(settings.rate_limit)
+def brand_scorecard(
+    request: Request,
+    fuel_type: list[BrandReportFuelType] = Query(..., description="One or more fuel types (repeat the parameter)"),
+    province: str | None = Query(None, description="Province name (omit for a whole region)"),
+    region: Region = Query(Region.all, description="Scope when no province is given: all, peninsula or special"),
+):
+    """Brands vs their local market (same zip code, same day) over the last 90 days, per fuel."""
+    if settings.ui_test_mode:
+        return ui_test.brand_scorecard_response(fuel_type, province, region)
+    scorecard = get_brand_scorecard(fuel_type, province=province, region=region)
+    if scorecard is None:
+        raise HTTPException(status_code=404, detail="Aggregate report not available")
+    return scorecard
 
 
 @router.get("/trends/group", response_model=GroupTrendResponse)

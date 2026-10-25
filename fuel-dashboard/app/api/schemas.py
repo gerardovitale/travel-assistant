@@ -443,6 +443,32 @@ class BrandReportFuelType(str, Enum):
     diesel_a_price = "diesel_a_price"
 
 
+class BrandKind(str, Enum):
+    low_cost = "low_cost"
+    traditional = "traditional"
+
+
+class BrandScore(BaseModel):
+    """One brand against its local market (same zip code, same day) in a scope."""
+
+    brand: str
+    name: str
+    kind: BrandKind
+    stations: int
+    price_gap: float = Field(
+        description="Station-weighted €/l vs the average of the zip code's other stations; negative is cheaper"
+    )
+    below_market_pct: float = Field(description="% of brand-zip-days priced below that average")
+    win_pct: float = Field(description="% of brand-zip-days as the cheapest in its zip code (ties split)")
+
+
+class BrandScorecardResponse(BaseModel):
+    window_start: str | None
+    window_end: str | None
+    days_covered: int
+    fuels: dict[str, list[BrandScore]]
+
+
 class Direction(str, Enum):
     cheapest = "cheapest"
     priciest = "priciest"

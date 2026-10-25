@@ -374,6 +374,27 @@ def test_refuel_timing_endpoint_requires_a_fuel():
     assert _get_client().get("/api/v1/trends/refuel-timing?region=special").status_code == 422
 
 
+@patch("api.router.get_brand_scorecard")
+def test_brand_scorecard_endpoint_takes_several_fuels_and_a_scope(mock_service):
+    from api.schemas import BrandReportFuelType
+    from api.schemas import BrandScorecardResponse
+    from api.schemas import Region
+
+    mock_service.return_value = BrandScorecardResponse(window_start=None, window_end=None, days_covered=0, fuels={})
+    response = _get_client().get(
+        "/api/v1/brands/scorecard?fuel_type=gasoline_95_e5_price&fuel_type=diesel_a_price&province=Madrid"
+    )
+    assert response.status_code == 200
+    args, kwargs = mock_service.call_args
+    assert args[0] == [BrandReportFuelType.gasoline_95_e5_price, BrandReportFuelType.diesel_a_price]
+    assert kwargs == {"province": "Madrid", "region": Region.all}
+
+
+@patch("api.router.get_brand_scorecard", return_value=None)
+def test_brand_scorecard_endpoint_is_404_until_the_report_exists(mock_service):
+    assert _get_client().get("/api/v1/brands/scorecard?fuel_type=diesel_a_price").status_code == 404
+
+
 def test_historical_forecast_requires_geography():
     client = _get_client()
     response = client.get("/api/v1/historical/forecast?fuel_type=diesel_a_price")

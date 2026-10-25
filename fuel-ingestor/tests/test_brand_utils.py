@@ -17,6 +17,7 @@ class TestNormalizeBrand:
         assert normalize_brand("Estacion N1") is None
         assert normalize_brand("E.S. 789") is None
         assert normalize_brand("ES 456") is None
+        assert normalize_brand("(sin rótulo)") is None
 
     def test_known_aliases_normalized(self):
         assert normalize_brand("CEPSA ESTACIONES DE SERVICIO") == "cepsa"
@@ -24,6 +25,7 @@ class TestNormalizeBrand:
         assert normalize_brand("BP Oil") == "bp"
         assert normalize_brand("BP Oil España") == "bp"
         assert normalize_brand("Galp Energia") == "galp"
+        assert normalize_brand("GMOIL") == "gm oil"
 
     def test_real_brand_names_pass_through(self):
         assert normalize_brand("repsol") == "repsol"

@@ -8,6 +8,7 @@ NON_BRAND_PATTERN = re.compile(
     r"|\d{3,}"  # purely numeric IDs with 3+ digits
     r"|estacion\s+n"  # "estacion n..."
     r"|e\.?\s*s\.?\s*\d"  # "E.S. 123", "ES 456"
+    r"|\(?sin\s+r[oó]tulo"  # "(sin rótulo)": the feed's placeholder for an unlabelled station
     r")",
     re.IGNORECASE,
 )
@@ -21,6 +22,7 @@ BRAND_ALIASES = {
     "galp energia": "galp",
     "avia operador": "avia",
     "costco wholesale": "costco",
+    "gmoil": "gm oil",
 }
 
 MIN_STATION_COUNT = 10

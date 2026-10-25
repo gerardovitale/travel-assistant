@@ -11,8 +11,12 @@ from typing import Optional
 from api.schemas import AlternativePlan
 from api.schemas import BrandCoverageRow
 from api.schemas import BrandHistoricalResponse
+from api.schemas import BrandKind
 from api.schemas import BrandOptionsResponse
 from api.schemas import BrandPriceComparisonRow
+from api.schemas import BrandReportFuelType
+from api.schemas import BrandScore
+from api.schemas import BrandScorecardResponse
 from api.schemas import BrandWinRateRow
 from api.schemas import BreakevenHistoryPoint
 from api.schemas import BreakevenHistoryResponse
@@ -63,6 +67,8 @@ from api.schemas import ZoneResult
 from config import settings
 from fastapi import HTTPException
 from fastapi import Request
+from services.brand_service import brand_name
+from services.brand_service import LOW_COST_BRANDS
 from services.forecast_service import forecast_explanation
 from services.forecast_service import INSUFFICIENT_HISTORY_EXPLANATION
 from services.forecast_service import INSUFFICIENT_HISTORY_RECOMMENDATION
@@ -484,6 +490,49 @@ def refuel_timing_response(fuel_types: list[FuelType], province: Optional[str], 
         forecast = historical_forecast_response(province=province, region=None if province else region)
         fuels[fuel_type.value] = RefuelTiming(days=days, forecast=forecast)
     return RefuelTimingResponse(fuels=fuels)
+
+
+# (brand, stations, €/l gap to the other stations in its zip codes, % days below them, % days cheapest),
+# from 90 real days of peninsula gasoline 95 prices.
+INSIGHTS_V2_BRAND_SCORES = (
+    ("bonarea", 65, -0.1904, 99.2, 80.3),
+    ("alcampo", 45, -0.1348, 97.9, 56.9),
+    ("ballenoil", 404, -0.1023, 96.3, 55.4),
+    ("petroprix", 164, -0.0986, 97.4, 48.9),
+    ("plenergy", 365, -0.0974, 94.8, 52.9),
+    ("q8", 81, -0.0179, 65.1, 26.2),
+    ("avia", 98, 0.0034, 45.0, 25.0),
+    ("carrefour", 145, 0.006, 45.9, 12.6),
+    ("galp", 450, 0.0154, 42.8, 24.2),
+    ("shell", 320, 0.0181, 38.3, 17.4),
+    ("bp", 139, 0.0601, 16.6, 11.4),
+    ("petronor", 162, 0.0681, 13.1, 11.1),
+    ("cepsa", 1115, 0.0772, 11.0, 9.1),
+    ("repsol", 2604, 0.0918, 8.5, 7.6),
+)
+
+
+def brand_scorecard_response(
+    fuel_types: list[BrandReportFuelType], province: str | None, region: Region
+) -> BrandScorecardResponse:
+    # A province has fewer chains than a whole region, so a zone switch visibly changes the list.
+    scores = INSIGHTS_V2_BRAND_SCORES[::2] if province or region == Region.special else INSIGHTS_V2_BRAND_SCORES
+    fuels = {}
+    for fuel_type in dict.fromkeys(fuel_types):
+        scale = 0.88 if fuel_type == BrandReportFuelType.diesel_a_price else 1.0
+        fuels[fuel_type.value] = [
+            BrandScore(
+                brand=brand,
+                name=brand_name(brand),
+                kind=BrandKind.low_cost if brand in LOW_COST_BRANDS else BrandKind.traditional,
+                stations=stations,
+                price_gap=round(gap * scale, 4),
+                below_market_pct=below,
+                win_pct=win,
+            )
+            for brand, stations, gap, below, win in scores
+        ]
+    return BrandScorecardResponse(window_start="2026-01-18", window_end="2026-04-17", days_covered=90, fuels=fuels)
 
 
 def historical_forecast_response(

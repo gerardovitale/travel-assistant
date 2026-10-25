@@ -19,7 +19,7 @@ export async function api(path, opts = {}) {
         detail = body.detail || detail;
       }
     } catch {}
-    throw new Error(detail);
+    throw Object.assign(new Error(detail), { status: res.status });
   }
   return res.json();
 }

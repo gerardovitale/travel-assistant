@@ -4,7 +4,8 @@
 {% set current_page = 'insights' %}
 {% set fuel_swatches = {"gasoline_95_e5_price": "rgb(var(--fp-series-gasoline))", "diesel_a_price": "rgb(var(--fp-series-diesel))"} %}
 {# Story sections, in page order. Each slice adds its own entry. #}
-{% set sections = [("tendencia", "Tendencia"), ("cuando", "Cuándo repostar")] %}
+{% set sections = [("tendencia", "Tendencia"), ("cuando", "Cuándo repostar"), ("marcas", "Marcas")] %}
+{% set brand_kinds = [("all", "Todas"), ("low_cost", "Low-cost"), ("traditional", "Tradicionales")] %}
 {% block title %}Insights y tendencias · Fuel Precision{% endblock %}
 {% block meta_description %}El pulso del combustible en España: precios de gasolina y diésel, tendencias y comparativas por provincia, actualizados a diario.{% endblock %}
 {% block og_title %}El pulso del combustible en España · Fuel Precision{% endblock %}
@@ -55,6 +56,11 @@
       <p class="fp-kpi__value" data-kpi-forecast>—</p>
       <span data-kpi-forecast-note class="text-xs text-on-surface-variant">Previsión a 7 días</span>
     </div>
+    <div class="fp-card fp-kpi" data-testid="kpi-brand">
+      <span class="fp-kpi__label">{{ ui.icon("workspace_premium") }}Marca más barata</span>
+      <p class="fp-kpi__value" data-kpi-brand>—</p>
+      <span data-kpi-brand-note class="text-xs text-on-surface-variant">Últimos 90 días</span>
+    </div>
   </div>
 </div>
 
@@ -67,7 +73,7 @@
 </nav>
 
 <main class="max-w-6xl mx-auto px-5 md:px-8 pt-8 pb-16 space-y-14">
-  {% set construction_note %}<strong>Sección en construcción.</strong> Estamos rediseñando los insights y añadiremos marcas, provincias y más en las próximas semanas. Mientras tanto, los informes anteriores siguen en la <a href="/insights/trends" class="underline font-semibold" data-testid="insights-previous-link">versión anterior</a>.{% endset %}
+  {% set construction_note %}<strong>Sección en construcción.</strong> Estamos rediseñando los insights y añadiremos provincias, la calculadora y más en las próximas semanas. Mientras tanto, los informes anteriores siguen en la <a href="/insights/trends" class="underline font-semibold" data-testid="insights-previous-link">versión anterior</a>.{% endset %}
   {{ ui.banner(construction_note, icon="construction", attrs={"data-testid": "insights-construction-note"}) }}
   <section id="tendencia" data-testid="section-tendencia" class="fp-card md:p-6 scroll-mt-32" aria-labelledby="trend-headline">
     <div class="flex items-start justify-between gap-4">
@@ -129,6 +135,46 @@
           </dl>
         </div>
         <p class="mt-5 text-xs text-on-surface-variant">Estimación según cómo han evolucionado los precios de la zona en los últimos 6 meses, no un valor exacto.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="marcas" data-testid="section-marcas" class="scroll-mt-32" aria-labelledby="brands-headline">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="fp-eyebrow text-on-surface-variant">Marcas · <span id="brands-scope" data-testid="brands-scope">Península</span></p>
+        <h2 id="brands-headline" data-testid="brands-headline" class="fp-story-title">¿Qué marcas salen más baratas?</h2>
+        <p class="mt-1 text-sm text-on-surface-variant">Diferencia media de cada marca con la media de las demás gasolineras de su mismo código postal, cada día de los últimos 90. Toca una marca para ver su ficha.</p>
+      </div>
+      {{ share_button("marcas") }}
+    </div>
+    <div class="mt-4">{{ ui.toggle_group(brand_kinds, active="all", label="Tipo de marca", name="brand-kind", attrs={"data-testid": "brand-kind-toggle"}) }}</div>
+    <div class="mt-4 grid gap-4 lg:grid-cols-5">
+      <div class="fp-card md:p-6 lg:col-span-3">
+        <div class="fp-brand-row fp-brand-row--head" aria-hidden="true">
+          <span>Marca</span>
+          <span class="fp-brand-row__axis"><span>Más barata</span><span>Más cara</span></span>
+          <span class="text-right">€/l</span>
+          <span class="text-right">Gana</span>
+          <span class="fp-brand-row__stations">Estac.</span>
+        </div>
+        <div id="brand-rows" data-testid="brand-rows" role="group" aria-label="Marcas, de la más barata a la más cara"></div>
+        <button type="button" id="brands-more" data-testid="brands-more" class="hidden mt-2 min-h-[44px] px-2 text-sm font-semibold text-secondary hover:underline" aria-controls="brand-rows" aria-expanded="false"></button>
+        <p class="mt-3 pt-3 border-t border-surface-container text-xs text-on-surface-variant">€/l frente a la media de las demás gasolineras de su código postal. <strong>Gana</strong>: % de días en que es la gasolinera más barata de su código postal.</p>
+      </div>
+      <div id="brand-card" data-testid="brand-card" class="fp-card fp-brand-card md:p-6 lg:col-span-2" aria-live="polite">
+        <p class="fp-eyebrow fp-brand-card__muted">Ficha de marca</p>
+        <p data-brand-name class="mt-2 font-headline text-3xl font-extrabold">—</p>
+        <p data-brand-meta class="mt-1 text-sm fp-brand-card__muted"></p>
+        <div class="mt-4 grid grid-cols-2 gap-3">
+          <div class="fp-brand-card__stat"><p class="fp-eyebrow fp-brand-card__muted">Vs. su competencia</p><p data-brand-gap class="mt-1 font-headline text-xl font-extrabold">—</p></div>
+          <div class="fp-brand-card__stat"><p class="fp-eyebrow fp-brand-card__muted">Días bajo la media</p><p data-brand-below class="mt-1 font-headline text-xl font-extrabold">—</p></div>
+        </div>
+        <div class="mt-3 rounded-xl bg-surface-container-lowest p-4 text-on-surface">
+          <p data-brand-tank-label class="text-sm text-on-surface-variant">Por depósito de 50 l</p>
+          <p data-brand-tank class="mt-1 font-headline text-3xl font-extrabold text-primary">—</p>
+          <p data-brand-year class="mt-1 text-xs text-on-surface-variant"></p>
+        </div>
       </div>
     </div>
   </section>

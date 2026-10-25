@@ -65,7 +65,7 @@ cd <service> && uv add <pkg>    # add dependency
   upload
 - Aggregation: `app/aggregator/` — pipelines in `pipelines/` (`zip_code_stats.py`, `province_stats.py`,
   `brand_stats.py`, `day_of_week_stats.py`, `ingestion_stats.py`), reports in `reports/` (`brand_win_rate.py`,
-  `brand_comparison.py`)
+  `brand_comparison.py`, `brand_scorecard.py` — last 90 days by province, feeds /insights Marcas)
 - Aggregation triggered via `run-aggregation.yaml` GitHub Actions workflow
 - Backfill: `app/aggregator/backfill.py`
 

@@ -183,3 +183,60 @@ test("Cuándo repostar never shows the previous zone's answer while the new one 
   release();
   await expect(page.getByTestId("forecast-explanation")).toContainText("en las islas, Ceuta y Melilla");
 });
+
+test("Marcas ranks brands against their zip code, filters by kind and opens a brand's card", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/v1/brands/scorecard")) requests.push(r.url());
+  });
+  await page.goto("/insights");
+
+  const section = page.getByTestId("section-marcas");
+  const rows = page.getByTestId("brand-rows").getByRole("button");
+  await expect(page.getByTestId("brands-headline")).toHaveText("Las low-cost cuestan hasta 0,190 €/l menos que la competencia de su código postal");
+  await expect(page.getByTestId("kpi-brand")).toContainText("bonÀrea");
+  // The 12 biggest chains plus the cheapest brand, cheapest first; the card opens on the cheapest.
+  await expect(rows).toHaveCount(13);
+  await expect(rows.first()).toContainText("bonÀrea");
+  await expect(page.getByTestId("brand-card")).toContainText("Ahorro por depósito de 50 l");
+  await expect(page.getByTestId("brand-card")).toContainText("9,52 €");
+
+  await rows.filter({ hasText: "Shell" }).click();
+  await expect(rows.filter({ hasText: "Shell" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("brand-card")).toContainText("Sobrecoste por depósito de 50 l");
+  await expect(page.getByTestId("brand-card")).toContainText("Al año, con 1.200 l: 21,72 €");
+
+  await page.getByTestId("brand-kind-toggle").getByRole("button", { name: "Low-cost" }).click();
+  await expect(rows).toHaveCount(6);
+  await expect(rows.filter({ hasText: "Repsol" })).toHaveCount(0);
+  await expect(rows.filter({ hasText: "Carrefour" })).toHaveCount(1);
+
+  await page.getByTestId("brand-kind-toggle").getByRole("button", { name: "Todas" }).click();
+  await section.getByTestId("brands-more").click();
+  await expect(rows).toHaveCount(14);
+
+  // Both fuels come in one request: switching fuel updates the section without a new one.
+  await page.getByTestId("insights-fuel-toggle").getByRole("button", { name: "Diésel" }).click();
+  await expect(rows.first()).toContainText("−0,168");
+  expect(requests).toHaveLength(1);
+});
+
+test("Marcas follows the zone selector", async ({ page }) => {
+  await page.goto("/insights");
+  await expect(page.getByTestId("brand-rows").getByRole("button")).toHaveCount(13);
+  const request = page.waitForRequest((r) => r.url().includes("/api/v1/brands/scorecard") && r.url().includes("province="));
+  await page.getByTestId("insights-scope-select").selectOption({ index: 3 });
+  const url = new URL((await request).url());
+  expect(url.searchParams.getAll("fuel_type")).toEqual(["gasoline_95_e5_price", "diesel_a_price"]);
+  await expect(page.getByTestId("brand-rows").getByRole("button")).toHaveCount(7);
+});
+
+test("Marcas says the report is not available yet without an error toast", async ({ page }) => {
+  await page.route("**/api/v1/brands/scorecard?**", (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ detail: "Aggregate report not available" }) }),
+  );
+  await page.goto("/insights");
+  await expect(page.getByTestId("brands-headline")).toHaveText("Las marcas no están disponibles ahora mismo");
+  await expect(page.getByTestId("kpi-brand")).toContainText("Sin datos suficientes");
+  await expect(page.locator("#toast")).not.toContainText("marcas");
+});

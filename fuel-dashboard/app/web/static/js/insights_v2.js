@@ -1,10 +1,13 @@
 // Redesigned /insights: one scrolling story driven by the hero's fuel + scope filters.
 import { api, qs, toast } from "./app.js";
 import { fuelPair, loadingSkeleton, SERIES_COLORS, weekdayBars } from "./charts.js";
-import { displaySign, escapeHtml, formatDay, formatNum, formatSignedPriceDelta } from "./format.js";
+import { displaySign, escapeHtml, formatDay, formatEur, formatNum, formatSignedNum, formatSignedPriceDelta } from "./format.js";
 import { getProvinces } from "./fuel.js";
 import {
   bestAndWorstDay,
+  brandSavings,
+  brandsHeadline,
+  cheapestBrand,
   changeOverDays,
   coverageStart,
   DAY_NAMES,
@@ -14,6 +17,7 @@ import {
   tankSavingText,
   tomorrowHeadline,
   trendHeadline,
+  visibleBrands,
   weekdayHeadline,
 } from "./insights_story.js";
 
@@ -37,9 +41,13 @@ const state = {
   // "Cuándo repostar" for the main scope, per fuel: weekday gaps and the 7-day forecast. While a new
   // scope loads, nothing from the previous one is shown.
   when: { days: {}, forecast: {}, loading: true },
+  // "Marcas" for the main scope: { [fuelKey]: brands } from /brands/scorecard, the kind filter and
+  // the brand whose card is open (null = the cheapest one shown).
+  brands: { fuels: {}, kind: "all", selected: null, expanded: false, loading: true, unavailable: false },
 };
 let trendRequest = 0;
 let whenRequest = 0;
+let brandsRequest = 0;
 
 const isCompare = () => state.scope === "compare";
 
@@ -220,11 +228,98 @@ function renderWhen() {
   }
 }
 
+const BRAND_KIND = { low_cost: "Low-cost", traditional: "Tradicional" };
+const BRANDS_LISTED = 12;
+
+function renderBrandKpi() {
+  const value = document.querySelector("[data-kpi-brand]");
+  const note = document.querySelector("[data-kpi-brand-note]");
+  if (state.brands.loading) {
+    value.textContent = "—";
+    note.textContent = "Cargando…";
+    return;
+  }
+  const best = cheapestBrand(state.brands.fuels[state.fuel]);
+  value.textContent = best ? best.name : "—";
+  note.textContent = best
+    ? `${formatNum(-best.price_gap, 3)} €/l menos que su competencia · gana el ${formatNum(best.win_pct, 0)} % de los días`
+    : "Sin datos suficientes";
+}
+
+function brandRow(b, reach, selected) {
+  const width = (Math.abs(b.price_gap) / reach) * 50;
+  const sign = displaySign(b.price_gap, 3);
+  const cheaper = sign < 0;
+  const bar = sign === 0 ? "" : `<span class="fp-brand-row__bar fp-brand-row__bar--${cheaper ? "cheaper" : "pricier"}" style="left: ${cheaper ? 50 - width : 50}%; width: ${width}%"></span>`;
+  return `<button type="button" class="fp-brand-row" data-brand="${escapeHtml(b.brand)}" aria-pressed="${b.brand === selected}"
+      aria-label="${escapeHtml(`${b.name}: ${formatSignedPriceDelta(b.price_gap)} frente a su competencia, la más barata el ${formatNum(b.win_pct, 0)} % de los días`)}">
+    <span class="fp-brand-row__name">${escapeHtml(b.name)}</span>
+    <span class="fp-brand-row__track">${bar}</span>
+    <span class="fp-brand-row__num">${formatSignedNum(b.price_gap, 3)}</span>
+    <span class="fp-brand-row__num fp-brand-row__win"><span class="fp-brand-row__meter"><span style="width: ${b.win_pct}%"></span></span>${formatNum(b.win_pct, 0)} %</span>
+    <span class="fp-brand-row__stations">${formatNum(b.stations, 0)}</span>
+  </button>`;
+}
+
+function renderBrandCard(b) {
+  const card = document.getElementById("brand-card");
+  const set = (sel, text) => (card.querySelector(sel).textContent = text);
+  if (!b) {
+    for (const sel of ["[data-brand-name]", "[data-brand-gap]", "[data-brand-below]", "[data-brand-tank]"]) set(sel, "—");
+    set("[data-brand-meta]", state.brands.loading ? "Cargando…" : "");
+    set("[data-brand-tank-label]", "Por depósito de 50 l");
+    set("[data-brand-year]", "");
+    return;
+  }
+  const savings = brandSavings(b.price_gap);
+  set("[data-brand-name]", b.name);
+  set("[data-brand-meta]", `${BRAND_KIND[b.kind]} · ${formatNum(b.stations, 0)} estaciones`);
+  set("[data-brand-gap]", formatSignedPriceDelta(b.price_gap));
+  set("[data-brand-below]", `${formatNum(b.below_market_pct, 0)} %`);
+  set("[data-brand-tank-label]", savings.sign < 0 ? "Ahorro por depósito de 50 l" : savings.sign > 0 ? "Sobrecoste por depósito de 50 l" : "Por depósito de 50 l");
+  set("[data-brand-tank]", savings.sign === 0 ? formatEur(0) : formatEur(savings.tank));
+  set("[data-brand-year]", savings.sign === 0 ? "Cuesta lo mismo que su competencia" : `Al año, con 1.200 l: ${formatEur(savings.year)}`);
+}
+
+function renderBrands() {
+  document.getElementById("brands-scope").textContent = isCompare() ? REGION_SCOPES.peninsula : scopeLabel();
+  const rows = document.getElementById("brand-rows");
+  if (state.brands.loading) {
+    document.getElementById("brands-more").classList.add("hidden");
+    document.getElementById("brands-headline").textContent = "¿Qué marcas salen más baratas?";
+    rows.innerHTML = `<div class="h-96">${loadingSkeleton()}</div>`;
+    renderBrandCard(null);
+    return;
+  }
+  const all = state.brands.fuels[state.fuel] || [];
+  document.getElementById("brands-headline").textContent = state.brands.unavailable
+    ? "Las marcas no están disponibles ahora mismo"
+    : brandsHeadline(all);
+  const { kind, expanded } = state.brands;
+  const short = visibleBrands(all, kind, BRANDS_LISTED);
+  const shown = expanded ? visibleBrands(all, kind, Infinity) : short;
+  const total = all.filter((b) => kind === "all" || b.kind === kind).length;
+  const more = document.getElementById("brands-more");
+  // Pinned cheapest brands can already make the short list the whole list.
+  more.classList.toggle("hidden", short.length >= total);
+  more.setAttribute("aria-expanded", String(expanded));
+  more.textContent = expanded ? "Ver solo las principales" : `Ver las ${total} marcas`;
+  const selected = shown.find((b) => b.brand === state.brands.selected) || shown[0] || null;
+  // Symmetric scale: the longest bar fills its half of the track.
+  const reach = Math.max(...shown.map((b) => Math.abs(b.price_gap)), 0.001) * 1.05;
+  rows.innerHTML = shown.length
+    ? shown.map((b) => brandRow(b, reach, selected?.brand)).join("")
+    : `<p class="py-6 text-sm text-on-surface-variant">${state.brands.unavailable ? "Vuelve a intentarlo en unos minutos." : "No hay marcas con suficientes estaciones en esta zona."}</p>`;
+  renderBrandCard(selected);
+}
+
 function render() {
   renderKpis();
   renderTrend();
   renderWhenKpis();
   renderWhen();
+  renderBrandKpi();
+  renderBrands();
 }
 
 const fetchTrend = (fuel, scopeParams) =>
@@ -277,6 +372,29 @@ async function loadWhen() {
   renderWhen();
 }
 
+// One request for both fuels, like loadWhen.
+async function loadBrands() {
+  const req = ++brandsRequest;
+  state.brands = { ...state.brands, fuels: {}, loading: true, unavailable: false };
+  renderBrandKpi();
+  renderBrands();
+  let fuels = {};
+  let unavailable = false;
+  try {
+    const query = qs({ fuel_type: FUELS.map((f) => f.key), ...mainScopeParams() });
+    ({ fuels } = await api(`/brands/scorecard?${query}`, { signal: AbortSignal.timeout(15000) }));
+  } catch (err) {
+    if (req !== brandsRequest) return;
+    unavailable = true;
+    // 404: the report is not published yet (first deploy) — the headline says so, no error toast.
+    if (err.status !== 404) toast(`No se pudieron cargar las marcas: ${err.message}`, "error");
+  }
+  if (req !== brandsRequest) return; // a newer filter change already superseded this load
+  state.brands = { ...state.brands, fuels, loading: false, unavailable };
+  renderBrandKpi();
+  renderBrands();
+}
+
 function onToggle(name, apply) {
   document.querySelector(`[data-toggle-group="${name}"]`)?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-value]");
@@ -292,11 +410,23 @@ async function init() {
   syncToggle("period", state.period);
   onToggle("fuel", (v) => { state.fuel = v; render(); }); // both fuels are already loaded
   onToggle("period", (v) => { state.period = v; loadTrend(); });
+  onToggle("brand-kind", (v) => { state.brands.kind = v; renderBrands(); });
+  document.getElementById("brands-more").addEventListener("click", () => {
+    state.brands.expanded = !state.brands.expanded;
+    renderBrands();
+  });
+  document.getElementById("brand-rows").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-brand]");
+    if (!row) return;
+    state.brands.selected = row.dataset.brand;
+    renderBrands();
+  });
   scopeSelect.addEventListener("change", () => {
     state.scope = scopeSelect.value;
     syncUrl();
     loadTrend();
     loadWhen();
+    loadBrands();
   });
   try {
     const group = scopeSelect.querySelector("[data-province-options]");
@@ -306,7 +436,7 @@ async function init() {
   }
   if (![...scopeSelect.options].some((o) => o.value === state.scope)) state.scope = filters.dataset.defaultScope;
   scopeSelect.value = state.scope;
-  await Promise.all([loadTrend(), loadWhen()]);
+  await Promise.all([loadTrend(), loadWhen(), loadBrands()]);
 }
 
 init();

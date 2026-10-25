@@ -29,13 +29,16 @@ export const formatSignedPct = (v, digits = 1) => {
   const sign = s > 0 ? "+" : s < 0 ? "−" : "";
   return `${sign}${numFormat(digits).format(roundAbs(v, digits))}%`;
 };
-// A €/l price difference, always in euros and signed like formatSignedPct: formatSignedPriceDelta(-0.012) → "−0,012 €/l".
-export const formatSignedPriceDelta = (eurPerLitre, digits = 3) => {
-  if (!isNum(eurPerLitre)) return "—";
-  const s = displaySign(eurPerLitre, digits);
+// Signed number with a true minus sign, signed like formatSignedPct: formatSignedNum(-0.012, 3) → "−0,012".
+export const formatSignedNum = (v, digits = 3) => {
+  if (!isNum(v)) return "—";
+  const s = displaySign(v, digits);
   const sign = s > 0 ? "+" : s < 0 ? "−" : "";
-  return `${sign}${numFormat(digits).format(roundAbs(eurPerLitre, digits))} €/l`;
+  return `${sign}${numFormat(digits).format(roundAbs(v, digits))}`;
 };
+// A €/l price difference, always in euros: formatSignedPriceDelta(-0.012) → "−0,012 €/l".
+export const formatSignedPriceDelta = (eurPerLitre, digits = 3) =>
+  isNum(eurPerLitre) ? `${formatSignedNum(eurPerLitre, digits)} €/l` : "—";
 export const formatEur = (v) => (v == null || isNaN(v)) ? "—" : euro2.format(v);
 export const formatKm = (v) => (v == null || isNaN(v)) ? "—" : `${numFormat(1).format(v)} km`;
 export const formatMin = (v) => {

@@ -2,6 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
     bestAndWorstDay,
+    brandsHeadline,
+    cheapestBrand,
     changeOverDays,
     coverageStart,
     priceChange,
@@ -9,6 +11,7 @@ import {
     tankSavingText,
     tomorrowHeadline,
     trendHeadline,
+    visibleBrands,
     weekdayHeadline,
 } from "../../app/web/static/js/insights_story.js";
 import { formatDay, formatSignedPriceDelta } from "../../app/web/static/js/format.js";
@@ -116,4 +119,37 @@ describe("tomorrowHeadline", () => {
             "Lo más probable mañana: que pase a estar en su nivel habitual (55 %)",
         ));
     it("is null without probabilities", () => assert.equal(tomorrowHeadline("cheap", {}), null));
+});
+
+const brand = (name, kind, stations, price_gap) => ({ brand: name.toLowerCase(), name, kind, stations, price_gap });
+
+describe("visibleBrands", () => {
+    const brands = [
+        brand("Repsol", "traditional", 2600, 0.057),
+        brand("Ballenoil", "low_cost", 405, -0.078),
+        brand("bonÀrea", "low_cost", 65, -0.14),
+        brand("Shell", "traditional", 340, 0.013),
+    ];
+    it("keeps the biggest chains and the cheapest brand, cheapest first", () =>
+        assert.deepEqual(visibleBrands(brands, "all", 2).map((b) => b.name), ["bonÀrea", "Ballenoil", "Repsol"]));
+    it("filters by kind", () =>
+        assert.deepEqual(visibleBrands(brands, "low_cost").map((b) => b.name), ["bonÀrea", "Ballenoil"]));
+});
+
+describe("brandsHeadline", () => {
+    it("leads with the cheapest low-cost brand", () =>
+        assert.equal(
+            brandsHeadline([brand("Repsol", "traditional", 2600, 0.057), brand("bonÀrea", "low_cost", 65, -0.1398)]),
+            "Las low-cost cuestan hasta 0,140 €/l menos que la competencia de su código postal",
+        ));
+    it("falls back to the cheapest brand when no low-cost brand is cheaper", () =>
+        assert.equal(
+            brandsHeadline([brand("Q8", "traditional", 81, -0.0135), brand("Carrefour", "low_cost", 146, 0.005)]),
+            "Q8 es la marca más barata: 0,014 €/l menos que la competencia de su código postal",
+        ));
+    it("never calls a gap that rounds to zero cheaper", () => {
+        assert.equal(cheapestBrand([brand("Avia", "traditional", 98, -0.0004)]), null);
+        assert.equal(brandsHeadline([brand("Avia", "traditional", 98, -0.0004)]), "Ninguna marca es más barata que la competencia de su código postal");
+    });
+    it("says when there is no data", () => assert.equal(brandsHeadline([]), "Marcas: sin datos suficientes en esta zona"));
 });

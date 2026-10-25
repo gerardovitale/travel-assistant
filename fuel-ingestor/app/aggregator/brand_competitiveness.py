@@ -17,6 +17,7 @@ from aggregator.main import _upload_parquet_to_gcs
 from aggregator.pipeline.base import PipelineResult
 from aggregator.pipeline.runner import TaskRunner
 from aggregator.reports.brand_comparison import build_task as brand_comparison_task
+from aggregator.reports.brand_scorecard import build_task as brand_scorecard_task
 from aggregator.reports.brand_win_rate import build_task as brand_win_rate_task
 from aggregator.shared import _log_event
 
@@ -255,6 +256,7 @@ def run_brand_analytics(bucket=None) -> List[PipelineResult]:
                 [
                     brand_win_rate_task(bucket, con, today),
                     brand_comparison_task(bucket, con, today),
+                    brand_scorecard_task(bucket, con),
                 ]
             )
 
