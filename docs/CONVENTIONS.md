@@ -219,9 +219,11 @@ A slice is done when:
 
 1. Owner approves the uncommitted diff.
 2. Commit on `main` (Conventional Commit), push.
-3. `deploy.yaml`: detect changes → Docker tests → build & push arm64 image → Trivy scan → Terraform apply.
-4. The new dashboard image (Docker Hub) is picked up on the Raspberry Pi by Watchtower (`fuel-dashboard/docker-compose.yml`);
-   verify on fuelprecision.com.
+3. `deploy.yaml`: detect changes → Docker tests → build & push `:<sha>` image → Trivy scan → retag as `:latest` →
+   Terraform apply.
+4. The new `:latest` dashboard image (Docker Hub) is picked up on the Raspberry Pi by Watchtower within the hour. The
+   Pi's compose files live in the separate `pi-stack` repo (`stacks/fuel-dashboard/compose.yml`); verify on
+   fuelprecision.com.
 5. If the slice was flagged: verify in production, then flip the flag default in a follow-up commit.
 6. **Rollback:** turn the flag off (env var, no redeploy of code), or `git revert <sha>` and push. Never rewrite
    `main` history.

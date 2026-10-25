@@ -169,9 +169,10 @@ jobs:
           file: fuel-dashboard/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          # Only the SHA tag here: Watchtower on the Pi deploys whatever `:latest` points at, so
+          # `promote-fuel-dashboard` moves `:latest` after the Trivy scan passes.
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/travass-fuel-dashboard:${{ steps.vars.outputs.short_sha }}
-            ${{ secrets.DOCKER_USERNAME }}/travass-fuel-dashboard:latest
           cache-from: type=gha,scope=fuel-dashboard
           cache-to: type=gha,mode=max,scope=fuel-dashboard
           # Always rebuild the runtime stage so `apt-get upgrade` picks up new Debian security
@@ -204,6 +205,30 @@ jobs:
           exit-code: "1"
           severity: "CRITICAL,HIGH"
           trivyignores: ".trivyignore"
+
+  # ---------------------------------------------------------------------------
+  # Promote scanned image to :latest (picked up by Watchtower on the Pi)
+  # ---------------------------------------------------------------------------
+  promote-fuel-dashboard:
+    needs: scan-fuel-dashboard
+    if: >-
+      always() && !failure() && !cancelled() &&
+      needs.scan-fuel-dashboard.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Compute short SHA
+        id: vars
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Log in to Docker Hub
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Tag scanned image as latest
+        env:
+          IMAGE: ${{ secrets.DOCKER_USERNAME }}/travass-fuel-dashboard
+        # Copies the multi-arch manifest list registry-side; no rebuild or pull.
+        run: docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:${{ steps.vars.outputs.short_sha }}"
 
   # ---------------------------------------------------------------------------
   # Terraform deploy
