@@ -1,8 +1,13 @@
+from collections.abc import Callable
+
 import pandas as pd
 from api.schemas import FuelType
 from api.schemas import HistoricalForecastResponse
+from api.schemas import Region
 
+from data.duckdb_engine import query_national_price_trend
 from data.gcs_client import download_aggregate
+from data.geojson_loader import non_mainland_data_province_names
 from data.geojson_loader import normalize_data_province_name
 
 REGIMES = ("cheap", "normal", "expensive")
@@ -68,15 +73,43 @@ def _load_zip_history(zip_code: str, fuel_type: FuelType, window_days: int) -> p
     return _limit_recent_window(_prepare_history(filtered), window_days)
 
 
-def _load_province_history(province: str, fuel_type: FuelType, window_days: int) -> pd.DataFrame:
+def _aggregate_history(fuel_type: FuelType, window_days: int, provinces: Callable[[str], bool]) -> pd.DataFrame:
+    """Station-weighted daily average over the matching provinces of the province_daily_stats aggregate."""
     aggregate = download_aggregate(PROVINCE_AGGREGATE)
     if aggregate is None or aggregate.empty:
         return pd.DataFrame()
+    rows = aggregate[(aggregate["fuel_type"] == fuel_type.value) & aggregate["province"].notna()]
+    rows = rows[rows["province"].map(provinces).astype(bool)]
+    if rows.empty:
+        return pd.DataFrame()
+    daily = (
+        rows.assign(weighted_price=rows["avg_price"] * rows["station_count"])
+        .groupby("date", as_index=False)[["weighted_price", "station_count"]]
+        .sum()
+    )
+    daily = daily[daily["station_count"] > 0]
+    daily["avg_price"] = daily["weighted_price"] / daily["station_count"]
+    return _limit_recent_window(_prepare_history(daily[["date", "avg_price"]]), window_days)
+
+
+def _trend_cache_or_aggregate(cached: pd.DataFrame, load_aggregate: Callable[[], pd.DataFrame]) -> pd.DataFrame:
+    """The trend-cache series (the one the Tendencia chart draws) when it is long enough to forecast.
+
+    Otherwise (cache still loading, or holding less history) the province_daily_stats aggregate, if
+    that has more days.
+    """
+    if len(cached) >= MIN_OBSERVATION_DAYS:
+        return cached
+    fallback = load_aggregate()
+    return fallback if len(fallback) > len(cached) else cached
+
+
+def _load_province_history(province: str, fuel_type: FuelType, window_days: int) -> pd.DataFrame:
     normalized = normalize_data_province_name(province)
-    filtered = aggregate[(aggregate["province"] == normalized) & (aggregate["fuel_type"] == fuel_type.value)][
-        ["date", "province", "avg_price"]
-    ]
-    return _limit_recent_window(_prepare_history(filtered), window_days)
+    cached = _prepare_history(query_national_price_trend(fuel_type.value, window_days, province=normalized))
+    return _trend_cache_or_aggregate(
+        cached, lambda: _aggregate_history(fuel_type, window_days, lambda name: name == normalized)
+    )
 
 
 def _assign_regimes(history: pd.DataFrame) -> pd.DataFrame:
@@ -185,17 +218,31 @@ def forecast_explanation(
     confidence: float,
 ) -> str:
     regime_phrase = REGIME_PHRASES.get(current_regime, current_regime)
-    message = (
-        f"Ahora mismo los precios {_location_phrase(geography_type, geography_value)} están {regime_phrase}. "
-        f"La probabilidad de que bajen a un nivel más barato es del {cheaper_3d * 100:.0f}% en 3 días "
-        f"y del {cheaper_7d * 100:.0f}% en 7 días."
-    )
+    message = f"Ahora mismo los precios {_location_phrase(geography_type, geography_value)} están {regime_phrase}"
+    if current_regime == "cheap":
+        # Already at the cheapest level: there is no cheaper level to wait for.
+        message = f"{message}, así que es buen momento para repostar."
+    else:
+        message = (
+            f"{message}. La probabilidad de que bajen a un nivel más barato es del {cheaper_3d * 100:.0f}% "
+            f"en 3 días y del {cheaper_7d * 100:.0f}% en 7 días."
+        )
     if confidence < 0.45:
         return f"{message} La confianza es baja porque los precios de la zona han variado mucho o hay pocos datos."
     return message
 
 
+# How each region reads after "los precios": "… en la España peninsular están bajos".
+REGION_PHRASES = {
+    Region.all.value: "en España",
+    Region.peninsula.value: "en la España peninsular",
+    Region.special.value: "en las islas, Ceuta y Melilla",
+}
+
+
 def _location_phrase(geography_type: str, geography_value: str) -> str:
+    if geography_type == "region":
+        return REGION_PHRASES.get(geography_value, f"en {geography_value}")
     if geography_type == "province":
         # Same Title Case as the province dropdown (get_distinct_provinces).
         return f"en la provincia de {geography_value.title()}"
@@ -286,13 +333,29 @@ def _build_response(
     )
 
 
+def _in_region(region: Region) -> Callable[[str], bool]:
+    special = set(non_mainland_data_province_names())
+    if region == Region.peninsula:
+        return lambda province: province not in special
+    if region == Region.special:
+        return lambda province: province in special
+    return lambda province: True
+
+
+def _load_region_history(region: Region, fuel_type: FuelType, window_days: int) -> pd.DataFrame:
+    cached = _prepare_history(query_national_price_trend(fuel_type.value, window_days, region=region.value))
+    return _trend_cache_or_aggregate(cached, lambda: _aggregate_history(fuel_type, window_days, _in_region(region)))
+
+
 def get_historical_forecast(
     fuel_type: FuelType,
     *,
     zip_code: str | None = None,
     province: str | None = None,
+    region: Region | None = None,
     window_days: int = DEFAULT_WINDOW_DAYS,
 ) -> HistoricalForecastResponse:
+    """Forecast for a zip code (falling back to its province), a province, or else a whole region."""
     if zip_code:
         zip_history = _load_zip_history(zip_code, fuel_type, window_days)
         if not zip_history.empty:
@@ -325,4 +388,10 @@ def get_historical_forecast(
             )
         return _build_response(province_history[["date", "avg_price"]], "province", str(province), "province")
 
-    raise ValueError("zip_code or province is required")
+    if region is not None:
+        region_history = _load_region_history(region, fuel_type, window_days)
+        if region_history.empty:
+            return _insufficient_response("region", region.value, "region", INSUFFICIENT_HISTORY_EXPLANATION)
+        return _build_response(region_history[["date", "avg_price"]], "region", region.value, "region")
+
+    raise ValueError("zip_code, province or region is required")

@@ -4,7 +4,7 @@
 {% set current_page = 'insights' %}
 {% set fuel_swatches = {"gasoline_95_e5_price": "rgb(var(--fp-series-gasoline))", "diesel_a_price": "rgb(var(--fp-series-diesel))"} %}
 {# Story sections, in page order. Each slice adds its own entry. #}
-{% set sections = [("tendencia", "Tendencia")] %}
+{% set sections = [("tendencia", "Tendencia"), ("cuando", "Cuándo repostar")] %}
 {% block title %}Insights y tendencias · Fuel Precision{% endblock %}
 {% block meta_description %}El pulso del combustible en España: precios de gasolina y diésel, tendencias y comparativas por provincia, actualizados a diario.{% endblock %}
 {% block og_title %}El pulso del combustible en España · Fuel Precision{% endblock %}
@@ -45,6 +45,16 @@
       <span data-kpi-delta class="text-xs text-on-surface-variant">Media peninsular</span>
     </div>
     {% endfor %}
+    <div class="fp-card fp-kpi" data-testid="kpi-best-day">
+      <span class="fp-kpi__label">{{ ui.icon("event_available") }}Mejor día para repostar</span>
+      <p class="fp-kpi__value" data-kpi-best-day>—</p>
+      <span data-kpi-best-day-note class="text-xs text-on-surface-variant">Últimos 6 meses</span>
+    </div>
+    <div class="fp-card fp-kpi" data-testid="kpi-forecast">
+      <span class="fp-kpi__label">{{ ui.icon("schedule") }}¿Repostar hoy o esperar?</span>
+      <p class="fp-kpi__value" data-kpi-forecast>—</p>
+      <span data-kpi-forecast-note class="text-xs text-on-surface-variant">Previsión a 7 días</span>
+    </div>
   </div>
 </div>
 
@@ -80,6 +90,46 @@
     <p id="trend-coverage" data-testid="trend-coverage" class="hidden mt-2 inline-flex items-center gap-1.5 text-xs text-on-surface-variant">{{ ui.icon("info", extra_class="text-[16px]") }}<span data-coverage-text></span></p>
     <div data-testid="trend-facts" class="mt-4 pt-4 border-t border-surface-container flex flex-wrap gap-2 text-sm">
       <span class="inline-flex items-center gap-2 rounded-lg bg-surface-container-low px-3 py-1.5">{{ ui.icon("swap_vert", extra_class="text-[18px] text-on-surface-variant") }}<span id="trend-spread-label">Diferencia gasolina − diésel:</span> <strong id="trend-spread" data-testid="trend-spread">—</strong></span>
+    </div>
+  </section>
+
+  <section id="cuando" data-testid="section-cuando" class="scroll-mt-32" aria-labelledby="when-headline">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="fp-eyebrow text-on-surface-variant">Cuándo repostar · <span id="when-scope" data-testid="when-scope">Península</span></p>
+        <h2 id="when-headline" data-testid="when-headline" class="fp-story-title">¿Qué día sale más barato?</h2>
+        <p class="mt-1 text-sm text-on-surface-variant">Diferencia media de cada día con la media de su propia semana, en semanas completas de los últimos 6 meses.</p>
+      </div>
+      {{ share_button("cuando") }}
+    </div>
+    <div class="mt-5 grid gap-4 lg:grid-cols-5">
+      <div class="fp-card md:p-6 lg:col-span-3">
+        <div id="weekday-chart" data-testid="weekday-chart" class="h-64" role="img" aria-label="Diferencia de precio de cada día de la semana con la media semanal"></div>
+        <ul class="mt-3 flex flex-wrap gap-4 text-xs text-on-surface-variant" aria-label="Leyenda">
+          <li class="inline-flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-support" aria-hidden="true"></span>Más barato que la media de su semana</li>
+          <li class="inline-flex items-center gap-2"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-error" aria-hidden="true"></span>Más caro</li>
+        </ul>
+        <p id="when-saving" data-testid="when-saving" class="hidden mt-4 pt-4 border-t border-surface-container text-sm inline-flex items-center gap-2">{{ ui.icon("savings", extra_class="text-[18px] text-on-surface-variant") }}<span data-saving-text></span></p>
+      </div>
+      <div class="fp-card md:p-6 lg:col-span-2" data-testid="forecast-card">
+        <p class="fp-eyebrow text-on-surface-variant">Previsión</p>
+        <p id="forecast-recommendation" data-testid="forecast-recommendation" class="mt-2 font-headline text-2xl font-extrabold text-primary">—</p>
+        <p id="forecast-explanation" data-testid="forecast-explanation" class="mt-2 text-sm text-on-surface-variant"></p>
+        <div id="forecast-tomorrow" data-testid="forecast-tomorrow" class="hidden mt-5">
+          <p data-tomorrow-headline class="text-sm font-semibold"></p>
+          <div class="mt-3 flex h-3 gap-0.5 overflow-hidden rounded-full" aria-hidden="true">
+            <span data-tomorrow-bar="cheap" class="bg-support"></span>
+            <span data-tomorrow-bar="normal" class="bg-outline-variant"></span>
+            <span data-tomorrow-bar="expensive" class="bg-error"></span>
+          </div>
+          <dl class="mt-3 grid grid-cols-3 gap-2 text-xs text-on-surface-variant">
+            <div><dt>Barato</dt><dd data-tomorrow-pct="cheap" class="font-semibold text-on-surface">—</dd></div>
+            <div><dt>Habitual</dt><dd data-tomorrow-pct="normal" class="font-semibold text-on-surface">—</dd></div>
+            <div><dt>Caro</dt><dd data-tomorrow-pct="expensive" class="font-semibold text-on-surface">—</dd></div>
+          </dl>
+        </div>
+        <p class="mt-5 text-xs text-on-surface-variant">Estimación según cómo han evolucionado los precios de la zona en los últimos 6 meses, no un valor exacto.</p>
+      </div>
     </div>
   </section>
 </main>

@@ -1,5 +1,5 @@
 // Pure helpers that turn trend data into the sentences shown on /insights (no DOM, unit-tested).
-import { displaySign, formatNum } from "./format.js";
+import { displaySign, formatEur, formatNum } from "./format.js";
 
 // Prices are always in euros (€/l, 3 decimals), never cents.
 const PRICE_DIGITS = 3;
@@ -60,4 +60,44 @@ export function trendHeadline(fuelType, period, change, { since = null } = {}) {
   if (sign === 0) return `${subject} se ha mantenido estable ${when}`;
   const verb = sign < 0 ? "ha bajado" : "ha subido";
   return `${subject} ${verb} ${formatNum(Math.abs(change), PRICE_DIGITS)} €/l ${when}`;
+}
+
+// day_of_week 0 = Monday, as the API sends it.
+export const DAY_NAMES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
+export const DAY_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+// Cheapest and priciest weekday from [{day_of_week, deviation}], with the gap between them (€/l).
+export function bestAndWorstDay(days) {
+  if (!days?.length) return null;
+  const sorted = [...days].sort((a, b) => a.deviation - b.deviation);
+  const best = sorted[0], worst = sorted[sorted.length - 1];
+  return { best: best.day_of_week, worst: worst.day_of_week, gap: worst.deviation - best.deviation };
+}
+
+// "El lunes es el día más barato; el viernes, el más caro". A gap that rounds to 0,000 €/l reads as no difference.
+export function weekdayHeadline(days) {
+  const bw = bestAndWorstDay(days);
+  if (!bw) return "Cuándo repostar: sin datos suficientes";
+  if (displaySign(bw.gap, PRICE_DIGITS) === 0) return "El día de la semana apenas cambia el precio";
+  return `El ${DAY_NAMES[bw.best]} es el día más barato; el ${DAY_NAMES[bw.worst]}, el más caro`;
+}
+
+// What the weekday gap means for one tank, in euros: "Con un depósito de 50 l, repostar el lunes en vez
+// del viernes te ahorra 0,39 €".
+export function tankSavingText(days, litres = 50) {
+  const bw = bestAndWorstDay(days);
+  if (!bw || displaySign(bw.gap, PRICE_DIGITS) === 0) return null;
+  return `Con un depósito de ${litres} l, repostar el ${DAY_NAMES[bw.best]} en vez del ${DAY_NAMES[bw.worst]} te ahorra ${formatEur(bw.gap * litres)}`;
+}
+
+const REGIME_WORD = { cheap: "barato", normal: "en su nivel habitual", expensive: "caro" };
+
+// Most likely price level tomorrow from the forecast's next_day_probabilities ({cheap, normal, expensive}):
+// "Lo más probable mañana: que siga barato (63 %)".
+export function tomorrowHeadline(currentRegime, probabilities) {
+  const entries = Object.entries(probabilities || {}).filter(([k]) => k in REGIME_WORD);
+  if (!entries.length) return null;
+  const [regime, p] = entries.sort((a, b) => b[1] - a[1])[0];
+  const verb = regime === currentRegime ? "que siga" : "que pase a estar";
+  return `Lo más probable mañana: ${verb} ${REGIME_WORD[regime]} (${formatNum(p * 100, 0)} %)`;
 }

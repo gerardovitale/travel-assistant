@@ -5,12 +5,15 @@ from copy import deepcopy
 from datetime import timedelta
 
 import pandas as pd
+from api.schemas import DayOfWeekDeviation
 from api.schemas import DistrictPriceResult
 from api.schemas import FUEL_GROUP_MEMBERS
 from api.schemas import FUEL_GROUP_PRIMARY
 from api.schemas import FuelGroup
 from api.schemas import FuelType
 from api.schemas import ProvincePriceResult
+from api.schemas import RefuelTiming
+from api.schemas import RefuelTimingResponse
 from api.schemas import Region
 from api.schemas import StationResult
 from api.schemas import TREND_PERIOD_DAYS
@@ -18,6 +21,7 @@ from api.schemas import TrendPeriod
 from api.schemas import TrendPoint
 from api.schemas import ZoneResult
 from config import settings
+from services.forecast_service import get_historical_forecast
 from services.geo_utils import assign_districts
 from services.geo_utils import locate_features
 from services.routing import get_road_distances
@@ -33,6 +37,7 @@ from data.duckdb_engine import query_cheapest_by_zip
 from data.duckdb_engine import query_cheapest_by_zip_group
 from data.duckdb_engine import query_cheapest_zones
 from data.duckdb_engine import query_cheapest_zones_by_municipality
+from data.duckdb_engine import query_day_of_week_deviation
 from data.duckdb_engine import query_latest_trend_date
 from data.duckdb_engine import query_municipalities_by_province
 from data.duckdb_engine import query_national_avg_price
@@ -554,6 +559,45 @@ def get_zip_code_price_map_for_zips(province: str, fuel_type: FuelType, zip_code
 
 def get_postal_code_geojson(zip_codes: list[str]) -> dict:
     return load_postal_codes_for_zip_list(zip_codes)
+
+
+# "When to refuel" looks back 6 months: enough complete weeks for a stable weekday pattern.
+REFUEL_TIMING_PERIOD = TrendPeriod.half_year
+
+
+def get_day_of_week_deviation(
+    fuel_type: FuelType, period: TrendPeriod, province: str | None = None, region: Region = Region.all
+) -> list[DayOfWeekDeviation]:
+    """How much cheaper or pricier each weekday is than its own week, over the period."""
+    df = query_day_of_week_deviation(fuel_type.value, TREND_PERIOD_DAYS[period], province=province, region=region.value)
+    return [
+        DayOfWeekDeviation(
+            day_of_week=int(row["day_of_week"]),
+            deviation=round(row["deviation"], 4),
+            weeks=row["weeks"],
+        )
+        for row in df.dropna(subset=["deviation"]).to_dict(orient="records")
+    ]
+
+
+def get_refuel_timing(
+    fuel_types: list[FuelType],
+    province: str | None = None,
+    region: Region = Region.all,
+) -> RefuelTimingResponse:
+    """Weekday gaps and the 7-day forecast for each fuel in one scope (a province, else a region)."""
+    days_back = TREND_PERIOD_DAYS[REFUEL_TIMING_PERIOD]
+    return RefuelTimingResponse(
+        fuels={
+            fuel.value: RefuelTiming(
+                days=get_day_of_week_deviation(fuel, REFUEL_TIMING_PERIOD, province=province, region=region),
+                forecast=get_historical_forecast(
+                    fuel, province=province, region=None if province else region, window_days=days_back
+                ),
+            )
+            for fuel in dict.fromkeys(fuel_types)
+        }
+    )
 
 
 def get_price_trends(

@@ -261,6 +261,8 @@ export function fuelByDistance(el, points, { floorPct = null, turnaroundKm = nul
 
 // Mirrors --fp-series-* in tokens.css; Plotly needs literal colours.
 export const SERIES_COLORS = { gasoline_95_e5_price: "#0453cd", diesel_a_price: "#c26a1b" };
+// Cheaper / pricier than a reference (tokens --fp-support / --fp-error).
+export const DELTA_COLORS = { cheaper: "#0e7b52", pricier: "#ba1a1a" };
 
 // Several fuels' daily averages on one axis. The selected fuel is drawn heavier; every line ends in a
 // direct label (name + latest price) so identity never depends on colour alone.
@@ -321,6 +323,49 @@ export function fuelPair(el, series, { selected = null, range = null } = {}) {
       hovermode: "x unified",
       hoverlabel: { bgcolor: "#2e3135", bordercolor: "#2e3135", font: { color: "#eff0f6", family: "Inter, sans-serif" } },
       annotations,
+    },
+    CONFIG,
+  );
+}
+
+// Within-week price gap per weekday (€/l): green bars below zero are cheaper days, red above are pricier.
+// days: [{day_of_week, deviation}] (0 = Monday); labels: one short name per weekday.
+export function weekdayBars(el, days, labels) {
+  if (!days || !days.length) { el.innerHTML = emptyMsg("Sin datos suficientes"); return; }
+  el.innerHTML = "";
+  const y = days.map((d) => d.deviation);
+  const fmt = (v) => {
+    const r = Math.round(v * 1000) / 1000; // no sign on values that round to 0,000
+    return `${r < 0 ? "−" : r > 0 ? "+" : ""}${Math.abs(r).toFixed(3).replace(".", ",")}`;
+  };
+  // Symmetric range with headroom so the value labels outside the bars never hit the day names.
+  const reach = Math.max(...y.map(Math.abs), 0.001) * 1.45;
+  _renderChart(
+    el,
+    [{
+      type: "bar",
+      x: days.map((d) => labels[d.day_of_week]),
+      y,
+      marker: { color: y.map((v) => (v < 0 ? DELTA_COLORS.cheaper : DELTA_COLORS.pricier)) },
+      text: y.map(fmt),
+      textposition: "outside",
+      textfont: { size: 11 },
+      constraintext: "none",
+      cliponaxis: false,
+      hovertemplate: "%{x}: %{text} €/l<extra></extra>",
+    }],
+    {
+      ...COMMON_LAYOUT,
+      margin: { l: 52, r: 8, t: 24, b: 32 },
+      bargap: 0.35,
+      yaxis: {
+        ...COMMON_LAYOUT.yaxis,
+        range: [-reach, reach],
+        tickformat: ".3f",
+        zeroline: true,
+        zerolinecolor: "#747782",
+        title: { text: "€/l", font: { size: 11 } },
+      },
     },
     CONFIG,
   );

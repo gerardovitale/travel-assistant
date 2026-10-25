@@ -1152,3 +1152,43 @@ def test_get_district_price_map_skips_zero_count_district(mock_norm, mock_geo, m
     assert len(results) == 1
     assert results[0].district == "Centro"
     assert results[0].avg_price == pytest.approx(1.5)
+
+
+@patch("services.station_service.query_day_of_week_deviation")
+def test_get_day_of_week_deviation_maps_rows_and_passes_scope(mock_query):
+    from api.schemas import Region
+    from services.station_service import get_day_of_week_deviation
+
+    mock_query.return_value = pd.DataFrame(
+        {"day_of_week": [0, 4], "deviation": [-0.004216, 0.00351], "weeks": [25, 25]}
+    )
+
+    result = get_day_of_week_deviation(FuelType.diesel_a_price, TrendPeriod.half_year, region=Region.special)
+
+    mock_query.assert_called_once_with("diesel_a_price", 180, province=None, region="special")
+    assert [(d.day_of_week, d.deviation, d.weeks) for d in result] == [(0, -0.0042, 25), (4, 0.0035, 25)]
+
+
+@patch("services.station_service.get_historical_forecast")
+@patch("services.station_service.get_day_of_week_deviation", return_value=[])
+def test_get_refuel_timing_uses_a_region_unless_a_province_is_given(mock_days, mock_forecast):
+    from api.schemas import HistoricalForecastResponse
+    from api.schemas import Region
+    from services.station_service import get_refuel_timing
+
+    mock_forecast.return_value = HistoricalForecastResponse(
+        geography_type="region", geography_value="special", source="region", recommendation="x", explanation="y"
+    )
+
+    by_region = get_refuel_timing([FuelType.diesel_a_price, FuelType.diesel_a_price], region=Region.special)
+    assert list(by_region.fuels) == ["diesel_a_price"]  # repeated fuels are computed once
+    mock_forecast.assert_called_once_with(
+        FuelType.diesel_a_price, province=None, region=Region.special, window_days=180
+    )
+
+    mock_forecast.reset_mock()
+    get_refuel_timing([FuelType.diesel_a_price], province="madrid", region=Region.peninsula)
+    mock_forecast.assert_called_once_with(FuelType.diesel_a_price, province="madrid", region=None, window_days=180)
+    mock_days.assert_called_with(
+        FuelType.diesel_a_price, TrendPeriod.half_year, province="madrid", region=Region.peninsula
+    )

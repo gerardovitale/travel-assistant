@@ -67,6 +67,10 @@ _zip_code_trend_ready = threading.Event()
 _last_successful_trend_refresh: float | None = None
 
 ZIP_CODE_TREND_TABLE = "zip_code_daily_stats"
+# Daily price across several zip codes = mean over their stations, not a mean of zip means (a
+# one-station rural zip must not weigh as much as a city one). Matches province_daily_stats and the
+# latest_stations average.
+STATION_WEIGHTED_AVG_PRICE = "SUM(avg_price * station_count) / NULLIF(SUM(station_count), 0)"
 ZIP_CODE_TREND_COLUMNS = (
     "date",
     "zip_code",
@@ -193,6 +197,7 @@ def refresh_zip_code_trend_snapshot() -> bool:
         count_row = conn.execute(f"SELECT COUNT(*) FROM {ZIP_CODE_TREND_TABLE}").fetchone()
         row_count = count_row[0] if count_row else 0
     _zip_code_trend_ready.set()
+    _day_of_week_deviation_cached.cache_clear()
     _last_successful_trend_refresh = time.time()
     duration_ms = (time.perf_counter() - started) * 1000
     logger.info("Refreshed zip-code trend snapshot into DuckDB (%s rows, %.1f ms)", row_count, duration_ms)
@@ -508,6 +513,14 @@ def query_latest_trend_date() -> date | None:
     return row[0] if row else None
 
 
+def _scope_clause(fuel_type: str, days_back: int, province: str | None, region: str) -> tuple[str, list]:
+    """Province-or-region filter for national trend queries, plus all params ($1 fuel, $2 days)."""
+    if province:
+        return "AND province = $3", [fuel_type, days_back, province]
+    region_clause, region_params = _region_clause(region, 3)
+    return region_clause, [fuel_type, days_back] + region_params
+
+
 def query_national_price_trend(
     fuel_type: str, days_back: int, province: str | None = None, region: str = "all"
 ) -> pd.DataFrame:
@@ -520,17 +533,13 @@ def query_national_price_trend(
     fuel_type = _validate_fuel_column(fuel_type)
     if not _zip_code_trend_ready.is_set():
         return pd.DataFrame(columns=["date", "avg_price", "min_price", "max_price"])
-    if province:
-        province_clause, params = "AND province = $3", [fuel_type, days_back, province]
-    else:
-        province_clause, region_params = _region_clause(region, 3)
-        params = [fuel_type, days_back] + region_params
+    province_clause, params = _scope_clause(fuel_type, days_back, province, region)
     with _lock:
         conn = get_connection()
         return conn.execute(
             f"""
             SELECT date,
-                AVG(avg_price) AS avg_price,
+                {STATION_WEIGHTED_AVG_PRICE} AS avg_price,
                 MIN(min_price) AS min_price,
                 MAX(max_price) AS max_price
             FROM {ZIP_CODE_TREND_TABLE}
@@ -539,6 +548,55 @@ def query_national_price_trend(
                 {province_clause}
             GROUP BY date
             ORDER BY date ASC
+            """,
+            params,
+        ).fetchdf()
+
+
+def query_day_of_week_deviation(
+    fuel_type: str, days_back: int, province: str | None = None, region: str = "all"
+) -> pd.DataFrame:
+    """Average gap (€/l) between each weekday's price and the mean of its own week.
+
+    Comparing each day with its week removes the trend, so a falling market does not make the
+    first days of the window look expensive. Only complete Monday–Sunday weeks inside the
+    ``days_back`` window count. day_of_week: 0 = Monday … 6 = Sunday.
+    """
+    fuel_type = _validate_fuel_column(fuel_type)
+    if not _zip_code_trend_ready.is_set():
+        return pd.DataFrame(columns=["day_of_week", "deviation", "weeks"])
+    return _day_of_week_deviation_cached(fuel_type, days_back, province, region)
+
+
+# Only changes when the trend snapshot is refreshed (which clears it), so repeat page loads skip the
+# window query and the global lock. Callers must not mutate the returned frame.
+@functools.lru_cache(maxsize=64)
+def _day_of_week_deviation_cached(fuel_type: str, days_back: int, province: str | None, region: str) -> pd.DataFrame:
+    province_clause, params = _scope_clause(fuel_type, days_back, province, region)
+    with _lock:
+        conn = get_connection()
+        return conn.execute(
+            f"""
+            WITH daily AS (
+                SELECT date, {STATION_WEIGHTED_AVG_PRICE} AS price
+                FROM {ZIP_CODE_TREND_TABLE}
+                WHERE fuel_type = $1
+                    AND date > (SELECT MAX(date) FROM {ZIP_CODE_TREND_TABLE}) - INTERVAL ($2) DAY
+                    {province_clause}
+                GROUP BY date
+                HAVING SUM(station_count) > 0
+            ),
+            weekly AS (
+                SELECT date,
+                    price - AVG(price) OVER (PARTITION BY date_trunc('week', date)) AS deviation,
+                    COUNT(*) OVER (PARTITION BY date_trunc('week', date)) AS week_days
+                FROM daily
+            )
+            SELECT isodow(date) - 1 AS day_of_week, AVG(deviation) AS deviation, COUNT(*) AS weeks
+            FROM weekly
+            WHERE week_days = 7
+            GROUP BY day_of_week
+            ORDER BY day_of_week
             """,
             params,
         ).fetchdf()
@@ -559,7 +617,7 @@ def query_national_group_price_trend(
             f"""
             SELECT date,
                 fuel_type,
-                AVG(avg_price) AS avg_price,
+                {STATION_WEIGHTED_AVG_PRICE} AS avg_price,
                 MIN(min_price) AS min_price,
                 MAX(max_price) AS max_price
             FROM {ZIP_CODE_TREND_TABLE}

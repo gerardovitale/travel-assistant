@@ -36,6 +36,7 @@ from api.schemas import ProvinceBreakevenResponse
 from api.schemas import ProvinceMapResponse
 from api.schemas import ProvincesResponse
 from api.schemas import QualityResponse
+from api.schemas import RefuelTimingResponse
 from api.schemas import Region
 from api.schemas import RouteResponse
 from api.schemas import SearchLocation
@@ -82,6 +83,7 @@ from services.station_service import get_province_price_geojson
 from services.station_service import get_province_price_map_filtered
 from services.station_service import get_province_ranking
 from services.station_service import get_provinces
+from services.station_service import get_refuel_timing
 from services.station_service import get_report_available_brands
 from services.station_service import get_station_labels
 from services.station_service import get_trend_window
@@ -247,6 +249,20 @@ def price_trends(
         start_date=start_date,
         end_date=end_date,
     )
+
+
+@router.get("/trends/refuel-timing", response_model=RefuelTimingResponse)
+@limiter.limit(settings.rate_limit)
+def refuel_timing(
+    request: Request,
+    fuel_type: list[FuelType] = Query(..., description="One or more fuel types (repeat the parameter)"),
+    province: str | None = Query(None, description="Province name (omit for a whole region)"),
+    region: Region = Query(Region.all, description="Scope when no province is given: all, peninsula or special"),
+):
+    """Cheapest weekday and the 7-day forecast per fuel, in one request for the whole /insights section."""
+    if settings.ui_test_mode:
+        return ui_test.refuel_timing_response(fuel_type, province, region)
+    return get_refuel_timing(fuel_type, province=province, region=region)
 
 
 @router.get("/trends/group", response_model=GroupTrendResponse)
@@ -544,17 +560,21 @@ def historical_forecast(
     fuel_type: FuelType = Query(...),
     zip_code: str | None = Query(None, pattern=r"^\d{5}$"),
     province: str | None = Query(None),
+    region: Region | None = Query(
+        None, description="Whole-region forecast when no zip code or province is given: all, peninsula or special"
+    ),
     window_days: int = Query(180, ge=60, le=365),
 ):
     if settings.ui_test_mode:
-        return ui_test.historical_forecast_response(zip_code=zip_code, province=province)
-    if not zip_code and not province:
-        raise HTTPException(status_code=422, detail="zip_code or province is required")
+        return ui_test.historical_forecast_response(zip_code=zip_code, province=province, region=region)
+    if not zip_code and not province and region is None:
+        raise HTTPException(status_code=422, detail="zip_code, province or region is required")
     try:
         return get_historical_forecast(
             fuel_type,
             zip_code=zip_code,
             province=province,
+            region=region,
             window_days=window_days,
         )
     except ValueError as exc:

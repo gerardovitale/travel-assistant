@@ -130,3 +130,56 @@ test("the under-construction note links to the previous insights page", async ({
   await expect(page).toHaveURL(/\/insights\/trends$/);
   await expect(page.getByTestId("insight-tab-trends")).toBeVisible();
 });
+
+test("Cuándo repostar names the cheapest weekday, the saving per tank and the 7-day forecast", async ({ page }) => {
+  await page.goto("/insights#cuando");
+  await expect(page.getByTestId("weekday-chart")).toHaveAttribute("data-trace0-points", "7");
+  await expect(page.getByTestId("when-headline")).toHaveText("El lunes es el día más barato; el viernes, el más caro");
+  await expect(page.getByTestId("when-saving")).toContainText(
+    "Con un depósito de 50 l, repostar el lunes en vez del viernes te ahorra 0,39 €",
+  );
+  await expect(page.getByTestId("kpi-best-day")).toContainText("Lunes");
+  await expect(page.getByTestId("kpi-best-day")).toContainText("0,008 €/l menos que el viernes");
+  await expect(page.getByTestId("forecast-recommendation")).toHaveText("Reposta hoy");
+  await expect(page.getByTestId("forecast-explanation")).toContainText("en la España peninsular están bajos");
+  await expect(page.getByTestId("forecast-tomorrow")).toContainText("Lo más probable mañana: que siga barato (63 %)");
+  await expect(page.getByTestId("kpi-forecast")).toContainText("Precios bajos ahora");
+
+  // Both fuels come in one request: switching fuel updates the section without a new one.
+  const requests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/v1/trends/refuel-timing")) requests.push(r.url());
+  });
+  await page.getByTestId("insights-fuel-toggle").getByRole("button", { name: "Diésel" }).click();
+  await expect(page.getByTestId("when-saving")).toContainText("te ahorra 0,31 €");
+  await expect(page.getByTestId("kpi-best-day")).toContainText("0,006 €/l menos que el viernes");
+  expect(requests).toHaveLength(0);
+});
+
+test("Cuándo repostar follows the zone selector", async ({ page }) => {
+  await page.goto("/insights");
+  await expect(page.getByTestId("when-headline")).toContainText("lunes");
+  const request = page.waitForRequest((r) => r.url().includes("/api/v1/trends/refuel-timing") && r.url().includes("region=special"));
+  await page.getByTestId("insights-scope-select").selectOption("special");
+  const url = new URL((await request).url());
+  expect(url.searchParams.getAll("fuel_type")).toEqual(["gasoline_95_e5_price", "diesel_a_price"]);
+  await expect(page.getByTestId("when-scope")).toHaveText("Islas, Ceuta y Melilla");
+  await expect(page.getByTestId("forecast-explanation")).toContainText("en las islas, Ceuta y Melilla");
+});
+
+test("Cuándo repostar never shows the previous zone's answer while the new one loads", async ({ page }) => {
+  await page.goto("/insights");
+  await expect(page.getByTestId("forecast-recommendation")).toHaveText("Reposta hoy");
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/v1/trends/refuel-timing?**", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.getByTestId("insights-scope-select").selectOption("special");
+  await expect(page.getByTestId("forecast-recommendation")).toHaveText("—");
+  await expect(page.getByTestId("kpi-best-day")).toContainText("Cargando…");
+  await expect(page.getByTestId("when-saving")).toBeHidden();
+  release();
+  await expect(page.getByTestId("forecast-explanation")).toContainText("en las islas, Ceuta y Melilla");
+});

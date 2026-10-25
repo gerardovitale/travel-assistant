@@ -243,6 +243,12 @@ class TrendResponse(BaseModel):
     end_date: str | None = None
 
 
+class DayOfWeekDeviation(BaseModel):
+    day_of_week: int  # 0 = Monday … 6 = Sunday
+    deviation: float  # €/l above (+) or below (−) the mean of its own week
+    weeks: int  # complete weeks averaged
+
+
 class GroupTrendResponse(BaseModel):
     series: dict[str, list[TrendPoint]]
     zip_code: str | None = None
@@ -289,6 +295,17 @@ class HistoricalForecastResponse(BaseModel):
     explanation: str
     insufficient_data: bool = False
     transition_matrix: dict[str, dict[str, float]] = Field(default_factory=dict)
+
+
+class RefuelTiming(BaseModel):
+    days: list[DayOfWeekDeviation]
+    forecast: HistoricalForecastResponse
+
+
+class RefuelTimingResponse(BaseModel):
+    """When to refuel in one scope: weekday gaps and the 7-day forecast, per fuel."""
+
+    fuels: dict[str, RefuelTiming]
 
 
 class TripPlanRequest(BaseModel):

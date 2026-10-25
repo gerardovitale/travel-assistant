@@ -1,9 +1,21 @@
 // Redesigned /insights: one scrolling story driven by the hero's fuel + scope filters.
 import { api, qs, toast } from "./app.js";
-import { fuelPair, loadingSkeleton, SERIES_COLORS } from "./charts.js";
+import { fuelPair, loadingSkeleton, SERIES_COLORS, weekdayBars } from "./charts.js";
 import { displaySign, escapeHtml, formatDay, formatNum, formatSignedPriceDelta } from "./format.js";
 import { getProvinces } from "./fuel.js";
-import { changeOverDays, coverageStart, priceChange, regionGapHeadline, trendHeadline } from "./insights_story.js";
+import {
+  bestAndWorstDay,
+  changeOverDays,
+  coverageStart,
+  DAY_NAMES,
+  DAY_SHORT,
+  priceChange,
+  regionGapHeadline,
+  tankSavingText,
+  tomorrowHeadline,
+  trendHeadline,
+  weekdayHeadline,
+} from "./insights_story.js";
 
 const FUELS = [
   { key: "gasoline_95_e5_price", label: "Gasolina 95" },
@@ -22,8 +34,12 @@ const state = {
   // main: { [fuelKey]: points } for the scope (the peninsula when comparing); special: the same for
   // islands, Ceuta and Melilla, only loaded when comparing. window: the period's {start, end} days.
   trend: { main: {}, special: null, window: null },
+  // "Cuándo repostar" for the main scope, per fuel: weekday gaps and the 7-day forecast. While a new
+  // scope loads, nothing from the previous one is shown.
+  when: { days: {}, forecast: {}, loading: true },
 };
 let trendRequest = 0;
+let whenRequest = 0;
 
 const isCompare = () => state.scope === "compare";
 
@@ -137,9 +153,78 @@ function renderTrend() {
   }
 }
 
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const REGIME_NOW = { cheap: "Precios bajos ahora", normal: "Precios habituales", expensive: "Precios altos" };
+
+// "Precios altos · 60 % de que bajen en 7 días"; when prices are already low there is nothing cheaper to wait for.
+function forecastNote(forecast) {
+  if (!forecast || forecast.insufficient_data) return "Previsión a 7 días";
+  const now = REGIME_NOW[forecast.current_regime] || "Previsión a 7 días";
+  if (forecast.current_regime === "cheap") return now;
+  return `${now} · ${formatNum(forecast.cheaper_within_7d * 100, 0)} % de que bajen en 7 días`;
+}
+
+function renderWhenKpis() {
+  if (state.when.loading) {
+    for (const sel of ["[data-kpi-best-day]", "[data-kpi-forecast]"]) document.querySelector(sel).textContent = "—";
+    document.querySelector("[data-kpi-best-day-note]").textContent = "Cargando…";
+    document.querySelector("[data-kpi-forecast-note]").textContent = "Cargando…";
+    return;
+  }
+  const bw = bestAndWorstDay(state.when.days[state.fuel]);
+  const clear = bw && displaySign(bw.gap, 3) !== 0;
+  document.querySelector("[data-kpi-best-day]").textContent = clear ? capitalize(DAY_NAMES[bw.best]) : "—";
+  document.querySelector("[data-kpi-best-day-note]").textContent = !bw
+    ? "Sin datos suficientes"
+    : clear
+      ? `${formatNum(bw.gap, 3)} €/l menos que el ${DAY_NAMES[bw.worst]}`
+      : "Sin un día claramente más barato";
+  const forecast = state.when.forecast[state.fuel];
+  document.querySelector("[data-kpi-forecast]").textContent = forecast?.recommendation || "—";
+  document.querySelector("[data-kpi-forecast-note]").textContent = forecastNote(forecast);
+}
+
+function renderWhen() {
+  document.getElementById("when-scope").textContent = isCompare() ? REGION_SCOPES.peninsula : scopeLabel();
+  if (state.when.loading) {
+    document.getElementById("weekday-chart").innerHTML = loadingSkeleton();
+    document.getElementById("when-headline").textContent = "¿Qué día sale más barato?";
+    document.getElementById("when-saving").classList.add("hidden");
+    document.getElementById("forecast-recommendation").textContent = "—";
+    document.getElementById("forecast-explanation").textContent = "";
+    document.getElementById("forecast-tomorrow").classList.add("hidden");
+    return;
+  }
+  const days = state.when.days[state.fuel];
+  weekdayBars(document.getElementById("weekday-chart"), days, DAY_SHORT);
+  document.getElementById("when-headline").textContent = weekdayHeadline(days);
+  const saving = tankSavingText(days);
+  const savingEl = document.getElementById("when-saving");
+  savingEl.classList.toggle("hidden", !saving);
+  savingEl.querySelector("[data-saving-text]").textContent = saving || "";
+
+  const forecast = state.when.forecast[state.fuel];
+  document.getElementById("forecast-recommendation").textContent = forecast?.recommendation || "—";
+  document.getElementById("forecast-explanation").textContent = forecast?.explanation || "";
+  const tomorrow = document.getElementById("forecast-tomorrow");
+  const probs = forecast && !forecast.insufficient_data ? forecast.next_day_probabilities : null;
+  const headline = probs && tomorrowHeadline(forecast.current_regime, probs);
+  tomorrow.classList.toggle("hidden", !headline);
+  if (!headline) return;
+  tomorrow.querySelector("[data-tomorrow-headline]").textContent = headline;
+  for (const regime of ["cheap", "normal", "expensive"]) {
+    const p = probs[regime] || 0;
+    tomorrow.querySelector(`[data-tomorrow-bar="${regime}"]`).style.width = `${p * 100}%`;
+    tomorrow.querySelector(`[data-tomorrow-pct="${regime}"]`).textContent = `${formatNum(p * 100, 0)} %`;
+  }
+}
+
 function render() {
   renderKpis();
   renderTrend();
+  renderWhenKpis();
+  renderWhen();
 }
 
 const fetchTrend = (fuel, scopeParams) =>
@@ -164,7 +249,32 @@ async function loadTrend() {
     state.trend = { main: {}, special: null, window: null };
     toast(`No se pudo cargar la tendencia: ${err.message}`, "error");
   }
-  render();
+  renderKpis();
+  renderTrend();
+}
+
+// One request for both fuels, so the fuel toggle never waits on the network.
+async function loadWhen() {
+  const req = ++whenRequest;
+  state.when = { days: {}, forecast: {}, loading: true };
+  renderWhenKpis();
+  renderWhen();
+  let fuels = {};
+  try {
+    const query = qs({ fuel_type: FUELS.map((f) => f.key), ...mainScopeParams() });
+    ({ fuels } = await api(`/trends/refuel-timing?${query}`, { signal: AbortSignal.timeout(15000) }));
+  } catch (err) {
+    if (req !== whenRequest) return;
+    toast(`No se pudo cargar cuándo repostar: ${err.message}`, "error");
+  }
+  if (req !== whenRequest) return; // a newer filter change already superseded this load
+  state.when = {
+    days: Object.fromEntries(FUELS.map((f) => [f.key, fuels[f.key]?.days])),
+    forecast: Object.fromEntries(FUELS.map((f) => [f.key, fuels[f.key]?.forecast])),
+    loading: false,
+  };
+  renderWhenKpis();
+  renderWhen();
 }
 
 function onToggle(name, apply) {
@@ -186,6 +296,7 @@ async function init() {
     state.scope = scopeSelect.value;
     syncUrl();
     loadTrend();
+    loadWhen();
   });
   try {
     const group = scopeSelect.querySelector("[data-province-options]");
@@ -195,7 +306,7 @@ async function init() {
   }
   if (![...scopeSelect.options].some((o) => o.value === state.scope)) state.scope = filters.dataset.defaultScope;
   scopeSelect.value = state.scope;
-  await loadTrend();
+  await Promise.all([loadTrend(), loadWhen()]);
 }
 
 init();

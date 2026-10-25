@@ -1,6 +1,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { changeOverDays, coverageStart, priceChange, regionGapHeadline, trendHeadline } from "../../app/web/static/js/insights_story.js";
+import {
+    bestAndWorstDay,
+    changeOverDays,
+    coverageStart,
+    priceChange,
+    regionGapHeadline,
+    tankSavingText,
+    tomorrowHeadline,
+    trendHeadline,
+    weekdayHeadline,
+} from "../../app/web/static/js/insights_story.js";
 import { formatDay, formatSignedPriceDelta } from "../../app/web/static/js/format.js";
 
 const pts = (...pairs) => pairs.map(([date, avg_price]) => ({ date, avg_price }));
@@ -66,4 +76,44 @@ describe("formatSignedPriceDelta", () => {
     it("adds a plus for rises", () => assert.equal(formatSignedPriceDelta(0.077), "+0,077 €/l"));
     it("drops the sign when it rounds to zero", () => assert.equal(formatSignedPriceDelta(-0.0004), "0,000 €/l"));
     it("returns — for non-numbers", () => assert.equal(formatSignedPriceDelta(null), "—"));
+});
+
+const week = (...deviations) => deviations.map((deviation, day_of_week) => ({ day_of_week, deviation, weeks: 25 }));
+
+describe("bestAndWorstDay", () => {
+    it("finds the cheapest and priciest weekday and their gap", () => {
+        const bw = bestAndWorstDay(week(-0.0042, -0.0021, -0.0003, 0.0018, 0.0035, 0.0009, 0.0004));
+        assert.equal(bw.best, 0);
+        assert.equal(bw.worst, 4);
+        assert.ok(Math.abs(bw.gap - 0.0077) < 1e-9);
+    });
+    it("is null without data", () => assert.equal(bestAndWorstDay([]), null));
+});
+
+describe("weekdayHeadline", () => {
+    it("names the cheapest and priciest day", () =>
+        assert.equal(weekdayHeadline(week(0.001, -0.002, 0, 0.003, 0, 0, -0.002)), "El martes es el día más barato; el jueves, el más caro"));
+    it("says the weekday barely matters when the gap rounds to 0,000 €/l", () =>
+        assert.equal(weekdayHeadline(week(0.0001, -0.0002, 0, 0, 0, 0, 0)), "El día de la semana apenas cambia el precio"));
+    it("handles missing data", () => assert.equal(weekdayHeadline(null), "Cuándo repostar: sin datos suficientes"));
+});
+
+describe("tankSavingText", () => {
+    it("turns the weekday gap into euros for a 50 l tank", () =>
+        assert.equal(
+            tankSavingText(week(-0.0042, 0, 0, 0, 0.0035, 0, 0)),
+            "Con un depósito de 50 l, repostar el lunes en vez del viernes te ahorra 0,39\u00a0€",
+        ));
+    it("is null when there is no real difference", () => assert.equal(tankSavingText(week(0.0001, -0.0002, 0, 0, 0, 0, 0)), null));
+});
+
+describe("tomorrowHeadline", () => {
+    it("says the level is likely to hold", () =>
+        assert.equal(tomorrowHeadline("cheap", { cheap: 0.63, normal: 0.29, expensive: 0.08 }), "Lo más probable mañana: que siga barato (63 %)"));
+    it("says the level is likely to change", () =>
+        assert.equal(
+            tomorrowHeadline("expensive", { cheap: 0.1, normal: 0.55, expensive: 0.35 }),
+            "Lo más probable mañana: que pase a estar en su nivel habitual (55 %)",
+        ));
+    it("is null without probabilities", () => assert.equal(tomorrowHeadline("cheap", {}), null));
 });

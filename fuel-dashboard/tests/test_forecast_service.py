@@ -2,7 +2,9 @@ import datetime
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 from api.schemas import FuelType
+from api.schemas import Region
 from services.forecast_service import _assign_regimes
 from services.forecast_service import _build_response
 from services.forecast_service import _build_transition_counts
@@ -34,6 +36,16 @@ def _make_zip_history(days: int, zip_code: str = "28001", province: str = "madri
             }
         )
     return pd.DataFrame(rows)
+
+
+@pytest.fixture(autouse=True)
+def trend_cache():
+    """By default the in-memory trend cache is empty, so province forecasts use the aggregate fallback."""
+    with patch(
+        "services.forecast_service.query_national_price_trend",
+        return_value=pd.DataFrame(columns=["date", "avg_price"]),
+    ) as mock_trend:
+        yield mock_trend
 
 
 def _make_province_history(days: int, province: str = "madrid") -> pd.DataFrame:
@@ -284,11 +296,19 @@ def test_build_response_rejects_when_transitions_below_floor():
 
 
 def test_explanation_reads_as_plain_spanish_for_province():
-    text = forecast_explanation("province", "santa cruz de tenerife", "cheap", 0.0, 0.123, confidence=0.8)
+    text = forecast_explanation("province", "santa cruz de tenerife", "normal", 0.0, 0.123, confidence=0.8)
 
     assert text == (
-        "Ahora mismo los precios en la provincia de Santa Cruz De Tenerife están bajos. "
+        "Ahora mismo los precios en la provincia de Santa Cruz De Tenerife están en su nivel habitual. "
         "La probabilidad de que bajen a un nivel más barato es del 0% en 3 días y del 12% en 7 días."
+    )
+
+
+def test_explanation_when_prices_are_already_low_says_it_is_a_good_time():
+    text = forecast_explanation("province", "madrid", "cheap", 0.0, 0.0, confidence=0.8)
+
+    assert (
+        text == "Ahora mismo los precios en la provincia de Madrid están bajos, así que es buen momento para repostar."
     )
 
 
@@ -297,3 +317,77 @@ def test_explanation_for_zip_code_with_low_confidence():
 
     assert text.startswith("Ahora mismo los precios en el código postal 28001 están altos.")
     assert text.endswith("La confianza es baja porque los precios de la zona han variado mucho o hay pocos datos.")
+
+
+@patch("services.forecast_service.query_national_price_trend")
+def test_get_historical_forecast_for_a_region_uses_the_trend_cache_series(mock_trend):
+    mock_trend.return_value = _make_province_history(90)[["date", "avg_price"]]
+
+    result = get_historical_forecast(FuelType.diesel_a_price, region=Region.peninsula)
+
+    mock_trend.assert_called_once_with("diesel_a_price", 180, region="peninsula")
+    assert result.insufficient_data is False
+    assert (result.geography_type, result.geography_value, result.source) == ("region", "peninsula", "region")
+    assert result.explanation.startswith("Ahora mismo los precios en la España peninsular están")
+
+
+@patch("services.forecast_service.download_aggregate", return_value=None)
+@patch("services.forecast_service.query_national_price_trend")
+def test_get_historical_forecast_for_a_region_without_history_is_insufficient(mock_trend, _mock_download):
+    mock_trend.return_value = pd.DataFrame(columns=["date", "avg_price"])
+
+    result = get_historical_forecast(FuelType.diesel_a_price, region=Region.special)
+
+    assert result.insufficient_data is True
+    assert result.geography_value == "special"
+
+
+def test_explanation_names_islands_ceuta_and_melilla_for_the_special_region():
+    text = forecast_explanation("region", "special", "expensive", 0.4, 0.6, confidence=0.8)
+
+    assert text.startswith("Ahora mismo los precios en las islas, Ceuta y Melilla están altos.")
+
+
+@patch("services.forecast_service.download_aggregate")
+def test_province_forecast_reads_the_same_daily_series_as_the_trend_chart(mock_download, trend_cache):
+    trend_cache.return_value = _make_province_history(90)[["date", "avg_price"]]
+
+    result = get_historical_forecast(FuelType.diesel_a_price, province="Madrid")
+
+    trend_cache.assert_called_once_with("diesel_a_price", 180, province="madrid")
+    mock_download.assert_not_called()
+    assert result.insufficient_data is False
+    assert result.geography_type == "province"
+
+
+@patch("services.forecast_service.download_aggregate")
+def test_region_forecast_falls_back_to_the_province_aggregate_while_the_trend_cache_loads(mock_download):
+    """Station-weighted over the region's provinces: Madrid (100 stations) outweighs Ceuta (here 300)."""
+    madrid = _make_province_history(90, province="madrid")
+    ceuta = _make_province_history(90, province="ceuta").assign(avg_price=lambda df: df["avg_price"] + 0.1)
+    ceuta["station_count"] = 300
+    mock_download.side_effect = lambda name: (
+        pd.concat([madrid, ceuta]) if name == "province_daily_stats.parquet" else None
+    )
+
+    peninsula = get_historical_forecast(FuelType.diesel_a_price, region=Region.peninsula)
+    every_region = get_historical_forecast(FuelType.diesel_a_price, region=Region.all)
+
+    assert peninsula.insufficient_data is False
+    assert peninsula.current_avg_price == round(madrid["avg_price"].iloc[-1], 4)
+    assert every_region.current_avg_price == round(
+        (madrid["avg_price"].iloc[-1] * 100 + ceuta["avg_price"].iloc[-1] * 300) / 400, 4
+    )
+
+
+@patch("services.forecast_service.download_aggregate")
+def test_province_forecast_uses_the_aggregate_when_the_trend_cache_holds_too_little_history(mock_download, trend_cache):
+    trend_cache.return_value = _make_province_history(45)[["date", "avg_price"]]
+    mock_download.side_effect = lambda name: (
+        _make_province_history(120) if name == "province_daily_stats.parquet" else None
+    )
+
+    result = get_historical_forecast(FuelType.diesel_a_price, province="madrid")
+
+    assert result.insufficient_data is False
+    assert result.coverage_days == 120

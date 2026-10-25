@@ -20,6 +20,9 @@ export default defineConfig({
     cwd: import.meta.dirname,
     env: {
       DASHBOARD_DISABLE_EXTERNAL_ASSETS: "true",
+      // Parallel workers share one server and IP; /insights alone fires ~8 API calls per load,
+      // so the production 60/minute limit would turn into flaky 429s.
+      DASHBOARD_RATE_LIMIT: "10000/minute",
       DASHBOARD_UI_FIXTURE_SET: "happy_path",
       DASHBOARD_UI_TEST_MODE: "true",
     },

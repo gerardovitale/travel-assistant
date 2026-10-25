@@ -22,6 +22,7 @@ from api.schemas import CommodityPoint
 from api.schemas import CommodityTrendResponse
 from api.schemas import DataFrameResponse
 from api.schemas import DataInventory
+from api.schemas import DayOfWeekDeviation
 from api.schemas import DistrictMapResponse
 from api.schemas import DistrictPriceResult
 from api.schemas import EnergyType
@@ -40,6 +41,8 @@ from api.schemas import ProvincePriceResult
 from api.schemas import ProvincesResponse
 from api.schemas import QualityResponse
 from api.schemas import RealtimeStatus
+from api.schemas import RefuelTiming
+from api.schemas import RefuelTimingResponse
 from api.schemas import Region
 from api.schemas import RouteResponse
 from api.schemas import SearchLocation
@@ -465,12 +468,35 @@ def historical_day_of_week_response() -> DataFrameResponse:
     )
 
 
+# Monday cheapest, Friday priciest; they sum to zero like real within-week deviations.
+INSIGHTS_V2_WEEKDAY_DEVIATIONS = (-0.0042, -0.0021, -0.0003, 0.0018, 0.0035, 0.0009, 0.0004)
+
+
+def refuel_timing_response(fuel_types: list[FuelType], province: Optional[str], region: Region) -> RefuelTimingResponse:
+    fuels = {}
+    for fuel_type in dict.fromkeys(fuel_types):
+        # Diesel swings a little less, so a fuel switch visibly changes the numbers.
+        scale = 0.8 if fuel_type == FuelType.diesel_a_price else 1.0
+        days = [
+            DayOfWeekDeviation(day_of_week=day, deviation=round(deviation * scale, 4), weeks=25)
+            for day, deviation in enumerate(INSIGHTS_V2_WEEKDAY_DEVIATIONS)
+        ]
+        forecast = historical_forecast_response(province=province, region=None if province else region)
+        fuels[fuel_type.value] = RefuelTiming(days=days, forecast=forecast)
+    return RefuelTimingResponse(fuels=fuels)
+
+
 def historical_forecast_response(
     zip_code: Optional[str] = None,
     province: Optional[str] = None,
+    region: Optional[Region] = None,
 ) -> HistoricalForecastResponse:
-    geography_type = "zip_code" if zip_code else "province"
-    geography_value = zip_code or province or "Madrid"
+    if zip_code:
+        geography_type, geography_value = "zip_code", zip_code
+    elif province or region is None:
+        geography_type, geography_value = "province", province or "Madrid"
+    else:
+        geography_type, geography_value = "region", region.value
     source = geography_type
 
     if current_fixture_set() == "historical_sparse":

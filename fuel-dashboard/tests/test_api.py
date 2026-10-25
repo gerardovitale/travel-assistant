@@ -342,6 +342,38 @@ def test_historical_forecast_endpoint(mock_service):
     mock_service.assert_called_once()
 
 
+@patch("api.router.get_historical_forecast")
+def test_historical_forecast_accepts_a_region_alone(mock_service):
+    from api.schemas import Region
+
+    mock_service.return_value = HistoricalForecastResponse(
+        geography_type="region", geography_value="peninsula", source="region", recommendation="x", explanation="y"
+    )
+    response = _get_client().get("/api/v1/historical/forecast?fuel_type=diesel_a_price&region=peninsula")
+    assert response.status_code == 200
+    assert mock_service.call_args.kwargs["region"] == Region.peninsula
+
+
+@patch("api.router.get_refuel_timing")
+def test_refuel_timing_endpoint_takes_several_fuels_and_a_scope(mock_service):
+    from api.schemas import FuelType
+    from api.schemas import Region
+    from api.schemas import RefuelTimingResponse
+
+    mock_service.return_value = RefuelTimingResponse(fuels={})
+    response = _get_client().get(
+        "/api/v1/trends/refuel-timing?fuel_type=gasoline_95_e5_price&fuel_type=diesel_a_price&region=special"
+    )
+    assert response.status_code == 200
+    args, kwargs = mock_service.call_args
+    assert args[0] == [FuelType.gasoline_95_e5_price, FuelType.diesel_a_price]
+    assert kwargs == {"province": None, "region": Region.special}
+
+
+def test_refuel_timing_endpoint_requires_a_fuel():
+    assert _get_client().get("/api/v1/trends/refuel-timing?region=special").status_code == 422
+
+
 def test_historical_forecast_requires_geography():
     client = _get_client()
     response = client.get("/api/v1/historical/forecast?fuel_type=diesel_a_price")

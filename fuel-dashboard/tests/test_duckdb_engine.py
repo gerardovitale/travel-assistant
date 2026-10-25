@@ -180,6 +180,22 @@ def test_refresh_zip_code_trend_snapshot_loads_persistent_table(mock_conn, mock_
 
 @patch("data.duckdb_engine.download_aggregate")
 @patch("data.duckdb_engine.get_connection")
+def test_refresh_zip_code_trend_snapshot_drops_cached_weekday_gaps(mock_conn, mock_download):
+    from data.duckdb_engine import query_day_of_week_deviation
+
+    mock_conn.return_value = duckdb.connect(":memory:")
+    mock_download.return_value = _make_zip_trend_df()
+    refresh_zip_code_trend_snapshot()
+    query_day_of_week_deviation("diesel_a_price", 90)
+    assert duckdb_engine_module._day_of_week_deviation_cached.cache_info().currsize == 1
+
+    refresh_zip_code_trend_snapshot()
+
+    assert duckdb_engine_module._day_of_week_deviation_cached.cache_info().currsize == 0
+
+
+@patch("data.duckdb_engine.download_aggregate")
+@patch("data.duckdb_engine.get_connection")
 def test_refresh_zip_code_trend_snapshot_accepts_legacy_aggregate_without_province(mock_conn, mock_download):
     conn = duckdb.connect(":memory:")
     mock_conn.return_value = conn
@@ -609,6 +625,45 @@ def test_query_latest_trend_date_is_none_before_the_trend_cache_loads():
     assert query_latest_trend_date() is None
 
 
+@patch("data.duckdb_engine.get_connection")
+def test_query_day_of_week_deviation_compares_each_day_with_its_own_week(mock_conn):
+    """A rising market must not make early weekdays look cheap: each week is centred on its own mean."""
+    from data.duckdb_engine import _day_of_week_deviation_cached
+    from data.duckdb_engine import query_day_of_week_deviation
+
+    _day_of_week_deviation_cached.cache_clear()
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    last_sunday = date.today() - timedelta(days=date.today().isoweekday())
+    days = [last_sunday - timedelta(days=offset) for offset in range(17, -1, -1)]  # 2 full weeks + 4 days
+    # Week level rises by 0.10 each week; Monday is always 0.006 below its week, Friday 0.006 above.
+    weekday_effect = {0: -0.006, 4: 0.006}
+    week_level = {d: 0.1 * ((d - timedelta(days=d.weekday()) - days[0]).days // 7) for d in days}
+    prices = [1.5 + week_level[d] + weekday_effect.get(d.weekday(), 0.0) for d in days]
+    df = pd.DataFrame(  # noqa: F841
+        {
+            "date": days,
+            "zip_code": ["28001"] * len(days),
+            "province": ["madrid"] * len(days),
+            "fuel_type": ["diesel_a_price"] * len(days),
+            "avg_price": prices,
+            "min_price": prices,
+            "max_price": prices,
+            "station_count": [3] * len(days),
+        }
+    )
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_day_of_week_deviation("diesel_a_price", 90).set_index("day_of_week")
+
+    assert list(result.index) == list(range(7))
+    assert (result["weeks"] == 2).all()  # the partial week (Thursday–Sunday at the start) is left out
+    assert result.loc[0, "deviation"] == pytest.approx(-0.006)
+    assert result.loc[4, "deviation"] == pytest.approx(0.006)
+    assert result.loc[2, "deviation"] == pytest.approx(0.0)
+
+
 # --- region (peninsula / islands, Ceuta and Melilla) filter tests ---
 
 
@@ -629,7 +684,12 @@ def _make_region_trend_df():
 
 @pytest.mark.parametrize(
     ("region", "expected_avg"),
-    [("all", (1.50 + 1.30 + 1.56 + 1.20) / 4), ("peninsula", 1.50), ("special", (1.30 + 1.56 + 1.20) / 3)],
+    # Station-weighted: station_count is 5, 4, 3, 2.
+    [
+        ("all", (1.50 * 5 + 1.30 * 4 + 1.56 * 3 + 1.20 * 2) / 14),
+        ("peninsula", 1.50),
+        ("special", (1.30 * 4 + 1.56 * 3 + 1.20 * 2) / 9),
+    ],
 )
 @patch("data.duckdb_engine.get_connection")
 def test_query_national_price_trend_filters_by_region(mock_conn, region, expected_avg):
@@ -644,6 +704,33 @@ def test_query_national_price_trend_filters_by_region(mock_conn, region, expecte
     result = query_national_price_trend("diesel_a_price", 90, region=region)
 
     assert result["avg_price"].iloc[0] == pytest.approx(expected_avg)
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_query_national_price_trend_averages_stations_not_zip_codes(mock_conn):
+    """10 city stations at 1.40 and 1 rural one at 1.60 average 1.418, as province_daily_stats does."""
+    from data.duckdb_engine import query_national_price_trend
+
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    df = pd.DataFrame(  # noqa: F841
+        {
+            "date": _recent_dates(1) * 2,
+            "zip_code": ["28001", "28990"],
+            "province": ["madrid", "madrid"],
+            "fuel_type": ["diesel_a_price"] * 2,
+            "avg_price": [1.40, 1.60],
+            "min_price": [1.40, 1.60],
+            "max_price": [1.40, 1.60],
+            "station_count": [10, 1],
+        }
+    )
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+    result = query_national_price_trend("diesel_a_price", 30, province="madrid")
+
+    assert result["avg_price"].iloc[0] == pytest.approx((1.40 * 10 + 1.60) / 11)
 
 
 @patch("data.duckdb_engine.get_connection")
