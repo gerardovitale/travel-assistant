@@ -5,6 +5,7 @@ from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 
+from api.router import fuel_type_report_enabled
 from api.router import limiter
 from api.router import router
 from api.schemas import Region
@@ -404,7 +405,8 @@ def _render_insights_v2(request: Request):
             request, "loading.html", _base_context("insights"), status_code=503, headers={"Retry-After": "5"}
         )
     # Server-rendered so the page shows today's price before any JS runs; JS refines it per scope.
-    # The default scope is the peninsula: islands, Ceuta and Melilla have their own option.
+    # The default scope is the peninsula with Baleares: Canarias, Ceuta and Melilla (lower fuel taxes)
+    # have their own option.
     national_avg = {
         fuel: (
             ui_test_national_avg_price(fuel)
@@ -420,6 +422,10 @@ def _render_insights_v2(request: Request):
         "default_period": "quarter",
         "national_avg": national_avg,
         "canonical_path": "/insights",
+        # The calculator reads the fuel-type report's endpoints, so it shares that report's flag.
+        "fuel_type_enabled": fuel_type_report_enabled(),
+        "fuel_type_default_km": settings.report_fuel_type_default_km_year,
+        "fuel_type_default_pair": settings.report_fuel_type_default_pair,
     }
     return templates.TemplateResponse(request, "insights_v2.html", ctx)
 

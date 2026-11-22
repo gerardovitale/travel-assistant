@@ -52,6 +52,18 @@ SEGMENT_LABELS: dict[str, str] = {
 }
 
 
+class ListPrice(BaseModel):
+    """Official Spanish list price of this exact trim, as a cited price table showed it on ``checked_on``.
+
+    Not from IDAE: hand-curated in scripts/idae_vehicle_pairs.py, and stale as soon as prices move.
+    """
+
+    eur: float = Field(gt=0)
+    version: str  # the trim's name in the cited table
+    source_url: str = Field(pattern=r"^https://")  # rendered as a link on /insights
+    checked_on: date
+
+
 class Vehicle(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
 
@@ -80,6 +92,7 @@ class Vehicle(BaseModel):
     # knowledge as of that file's per-entry comment date, and can go stale silently. The UI should
     # not imply you can go buy a discontinued diesel, but treat this field as a hint, not a fact.
     market_status: Literal["vigente", "descontinuado"]
+    list_price: ListPrice | None = None
 
     @property
     def label(self) -> str:
@@ -97,6 +110,9 @@ class Vehicle(BaseModel):
         max_consumption = MAX_PLAUSIBLE_CONSUMPTION_BY_ENERGY[self.energy_type]
         if self.consumption > max_consumption:
             raise ValueError(f"{self.id}: consumption {self.consumption} exceeds plausible ceiling {max_consumption}")
+        # A list price puts the trim in the calculator's "which one to buy" picker.
+        if self.list_price is not None and self.market_status != "vigente":
+            raise ValueError(f"{self.id}: only a trim sold new can carry a list price")
         return self
 
 
@@ -133,6 +149,15 @@ class VehicleCatalog(BaseModel):
                 raise ValueError(f"pair {pair_id!r} needs at least two energy types to be comparable")
             if len(energy_types) != len(members):
                 raise ValueError(f"pair {pair_id!r} has more than one vehicle per energy type")
+            # The diesel premium is the gap between the gasoline and diesel list prices: one alone means
+            # nothing. Other energy types (an electric row) may come without one.
+            priced = {
+                m.list_price is None for m in members if m.energy_type in (EnergyType.gasoline, EnergyType.diesel)
+            }
+            if len(priced) > 1:
+                raise ValueError(
+                    f"pair {pair_id!r} needs a list price on both its gasoline and diesel trims or on neither"
+                )
         return self
 
 

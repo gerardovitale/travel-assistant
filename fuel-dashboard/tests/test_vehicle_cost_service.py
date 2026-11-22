@@ -2,10 +2,14 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from api.schemas import Region
+from services import vehicle_cost_service
+from services.vehicle_catalog import VehicleCatalog
 from services.vehicle_cost_service import get_breakeven_by_province
 from services.vehicle_cost_service import get_breakeven_history
 from services.vehicle_cost_service import get_pair_breakeven
 from services.vehicle_cost_service import get_vehicle_costs
+from services.vehicle_cost_service import get_vehicle_options
 
 # VW Golf (IDAE WLTP, MY26): 5.4 l/100km gasoline, 4.4 l/100km diesel -> breakeven ratio 1.2272...
 PAIR_ID = "vw-golf"
@@ -34,6 +38,12 @@ def _flat_prices(gasoline: float, diesel: float, province: str = "madrid", date:
 
 def _patch_prices(df: pd.DataFrame | None):
     return patch("services.vehicle_cost_service.download_aggregate", return_value=df)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_price_cache():
+    # Each test patches its own prices; the service's short-lived cache must not carry them over.
+    vehicle_cost_service._prices_cache = None
 
 
 # --- get_vehicle_costs -----------------------------------------------------------------
@@ -146,6 +156,26 @@ def test_pair_breakeven_reports_headroom_and_real_world_consumption():
     assert result["breakeven_diesel_consumption"] == pytest.approx(GASOLINE_CONSUMPTION * 1.50 / 1.45, abs=0.01)
 
 
+def test_pair_breakeven_scopes_to_a_fuel_tax_regime():
+    # The calculator prices the peninsula (with Baleares) and Canarias, Ceuta and Melilla apart: their taxes differ.
+    prices = pd.concat(
+        [
+            _flat_prices(1.50, 1.45, province="madrid"),
+            _flat_prices(1.30, 1.20, province="santa cruz de tenerife"),
+        ],
+        ignore_index=True,
+    )
+    with _patch_prices(prices):
+        peninsula = get_pair_breakeven(PAIR_ID, region=Region.peninsula)
+        special = get_pair_breakeven(PAIR_ID, region=Region.special)
+        # A province wins over the region.
+        madrid = get_pair_breakeven(PAIR_ID, province="madrid", region=Region.special)
+
+    assert (peninsula["gasoline"]["price_per_unit"], peninsula["diesel"]["price_per_unit"]) == (1.50, 1.45)
+    assert (special["gasoline"]["price_per_unit"], special["diesel"]["price_per_unit"]) == (1.30, 1.20)
+    assert madrid["gasoline"]["price_per_unit"] == 1.50
+
+
 def test_pair_breakeven_returns_none_for_unknown_pair():
     with _patch_prices(_flat_prices(gasoline=1.50, diesel=1.45)):
         assert get_pair_breakeven("does-not-exist", province="madrid") is None
@@ -233,10 +263,11 @@ def test_breakeven_by_province_drops_and_counts_provinces_missing_a_fuel():
     assert result["provinces_dropped"] == 1
 
 
-def test_breakeven_by_province_excludes_non_mainland_by_default():
+def test_breakeven_by_province_excludes_the_low_tax_regime_by_default():
     prices = pd.concat(
         [
             _flat_prices(1.50, 1.45, province="madrid"),
+            _flat_prices(1.56, 1.50, province="balears (illes)"),
             _flat_prices(1.30, 1.20, province="santa cruz de tenerife"),
         ],
         ignore_index=True,
@@ -245,7 +276,8 @@ def test_breakeven_by_province_excludes_non_mainland_by_default():
         mainland = get_breakeven_by_province(PAIR_ID)
         everywhere = get_breakeven_by_province(PAIR_ID, mainland_only=False)
 
-    assert [r["province"] for r in mainland["rows"]] == ["madrid"]
+    # Baleares pays the peninsula's fuel taxes, so it stays in the ranking.
+    assert {r["province"] for r in mainland["rows"]} == {"madrid", "balears (illes)"}
     assert "santa cruz de tenerife" in [r["province"] for r in everywhere["rows"]]
 
 
@@ -520,3 +552,65 @@ def test_breakeven_history_crossovers_track_ties_as_their_own_state():
 
     assert [c["winner"] for c in result["crossovers"]] == ["tie", "gasoline"]
     assert result["flips"] == 2
+
+
+def _priced_catalog() -> VehicleCatalog:
+    def vehicle(pair_id: str, energy: str, consumption: float, list_price: float | None) -> dict:
+        price = None
+        if list_price is not None:
+            price = {"eur": list_price, "version": f"{pair_id} {energy}", "source_url": f"https://example.com/{energy}"}
+            price["checked_on"] = "2026-10-26" if energy == "diesel" else "2026-10-20"
+        return {
+            "id": f"{pair_id}-{energy}",
+            "pair_id": pair_id,
+            "model": pair_id.title(),
+            "variant": energy,
+            "model_year": 2025,
+            "segment": "compacto",
+            "energy_type": energy,
+            "consumption": consumption,
+            "consumption_unit": "l/100km",
+            "source_url": "https://example.com/idae.csv",
+            "cycle": "WLTP",
+            "reviewed_on": "2026-10-26",
+            "market_status": "vigente",
+            "list_price": price,
+        }
+
+    return VehicleCatalog(
+        version="test",
+        source="test",
+        source_url="https://example.com",
+        vehicles=[
+            vehicle("priced", "gasoline", 5.4, 25000),
+            vehicle("priced", "diesel", 4.4, 27000),
+            vehicle("unpriced", "gasoline", 6.0, None),
+            vehicle("unpriced", "diesel", 5.0, None),
+        ],
+    )
+
+
+def test_vehicle_options_diesel_premium_is_the_list_price_gap():
+    catalog = _priced_catalog()
+    with patch("services.vehicle_cost_service.load_catalog", return_value=catalog), patch(
+        "services.vehicle_catalog.load_catalog", return_value=catalog
+    ):
+        pairs = {p["pair_id"]: p for p in get_vehicle_options()["pairs"]}
+
+    assert pairs["priced"]["diesel_premium"] == {
+        "eur": 2000,
+        "gasoline_list_price": 25000,
+        "diesel_list_price": 27000,
+        "source_urls": ["https://example.com/diesel", "https://example.com/gasoline"],
+        # Only as fresh as the older of the two prices.
+        "checked_on": "2026-10-20",
+    }
+    # No list prices (e.g. a trim no longer sold new): no premium rather than a guess.
+    assert pairs["unpriced"]["diesel_premium"] is None
+
+
+def test_prices_are_read_once_while_fresh():
+    with _patch_prices(_flat_prices(gasoline=1.50, diesel=1.45)) as download:
+        get_pair_breakeven(PAIR_ID, region=Region.peninsula)
+        get_pair_breakeven(PAIR_ID, region=Region.special)
+    assert download.call_count == 1

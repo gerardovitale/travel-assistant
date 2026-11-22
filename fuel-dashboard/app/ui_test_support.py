@@ -304,7 +304,7 @@ def trend_response(
     zip_code: Optional[str], fuel_type: FuelType, period: TrendPeriod, region: Region = Region.all
 ) -> TrendResponse:
     price_offset = 0.02 if zip_code else 0.0
-    # Islands, Ceuta and Melilla run well below the peninsula (lower fuel taxes).
+    # Canarias, Ceuta and Melilla run well below the peninsula (lower fuel taxes).
     if region == Region.special:
         price_offset -= 0.175
     # Gasoline sits above diesel, as in real data, so side-by-side charts show two distinct lines.
@@ -760,8 +760,22 @@ def _fuel_type_pair(pair_id: str):
     return pair[EnergyType.gasoline], pair[EnergyType.diesel]
 
 
+# Fixed list prices, so re-checking the catalog's real ones never changes what the UI tests see.
+_FUEL_TYPE_LIST_PRICES = {"vw-golf": (29423, 31393), "hyundai-tucson": (33891, 36391)}
+
+
 def fuel_type_vehicles_response() -> VehicleCatalogResponse:
-    return VehicleCatalogResponse(**get_vehicle_options())
+    options = get_vehicle_options()
+    for pair in options["pairs"]:
+        prices = _FUEL_TYPE_LIST_PRICES.get(pair["pair_id"])
+        pair["diesel_premium"] = prices and {
+            "eur": prices[1] - prices[0],
+            "gasoline_list_price": prices[0],
+            "diesel_list_price": prices[1],
+            "source_urls": ["https://example.com/precios"],
+            "checked_on": "2026-10-26",
+        }
+    return VehicleCatalogResponse(**options)
 
 
 def fuel_type_cost_response(
@@ -780,16 +794,27 @@ def fuel_type_cost_response(
     return rows
 
 
-def fuel_type_breakeven_response(pair_id: str = "", province: Optional[str] = None) -> BreakevenResponse:
+# Canarias-like prices, lower taxes and a wider diesel discount, so a scope switch changes the verdict figures.
+_FUEL_TYPE_SPECIAL_PRICES = (1.259, 1.109)
+
+
+def fuel_type_breakeven_response(
+    pair_id: str = "", province: str | None = None, region: Region = Region.all
+) -> BreakevenResponse:
     gasoline, diesel = _fuel_type_pair(pair_id)
-    metrics = _breakeven_metrics(gasoline, diesel, _FUEL_TYPE_GASOLINE_PRICE, _FUEL_TYPE_DIESEL_PRICE)
+    gasoline_price, diesel_price = (
+        _FUEL_TYPE_SPECIAL_PRICES
+        if province is None and region == Region.special
+        else (_FUEL_TYPE_GASOLINE_PRICE, _FUEL_TYPE_DIESEL_PRICE)
+    )
+    metrics = _breakeven_metrics(gasoline, diesel, gasoline_price, diesel_price)
     return BreakevenResponse(
         pair_id=gasoline.pair_id,
         model=gasoline.model,
         segment=gasoline.segment,
         province=province,
-        gasoline=_fuel_type_cost_row(gasoline, _FUEL_TYPE_GASOLINE_PRICE),
-        diesel=_fuel_type_cost_row(diesel, _FUEL_TYPE_DIESEL_PRICE),
+        gasoline=_fuel_type_cost_row(gasoline, gasoline_price),
+        diesel=_fuel_type_cost_row(diesel, diesel_price),
         # Spread, don't enumerate: a new metric must reach the fixture without a second edit here.
         **metrics,
         price_date=_FUEL_TYPE_DATE,

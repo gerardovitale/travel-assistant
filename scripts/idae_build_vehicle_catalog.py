@@ -141,6 +141,7 @@ def build_vehicle(pair: dict, fuel: str, row: pd.Series, csv_url: str, reviewed_
         "cycle": "WLTP",
         "reviewed_on": reviewed_on.isoformat(),
         "market_status": spec["market_status"],
+        "list_price": spec.get("list_price"),
     }
 
 

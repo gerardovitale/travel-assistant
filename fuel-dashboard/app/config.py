@@ -90,12 +90,13 @@ class Settings(BaseSettings):
     insights_historical_enabled: bool = False
     insights_reportes_enabled: bool = True
 
-    # Reports listed inside the Reportes tab. The brand report (marcas) is always on with the tab;
-    # the fuel-type one ships dark until the catalog's WLTP figures have been verified against
-    # manufacturer spec sheets. See app/data/vehicle_catalog.json.
+    # The fuel-type report: the "combustible" report inside the Reportes tab, its /reportes/fuel-type/*
+    # endpoints and the "Gasolina o diésel" calculator on /insights, which reads them. On: the catalog's
+    # WLTP figures come from IDAE (see app/data/vehicle_catalog.json).
     report_fuel_type_enabled: bool = True
-    # Default annual mileage for the fuel-type report. Only scales the euro gap — it never changes
-    # which engine wins, because fuel-only cost is linear in km.
+    # Default annual mileage for the report and the calculator (snapped to the calculator's 1000 km
+    # slider steps). In the Reportes tab it only scales the euro gap, as fuel-only cost is linear in km;
+    # in the calculator it can flip the winner, because the diesel's purchase premium is netted off.
     report_fuel_type_default_km_year: int = 15000
     report_fuel_type_default_pair: str = "vw-golf"
 

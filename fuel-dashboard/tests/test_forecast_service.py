@@ -328,7 +328,7 @@ def test_get_historical_forecast_for_a_region_uses_the_trend_cache_series(mock_t
     mock_trend.assert_called_once_with("diesel_a_price", 180, region="peninsula")
     assert result.insufficient_data is False
     assert (result.geography_type, result.geography_value, result.source) == ("region", "peninsula", "region")
-    assert result.explanation.startswith("Ahora mismo los precios en la España peninsular están")
+    assert result.explanation.startswith("Ahora mismo los precios en la península y Baleares están")
 
 
 @patch("services.forecast_service.download_aggregate", return_value=None)
@@ -342,10 +342,10 @@ def test_get_historical_forecast_for_a_region_without_history_is_insufficient(mo
     assert result.geography_value == "special"
 
 
-def test_explanation_names_islands_ceuta_and_melilla_for_the_special_region():
+def test_explanation_names_canarias_ceuta_and_melilla_for_the_special_region():
     text = forecast_explanation("region", "special", "expensive", 0.4, 0.6, confidence=0.8)
 
-    assert text.startswith("Ahora mismo los precios en las islas, Ceuta y Melilla están altos.")
+    assert text.startswith("Ahora mismo los precios en Canarias, Ceuta y Melilla están altos.")
 
 
 @patch("services.forecast_service.download_aggregate")

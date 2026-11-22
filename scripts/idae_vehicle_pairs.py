@@ -35,6 +35,11 @@
 # date in each entry's comment below, and it can go stale silently (a model can be discontinued, or
 # un-discontinued, without this file changing). Re-verify against a manufacturer/press source before
 # relying on it for anything more than a UI hint, and update the comment's date when you do.
+#
+# ``list_price`` (optional) is the official Spanish list price of the same trim, as published on the
+# cited price table on ``checked_on``. The calculator on /insights takes the diesel premium from the
+# pair's two prices, so set both or neither, and only for trims sold new today. Like
+# ``market_status``, it goes stale: re-check it when you re-review the pair.
 from __future__ import annotations
 
 PAIRS: list[dict] = [
@@ -48,11 +53,23 @@ PAIRS: list[dict] = [
             "include": ["MY26", "1.5 TSI", "85 kW (115 CV)", "6 vel."],
             "exclude": ["Variant", "Life", "Style", "Ready2Go", "Aniversario", "eTSI", "Más"],
             "market_status": "vigente",
+            "list_price": {
+                "eur": 29423,
+                "version": "VOLKSWAGEN GOLF (O)1.5 TSI 85KW (116CV) GOLF",
+                "source_url": "https://www.quecochemecompro.com/precios/volkswagen-golf/",
+                "checked_on": "2026-10-26",
+            },
         },
         "diesel": {
             "include": ["MY26", "2.0 TDI", "85 kW (115 CV)", "6 vel."],
             "exclude": ["Variant", "R-Line", "Style", "Automatico", "Automático", "Más"],
             "market_status": "vigente",
+            "list_price": {
+                "eur": 31393,
+                "version": "VOLKSWAGEN GOLF (O)2.0 TDI 85KW (116CV) GOLF",
+                "source_url": "https://www.quecochemecompro.com/precios/volkswagen-golf/",
+                "checked_on": "2026-10-26",
+            },
         },
     },
     {
@@ -124,8 +141,28 @@ PAIRS: list[dict] = [
         "segment": "suv_compacto",
         "marca_match": "Hyundai",
         "modelo_match": "Tucson",
-        "gasoline": {"include": ["FL 1.6T 160CV KLASS"], "exclude": [], "market_status": "vigente"},
-        "diesel": {"include": ["FL 1.6D 115CV KLASS"], "exclude": [], "market_status": "vigente"},
+        "gasoline": {
+            "include": ["FL 1.6T 160CV KLASS"],
+            "exclude": [],
+            "market_status": "vigente",
+            "list_price": {
+                "eur": 33891,
+                "version": "HYUNDAI TUCSON 1.6T 118KW (160CV) KLASS",
+                "source_url": "https://www.quecochemecompro.com/precios/hyundai-tucson/",
+                "checked_on": "2026-10-26",
+            },
+        },
+        "diesel": {
+            "include": ["FL 1.6D 115CV KLASS"],
+            "exclude": [],
+            "market_status": "vigente",
+            "list_price": {
+                "eur": 36391,
+                "version": "HYUNDAI TUCSON 1.6D 85KW KLASS",
+                "source_url": "https://www.quecochemecompro.com/precios/hyundai-tucson/",
+                "checked_on": "2026-10-26",
+            },
+        },
     },
     {
         "pair_id": "kia-sportage",

@@ -7,8 +7,8 @@ from api.schemas import Region
 
 from data.duckdb_engine import query_national_price_trend
 from data.gcs_client import download_aggregate
-from data.geojson_loader import non_mainland_data_province_names
 from data.geojson_loader import normalize_data_province_name
+from data.geojson_loader import special_tax_data_province_names
 
 REGIMES = ("cheap", "normal", "expensive")
 REGIME_INDEX = {regime: idx for idx, regime in enumerate(REGIMES)}
@@ -232,11 +232,11 @@ def forecast_explanation(
     return message
 
 
-# How each region reads after "los precios": "… en la España peninsular están bajos".
+# How each region reads after "los precios": "… en la península y Baleares están bajos".
 REGION_PHRASES = {
     Region.all.value: "en España",
-    Region.peninsula.value: "en la España peninsular",
-    Region.special.value: "en las islas, Ceuta y Melilla",
+    Region.peninsula.value: "en la península y Baleares",
+    Region.special.value: "en Canarias, Ceuta y Melilla",
 }
 
 
@@ -334,7 +334,7 @@ def _build_response(
 
 
 def _in_region(region: Region) -> Callable[[str], bool]:
-    special = set(non_mainland_data_province_names())
+    special = set(special_tax_data_province_names())
     if region == Region.peninsula:
         return lambda province: province not in special
     if region == Region.special:

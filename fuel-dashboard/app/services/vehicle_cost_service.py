@@ -1,4 +1,5 @@
-# Running-cost comparison between energy types (the "combustible" report in the Reportes tab).
+# Running-cost comparison between energy types (the "combustible" report in the Reportes tab, and the
+# prices behind the "Gasolina o diésel" calculator on /insights).
 #
 # Answers "is diesel or gasoline cheaper to run?" by combining the curated consumption catalog with
 # our own province-level price history. Fuel cost only — no purchase price, maintenance, insurance or
@@ -16,11 +17,16 @@
 # Note there is deliberately **no annual-km breakeven** here. With fuel-only costs the yearly cost is
 # ``cost_per_100km * km / 100`` — linear through the origin — so whichever vehicle is cheaper per
 # 100 km is cheaper at every mileage. Annual km sizes the gap, it never flips the winner. A km
-# breakeven only exists once a purchase premium enters the model, which this report excludes by
-# design; inventing one would be a trick. What *does* flip the answer is the consumption ratio (the
-# car), the price ratio (the province), and time.
+# breakeven only exists once a purchase premium enters the model. This report leaves it out; the
+# /insights calculator adds it in the browser (``fuelChoice`` in static/js/insights_story.js), from
+# the diesel premium of sourced list prices (``diesel_premium`` below), never an invented one. What
+# *does* flip the fuel-only answer is the consumption ratio (the car), the price ratio (the province),
+# and time.
+import time
+
 import pandas as pd
 from api.schemas import EnergyType
+from api.schemas import Region
 from services.vehicle_catalog import get_pair
 from services.vehicle_catalog import get_vehicle
 from services.vehicle_catalog import list_pairs
@@ -29,8 +35,7 @@ from services.vehicle_catalog import SEGMENT_LABELS
 from services.vehicle_catalog import Vehicle
 
 from data.gcs_client import download_aggregate
-from data.geojson_loader import is_mainland_province
-from data.geojson_loader import normalize_data_province_name
+from data.geojson_loader import scope_mask
 
 PROVINCE_AGGREGATE = "province_daily_stats.parquet"
 
@@ -50,8 +55,25 @@ FUEL_COLUMN_BY_ENERGY: dict[EnergyType, str] = {
 TIE_MARGIN_PCT = 1.0
 
 
+# The /insights calculator reads prices on every page view, and each read re-loads and re-cleans the
+# whole parquet. The aggregate changes once a day, so reusing a clean copy for a few minutes is safe.
+_PRICES_TTL_SECONDS = 300
+_prices_cache: tuple[float, pd.DataFrame] | None = None
+
+
 def _load_prices() -> pd.DataFrame | None:
-    """Province daily prices, cleaned. ``None`` when the aggregate is unavailable."""
+    """Province daily prices, cleaned. ``None`` when the aggregate is unavailable. Callers must not mutate it."""
+    global _prices_cache
+    now = time.monotonic()
+    if _prices_cache is not None and now - _prices_cache[0] < _PRICES_TTL_SECONDS:
+        return _prices_cache[1]
+    prices = _read_prices()
+    # A missing aggregate is not cached: the next request tries again.
+    _prices_cache = (now, prices) if prices is not None else None
+    return prices
+
+
+def _read_prices() -> pd.DataFrame | None:
     df = download_aggregate(PROVINCE_AGGREGATE)
     if df is None or df.empty:
         return None
@@ -64,15 +86,19 @@ def _load_prices() -> pd.DataFrame | None:
     return prices if not prices.empty else None
 
 
-def _daily_series(prices: pd.DataFrame, energy_type: EnergyType, province: str | None) -> pd.DataFrame:
-    """Daily EUR/unit for an energy type, station-count weighted. Empty frame when unpriceable."""
+def _daily_series(
+    prices: pd.DataFrame, energy_type: EnergyType, province: str | None, region: Region = Region.all
+) -> pd.DataFrame:
+    """Daily EUR/unit for an energy type, station-count weighted. Empty frame when unpriceable.
+
+    *region* scopes the series when no province is given: one fuel-tax regime (see ``scope_mask``).
+    """
     fuel_column = FUEL_COLUMN_BY_ENERGY.get(energy_type)
     if fuel_column is None:
         return pd.DataFrame(columns=["date", "price"])
 
     subset = prices[prices["fuel_type"] == fuel_column]
-    if province is not None:
-        subset = subset[subset["province"] == normalize_data_province_name(province)]
+    subset = subset[scope_mask(subset["province"], province, region)]
     if subset.empty:
         return pd.DataFrame(columns=["date", "price"])
 
@@ -140,12 +166,31 @@ def _vehicle_payload(vehicle: Vehicle, price: float | None, price_date: str | No
     }
 
 
-def _pair_breakeven_ratio(pair) -> float | None:
+def _gasoline_diesel(pair) -> tuple[Vehicle, Vehicle] | None:
     by_energy = {v.energy_type: v for v in pair.vehicles}
     gasoline, diesel = by_energy.get(EnergyType.gasoline), by_energy.get(EnergyType.diesel)
-    if gasoline is None or diesel is None:
+    return (gasoline, diesel) if gasoline is not None and diesel is not None else None
+
+
+def _pair_breakeven_ratio(pair) -> float | None:
+    couple = _gasoline_diesel(pair)
+    return round(_breakeven_ratio(*couple), 4) if couple else None
+
+
+def _diesel_premium(pair) -> dict | None:
+    """What the diesel trim costs more than the gasoline one at list price, when both are known."""
+    couple = _gasoline_diesel(pair)
+    if couple is None or couple[0].list_price is None or couple[1].list_price is None:
         return None
-    return round(_breakeven_ratio(gasoline, diesel), 4)
+    gasoline, diesel = couple[0].list_price, couple[1].list_price
+    return {
+        "eur": round(diesel.eur - gasoline.eur, 2),
+        "gasoline_list_price": gasoline.eur,
+        "diesel_list_price": diesel.eur,
+        "source_urls": list(dict.fromkeys([diesel.source_url, gasoline.source_url])),
+        # The older of the two checks: the premium is only as fresh as its stalest price.
+        "checked_on": min(gasoline.checked_on, diesel.checked_on).isoformat(),
+    }
 
 
 def get_vehicle_options() -> dict:
@@ -173,6 +218,7 @@ def get_vehicle_options() -> dict:
                 # None when the pair has no gasoline/diesel couple to compare — the catalog only
                 # requires two energy types, so a diesel+electric pair is valid and must not 500 here.
                 "breakeven_ratio": _pair_breakeven_ratio(pair),
+                "diesel_premium": _diesel_premium(pair),
                 "vehicles": [
                     {
                         "vehicle_id": v.id,
@@ -189,6 +235,8 @@ def get_vehicle_options() -> dict:
             for pair in list_pairs()
         ],
         "unpriceable_energy_types": sorted(e.value for e in EnergyType if e not in priceable),
+        # So the /insights calculator calls a tie exactly where the verdicts here do.
+        "tie_margin_pct": TIE_MARGIN_PCT,
     }
 
 
@@ -260,7 +308,7 @@ def _breakeven_metrics(gasoline: Vehicle, diesel: Vehicle, gasoline_price: float
     }
 
 
-def get_pair_breakeven(pair_id: str, province: str | None = None) -> dict | None:
+def get_pair_breakeven(pair_id: str, province: str | None = None, region: Region = Region.all) -> dict | None:
     """Current verdict for a model pair. ``None`` when the pair or its prices are unavailable."""
     pair = get_pair(pair_id)
     gasoline, diesel = pair.get(EnergyType.gasoline), pair.get(EnergyType.diesel)
@@ -272,8 +320,8 @@ def get_pair_breakeven(pair_id: str, province: str | None = None) -> dict | None
         return None
 
     aligned = _latest_common_prices(
-        _daily_series(prices, EnergyType.gasoline, province),
-        _daily_series(prices, EnergyType.diesel, province),
+        _daily_series(prices, EnergyType.gasoline, province, region),
+        _daily_series(prices, EnergyType.diesel, province, region),
     )
     if aligned is None:
         return None
@@ -295,9 +343,9 @@ def get_pair_breakeven(pair_id: str, province: str | None = None) -> dict | None
 def get_breakeven_by_province(pair_id: str, mainland_only: bool = True) -> dict | None:
     """Latest verdict per province, best-for-diesel first. ``None`` when data is unavailable.
 
-    Non-mainland provinces (Canarias, Baleares, Ceuta, Melilla — see ``is_mainland_province``) are
-    excluded by default: their fuel tax regime differs enough that they would top or bottom any
-    ranking for a reason that has nothing to do with the engine choice.
+    Canarias, Ceuta and Melilla are excluded by default (Baleares stays: it pays the peninsula's taxes):
+    their fuel tax regime differs enough that they would top or bottom any ranking for a reason that has
+    nothing to do with the engine choice. ``mainland_only`` keeps its old name for the API.
     """
     pair = get_pair(pair_id)
     gasoline, diesel = pair.get(EnergyType.gasoline), pair.get(EnergyType.diesel)
@@ -320,10 +368,7 @@ def get_breakeven_by_province(pair_id: str, mainland_only: bool = True) -> dict 
     columns = [FUEL_COLUMN_BY_ENERGY[EnergyType.gasoline], FUEL_COLUMN_BY_ENERGY[EnergyType.diesel]]
     subset = prices[prices["fuel_type"].isin(columns)]
     if mainland_only:
-        # Resolve per distinct province, not per row: the province column runs to tens of thousands
-        # of rows and is_mainland_province re-normalises the name on every call.
-        mainland = {p for p in subset["province"].unique() if is_mainland_province(p)}
-        subset = subset[subset["province"].isin(mainland)]
+        subset = subset[scope_mask(subset["province"], None, Region.peninsula)]
     if subset.empty:
         return empty
 

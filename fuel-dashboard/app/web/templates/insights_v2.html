@@ -5,6 +5,7 @@
 {% set fuel_swatches = {"gasoline_95_e5_price": "rgb(var(--fp-series-gasoline))", "diesel_a_price": "rgb(var(--fp-series-diesel))"} %}
 {# Story sections, in page order. Each slice adds its own entry. #}
 {% set sections = [("tendencia", "Tendencia"), ("cuando", "Cuándo repostar"), ("marcas", "Marcas")] %}
+{% if fuel_type_enabled %}{% set sections = sections + [("combustible", "Gasolina o diésel")] %}{% endif %}
 {% set brand_kinds = [("all", "Todas"), ("low_cost", "Low-cost"), ("traditional", "Tradicionales")] %}
 {% block title %}Insights y tendencias · Fuel Precision{% endblock %}
 {% block meta_description %}El pulso del combustible en España: precios de gasolina y diésel, tendencias y comparativas por provincia, actualizados a diario.{% endblock %}
@@ -25,11 +26,12 @@
       <label class="fp-hero-select">
         {{ ui.icon("location_on") }}
         <span class="sr-only">Zona</span>
-        {#- Islands, Ceuta and Melilla have their own taxes, so they are a separate scope, never mixed into the peninsula. #}
+        {#- Scopes follow the fuel-tax regimes: Canarias, Ceuta and Melilla pay much less, so they are never mixed
+            with the peninsula; Baleares pays the same taxes and goes with it. #}
         <select name="scope" data-testid="insights-scope-select">
-          <option value="peninsula">España peninsular</option>
-          <option value="special">Islas, Ceuta y Melilla</option>
-          <option value="compare">Península vs. islas, Ceuta y Melilla</option>
+          <option value="peninsula">Península y Baleares</option>
+          <option value="special">Canarias, Ceuta y Melilla</option>
+          <option value="compare">Península y Baleares vs. Canarias, Ceuta y Melilla</option>
           <optgroup label="Provincias" data-province-options></optgroup>
         </select>
       </label>
@@ -43,7 +45,7 @@
     <div class="fp-card fp-kpi{% if fuel != default_fuel %} hidden{% endif %}" data-kpi-price="{{ fuel }}" data-testid="kpi-price-{{ fuel }}">
       <span class="fp-kpi__label">{{ ui.icon("local_gas_station") }}Precio medio hoy · {{ label }}</span>
       <p class="fp-kpi__value"><span data-kpi-value>{{ national_avg[fuel] | price }}</span> <span class="text-sm font-body font-normal text-on-surface-variant">€/l</span></p>
-      <span data-kpi-delta class="text-xs text-on-surface-variant">Media peninsular</span>
+      <span data-kpi-delta class="text-xs text-on-surface-variant">Península y Baleares</span>
     </div>
     {% endfor %}
     <div class="fp-card fp-kpi" data-testid="kpi-best-day">
@@ -73,12 +75,12 @@
 </nav>
 
 <main class="max-w-6xl mx-auto px-5 md:px-8 pt-8 pb-16 space-y-14">
-  {% set construction_note %}<strong>Sección en construcción.</strong> Estamos rediseñando los insights y añadiremos provincias, la calculadora y más en las próximas semanas. Mientras tanto, los informes anteriores siguen en la <a href="/insights/trends" class="underline font-semibold" data-testid="insights-previous-link">versión anterior</a>.{% endset %}
+  {% set construction_note %}<strong>Sección en construcción.</strong> Estamos rediseñando los insights y añadiremos provincias, el petróleo y más en las próximas semanas. Mientras tanto, los informes anteriores siguen en la <a href="/insights/trends" class="underline font-semibold" data-testid="insights-previous-link">versión anterior</a>.{% endset %}
   {{ ui.banner(construction_note, icon="construction", attrs={"data-testid": "insights-construction-note"}) }}
   <section id="tendencia" data-testid="section-tendencia" class="fp-card md:p-6 scroll-mt-32" aria-labelledby="trend-headline">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <p class="fp-eyebrow text-on-surface-variant">Tendencia · <span data-testid="trend-scope" id="trend-scope">Península</span></p>
+        <p class="fp-eyebrow text-on-surface-variant">Tendencia · <span data-testid="trend-scope" id="trend-scope">Península y Baleares</span></p>
         <h2 id="trend-headline" data-testid="trend-headline" class="fp-story-title">Evolución del precio medio</h2>
         <p class="mt-1 text-sm text-on-surface-variant">Media diaria de las estaciones de la zona. Pasa el cursor o toca el gráfico para ver cada día.</p>
       </div>
@@ -102,7 +104,7 @@
   <section id="cuando" data-testid="section-cuando" class="scroll-mt-32" aria-labelledby="when-headline">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <p class="fp-eyebrow text-on-surface-variant">Cuándo repostar · <span id="when-scope" data-testid="when-scope">Península</span></p>
+        <p class="fp-eyebrow text-on-surface-variant">Cuándo repostar · <span id="when-scope" data-testid="when-scope">Península y Baleares</span></p>
         <h2 id="when-headline" data-testid="when-headline" class="fp-story-title">¿Qué día sale más barato?</h2>
         <p class="mt-1 text-sm text-on-surface-variant">Diferencia media de cada día con la media de su propia semana, en semanas completas de los últimos 6 meses.</p>
       </div>
@@ -142,7 +144,7 @@
   <section id="marcas" data-testid="section-marcas" class="scroll-mt-32" aria-labelledby="brands-headline">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <p class="fp-eyebrow text-on-surface-variant">Marcas · <span id="brands-scope" data-testid="brands-scope">Península</span></p>
+        <p class="fp-eyebrow text-on-surface-variant">Marcas · <span id="brands-scope" data-testid="brands-scope">Península y Baleares</span></p>
         <h2 id="brands-headline" data-testid="brands-headline" class="fp-story-title">¿Qué marcas salen más baratas?</h2>
         <p class="mt-1 text-sm text-on-surface-variant">Diferencia media de cada marca con la media de las demás gasolineras de su mismo código postal, cada día de los últimos 90. Toca una marca para ver su ficha.</p>
       </div>
@@ -178,6 +180,58 @@
       </div>
     </div>
   </section>
+
+  {% if fuel_type_enabled %}
+  <section id="combustible" data-testid="section-combustible" class="scroll-mt-32" aria-labelledby="fuel-choice-headline"
+           data-default-km="{{ fuel_type_default_km }}" data-default-pair="{{ fuel_type_default_pair }}">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="fp-eyebrow text-on-surface-variant">Gasolina o diésel · <span id="fuel-choice-scope" data-testid="fuel-choice-scope">Península y Baleares</span></p>
+        <h2 id="fuel-choice-headline" class="fp-story-title">¿Compensa un diésel con tu forma de conducir?</h2>
+        <p class="mt-1 text-sm text-on-surface-variant">Elige un coche y ajusta tus kilómetros y lo que cuesta de más la versión diésel. Usamos los precios de hoy en la zona.</p>
+      </div>
+      {{ share_button("combustible") }}
+    </div>
+    <div class="mt-5 grid gap-4 lg:grid-cols-2">
+      <div class="fp-card md:p-6 flex flex-col gap-6" data-testid="fuel-choice-inputs">
+        <div>
+          <label class="fp-label" for="fuel-choice-pair">Coche</label>
+          <select id="fuel-choice-pair" name="pair" class="fp-input" data-testid="fuel-choice-pair"></select>
+          <p id="fuel-choice-consumption" data-testid="fuel-choice-consumption" class="mt-2 text-xs text-on-surface-variant">Consumo homologado: —</p>
+        </div>
+        {% for name, label, min, max, step in [("km", "Kilómetros al año", 3000, 40000, 1000), ("premium", "Sobrecoste del diésel al comprarlo", 0, 5000, 10), ("years", "Años que tendrás el coche", 2, 15, 1)] %}
+        <label class="block">
+          <span class="flex justify-between gap-3 text-sm"><span class="font-semibold">{{ label }}</span><strong class="text-primary tabular-nums" data-range-value="{{ name }}">—</strong></span>
+          <input type="range" class="fp-range mt-2" name="{{ name }}" min="{{ min }}" max="{{ max }}" step="{{ step }}" data-testid="fuel-choice-{{ name }}">
+        </label>
+        {% if name == "premium" %}
+        <p id="fuel-choice-premium-source" data-testid="fuel-choice-premium-source" class="hidden -mt-4 text-xs text-on-surface-variant"><span data-premium-text></span><span data-premium-links></span></p>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <div class="fp-card md:p-6 flex flex-col gap-4" data-testid="fuel-choice-result">
+        <span id="fuel-choice-tag" data-testid="fuel-choice-tag" class="fp-verdict-tag self-start">—</span>
+        {#- Only the verdict is announced: the rest of the card changes on every slider step. #}
+        <p id="fuel-choice-verdict" data-testid="fuel-choice-verdict" aria-live="polite" class="font-headline text-2xl font-extrabold text-primary leading-tight">—</p>
+        <p id="fuel-choice-detail" data-testid="fuel-choice-detail" class="text-sm text-on-surface-variant"></p>
+        <div class="pt-3 border-t border-surface-container">
+          <p class="fp-eyebrow text-on-surface-variant">Combustible por cada 100 km</p>
+          <div class="mt-2 space-y-2" data-testid="fuel-choice-bars">
+            {% for key, label in [("gasoline", "Gasolina 95"), ("diesel", "Diésel")] %}
+            <div class="fp-cost-row"><span>{{ label }}</span><span class="fp-cost-row__track"><span class="fp-cost-row__bar fp-cost-row__bar--{{ key }}" data-cost-bar="{{ key }}"></span></span><strong class="tabular-nums text-right" data-cost-value="{{ key }}">—</strong></div>
+            {% endfor %}
+          </div>
+          <p id="fuel-choice-prices" data-testid="fuel-choice-prices" class="mt-2 text-xs text-on-surface-variant"></p>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="rounded-xl bg-surface-container-low p-3"><p class="fp-eyebrow text-on-surface-variant" data-yearly-label>Ahorro en combustible / año</p><p data-testid="fuel-choice-yearly" class="mt-1 font-headline text-lg sm:text-xl font-extrabold">—</p></div>
+          <div class="rounded-xl bg-surface-container-low p-3"><p class="fp-eyebrow text-on-surface-variant">Compensa desde</p><p data-testid="fuel-choice-breakeven" class="mt-1 font-headline text-lg sm:text-xl font-extrabold">—</p></div>
+        </div>
+        <p class="text-xs text-on-surface-variant">Solo combustible, con el consumo homologado WLTP que publica el IDAE; en carretera suele ser algo mayor. No incluye mantenimiento, seguro ni impuestos.</p>
+      </div>
+    </div>
+  </section>
+  {% endif %}
 </main>
 {% endblock %}
 

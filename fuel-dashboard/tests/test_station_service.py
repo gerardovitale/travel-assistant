@@ -775,11 +775,25 @@ def test_get_brand_win_rate_report_computes_weighted_average(mock_agg):
     assert rows is not None
     assert len(rows) == 2
     ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
-    # weighted: (70.0*100 + 75.0*50) / 150 = 71.67
-    assert ballenoil["win_rate_pct"] == pytest.approx(71.67, abs=0.01)
-    assert ballenoil["appearances"] == 150
+    # zip-code rows only: the locality row (75.0, 50) covers the same station-days and must not count
+    assert ballenoil["win_rate_pct"] == pytest.approx(70.0, abs=0.01)
+    assert ballenoil["appearances"] == 100
     # sorted descending by win_rate_pct
     assert rows[0]["win_rate_pct"] >= rows[-1]["win_rate_pct"]
+
+
+@patch("data.gcs_client.download_aggregate")
+def test_get_brand_win_rate_report_ignores_coarser_geo_levels(mock_agg):
+    """The same station-days sit at zip, locality and municipality level; only one level may count."""
+    from services.station_service import get_brand_win_rate_report
+
+    df = _make_win_rate_df()
+    extra = df[df["brand"] == "ballenoil"].iloc[:1].assign(geo_level="municipality", geo_value="Madrid")
+    mock_agg.return_value = pd.concat([df, extra], ignore_index=True)
+    rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
+
+    ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
+    assert ballenoil["appearances"] == 100
 
 
 @patch("data.gcs_client.download_aggregate")
@@ -818,6 +832,8 @@ def test_get_brand_price_comparison_report_computes_weighted_average(mock_agg):
     ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
     assert ballenoil["price_delta_pct"] == pytest.approx(-5.0, abs=0.01)
     assert ballenoil["days_below_market_pct"] == pytest.approx(90.0, abs=0.01)
+    # zip-code rows only (28001, 28002 x 50): locality and municipality rows are the same station-days
+    assert ballenoil["appearances"] == 100
     # sorted ascending by price_delta_pct (cheapest first)
     assert rows[0]["price_delta_pct"] <= rows[-1]["price_delta_pct"]
 
@@ -859,7 +875,8 @@ def test_get_brand_coverage_report_counts_geo_values_per_level(mock_agg):
     assert ballenoil["zip_codes"] == 2  # 28001 + 28002
     assert ballenoil["localities"] == 1  # Centro
     assert ballenoil["municipalities"] == 1  # Madrid
-    assert ballenoil["total_observations"] == 50 * 4  # 4 rows × 50 appearances
+    # zip-code rows only: locality and municipality rows repeat the same station-days
+    assert ballenoil["total_observations"] == 50 * 2
 
 
 @patch("data.gcs_client.download_aggregate")
@@ -1042,7 +1059,7 @@ def test_get_brand_win_rate_report_includes_confidence(mock_agg):
     mock_agg.return_value = _make_win_rate_df()
     rows = get_brand_win_rate_report("gasoline_95_e5_price", "cheapest")
 
-    # ballenoil 100+50=150 -> medium; repsol 200+100=300 -> medium
+    # zip-code rows only: ballenoil 100 -> medium; repsol 200 -> medium
     assert all("confidence" in r for r in rows)
     ballenoil = next(r for r in rows if r["brand"] == "ballenoil")
     assert ballenoil["confidence"] == "medium"
@@ -1078,7 +1095,7 @@ def test_get_brand_price_comparison_report_includes_weighted_prices_and_confiden
     # delta -5% -> brand price 1.45, market 1.50 (constant across rows -> weighted mean unchanged)
     assert ballenoil["brand_avg_price"] == pytest.approx(1.45, abs=1e-6)
     assert ballenoil["market_avg_price"] == pytest.approx(1.50, abs=1e-6)
-    # 4 geo rows x 50 appearances = 200 -> medium
+    # 2 zip-code rows x 50 appearances = 100 -> medium (the boundary; summing all levels gave 200)
     assert ballenoil["confidence"] == "medium"
 
 

@@ -30,15 +30,15 @@ export function changeOverDays(points, days) {
 
 const FUEL_NOUN = { gasoline_95_e5_price: "la gasolina 95", diesel_a_price: "el diésel" };
 
-// gap = islands-and-Ceuta/Melilla price minus peninsula price (€/l).
-// "En las islas, Ceuta y Melilla la gasolina 95 cuesta 0,175 €/l menos que en la península".
+// gap = Canarias, Ceuta and Melilla price minus the peninsula-and-Baleares price (€/l).
+// "En Canarias, Ceuta y Melilla la gasolina 95 cuesta 0,175 €/l menos que en la península y Baleares".
 export function regionGapHeadline(fuelType, gap) {
   const noun = FUEL_NOUN[fuelType] || "el combustible";
-  if (gap == null) return `Península vs. islas, Ceuta y Melilla: sin datos suficientes para ${noun}`;
+  if (gap == null) return `Península y Baleares vs. Canarias, Ceuta y Melilla: sin datos suficientes para ${noun}`;
   const sign = displaySign(gap, PRICE_DIGITS);
-  if (sign === 0) return `En las islas, Ceuta y Melilla ${noun} cuesta lo mismo que en la península`;
+  if (sign === 0) return `En Canarias, Ceuta y Melilla ${noun} cuesta lo mismo que en la península y Baleares`;
   const word = sign < 0 ? "menos" : "más";
-  return `En las islas, Ceuta y Melilla ${noun} cuesta ${formatNum(Math.abs(gap), PRICE_DIGITS)} €/l ${word} que en la península`;
+  return `En Canarias, Ceuta y Melilla ${noun} cuesta ${formatNum(Math.abs(gap), PRICE_DIGITS)} €/l ${word} que en la península y Baleares`;
 }
 
 // First data day (ISO date) when a series starts after the period's start day, i.e. history is
@@ -135,4 +135,55 @@ export function brandsHeadline(brands) {
 export function brandSavings(priceGap, { tank = 50, year = 1200 } = {}) {
   const sign = displaySign(priceGap, PRICE_DIGITS);
   return { sign, tank: Math.abs(priceGap) * tank, year: Math.abs(priceGap) * year };
+}
+
+// Gasoline or diesel over the years the car is kept, fuel only. gasoline100 / diesel100: € per 100 km at
+// today's prices; premium: how much more the diesel version costs to buy (€); km: per year.
+// tieMarginPct is the server's TIE_MARGIN_PCT (sent with the catalog): a gap smaller than that share of
+// the gasoline fuel bill is a tie, which with no premium is exactly the server's per-100 km tie band.
+export function fuelChoice({ gasoline100, diesel100, km, premium, years, tieMarginPct = 0 }) {
+  const perKm = (gasoline100 - diesel100) / 100; // € diesel saves per km; negative when it costs more
+  const band = (tieMarginPct / 100) * (gasoline100 / 100); // € per km still inside the tie band
+  const yearly = perKm * km;
+  const total = yearly * years - premium;
+  const tie = Math.abs(total) < band * km * years;
+  // Diesel wins once km × years × (perKm − band) ≥ premium; it never does if that edge is not positive.
+  const edge = perKm - band;
+  return {
+    perKm,
+    yearly,
+    total,
+    winner: tie ? "tie" : total > 0 ? "diesel" : "gasoline",
+    // Rounded up to 500 km, so it agrees with the verdict at every slider step (multiples of 1000 km).
+    breakevenKm: edge > 0 ? Math.ceil(premium / (years * edge) / 500) * 500 : null,
+    paybackYears: yearly > 0 ? premium / yearly : null,
+  };
+}
+
+// Verdict sentences for a fuelChoice result: "Con un diésel ahorras 157,60 € en 8 años".
+export function fuelChoiceText(choice, { premium, years }) {
+  const { winner, total, perKm, breakevenKm, paybackYears } = choice;
+  const headline = {
+    diesel: `Con un diésel ahorras ${formatEur(total)} en ${years} años`,
+    gasoline: `La gasolina te sale ${formatEur(-total)} más barata en ${years} años`,
+    tie: `Gasolina y diésel te cuestan prácticamente lo mismo en ${years} años`,
+  }[winner];
+  let detail;
+  if (breakevenKm == null) {
+    detail = perKm > 0
+      ? "Con los precios de hoy, el diésel gasta casi lo mismo en combustible por kilómetro, así que no compensa con ningún kilometraje."
+      : "Con los precios de hoy, el diésel no gasta menos en combustible por kilómetro, así que no compensa con ningún kilometraje.";
+  } else if (premium <= 0) {
+    detail = "Sin sobrecoste al comprarlo, el diésel ahorra desde el primer kilómetro.";
+  } else {
+    // The verdict nets two things the cost bars show separately: spell out both.
+    const tradeOff = `En ${years} años el diésel gasta ${formatEur(choice.yearly * years)} menos en combustible, pero cuesta ${formatEur(premium)} más al comprarlo.`;
+    // Rounded up, so a payback just past the years kept never reads as "8,0 años, más de los 8".
+    const payback = Math.ceil(paybackYears * 10) / 10;
+    const recover = payback <= years
+      ? `Recuperas el sobrecoste en ${formatNum(payback, 1)} años`
+      : `Recuperarías el sobrecoste en ${formatNum(payback, 1)} años, más de los ${years} que tendrás el coche`;
+    detail = `${tradeOff} ${recover}; compensa a partir de unos ${formatNum(breakevenKm, 0)} km al año.`;
+  }
+  return { headline, detail };
 }

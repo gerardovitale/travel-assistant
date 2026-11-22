@@ -81,7 +81,7 @@ test("a period longer than the stored history keeps its axis and says where the 
   await expect(page.getByTestId("trend-headline")).toContainText("en el último mes");
 });
 
-test("defaults to the peninsula and offers islands, Ceuta and Melilla as their own scope", async ({ page }) => {
+test("defaults to the peninsula with Baleares and offers Canarias, Ceuta and Melilla as their own scope", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (r) => {
     if (r.url().includes("/api/v1/trends/price")) requests.push(r.url());
@@ -89,19 +89,19 @@ test("defaults to the peninsula and offers islands, Ceuta and Melilla as their o
   await page.goto("/insights");
   await expect(page.getByTestId("trend-pair-chart")).toHaveAttribute("data-plot-ready", "true");
   expect(requests.every((u) => u.includes("region=peninsula"))).toBe(true);
-  await expect(page.getByTestId("trend-scope")).toHaveText("Península");
+  await expect(page.getByTestId("trend-scope")).toHaveText("Península y Baleares");
 
   await page.getByTestId("insights-scope-select").selectOption("special");
-  await expect(page.getByTestId("trend-scope")).toHaveText("Islas, Ceuta y Melilla");
+  await expect(page.getByTestId("trend-scope")).toHaveText("Canarias, Ceuta y Melilla");
   await expect(page.getByTestId("kpi-price-gasoline_95_e5_price")).toContainText("1,354");
   await expect(page).toHaveURL(/scope=special/);
 });
 
-test("compares the peninsula with islands, Ceuta and Melilla for the selected fuel", async ({ page }) => {
+test("compares the peninsula and Baleares with Canarias, Ceuta and Melilla for the selected fuel", async ({ page }) => {
   await page.goto("/insights?scope=compare");
   await expect(page.getByTestId("trend-pair-chart")).toHaveAttribute("data-plot-ready", "true");
   await expect(page.getByTestId("trend-headline")).toHaveText(
-    "En las islas, Ceuta y Melilla la gasolina 95 cuesta 0,175 €/l menos que en la península",
+    "En Canarias, Ceuta y Melilla la gasolina 95 cuesta 0,175 €/l menos que en la península y Baleares",
   );
   await expect(page.getByTestId("trend-spread")).toHaveText("0,175 €/l");
   // The KPI keeps showing the peninsula price while comparing.
@@ -141,7 +141,7 @@ test("Cuándo repostar names the cheapest weekday, the saving per tank and the 7
   await expect(page.getByTestId("kpi-best-day")).toContainText("Lunes");
   await expect(page.getByTestId("kpi-best-day")).toContainText("0,008 €/l menos que el viernes");
   await expect(page.getByTestId("forecast-recommendation")).toHaveText("Reposta hoy");
-  await expect(page.getByTestId("forecast-explanation")).toContainText("en la España peninsular están bajos");
+  await expect(page.getByTestId("forecast-explanation")).toContainText("en la península y Baleares están bajos");
   await expect(page.getByTestId("forecast-tomorrow")).toContainText("Lo más probable mañana: que siga barato (63 %)");
   await expect(page.getByTestId("kpi-forecast")).toContainText("Precios bajos ahora");
 
@@ -163,8 +163,8 @@ test("Cuándo repostar follows the zone selector", async ({ page }) => {
   await page.getByTestId("insights-scope-select").selectOption("special");
   const url = new URL((await request).url());
   expect(url.searchParams.getAll("fuel_type")).toEqual(["gasoline_95_e5_price", "diesel_a_price"]);
-  await expect(page.getByTestId("when-scope")).toHaveText("Islas, Ceuta y Melilla");
-  await expect(page.getByTestId("forecast-explanation")).toContainText("en las islas, Ceuta y Melilla");
+  await expect(page.getByTestId("when-scope")).toHaveText("Canarias, Ceuta y Melilla");
+  await expect(page.getByTestId("forecast-explanation")).toContainText("en Canarias, Ceuta y Melilla");
 });
 
 test("Cuándo repostar never shows the previous zone's answer while the new one loads", async ({ page }) => {
@@ -181,7 +181,7 @@ test("Cuándo repostar never shows the previous zone's answer while the new one 
   await expect(page.getByTestId("kpi-best-day")).toContainText("Cargando…");
   await expect(page.getByTestId("when-saving")).toBeHidden();
   release();
-  await expect(page.getByTestId("forecast-explanation")).toContainText("en las islas, Ceuta y Melilla");
+  await expect(page.getByTestId("forecast-explanation")).toContainText("en Canarias, Ceuta y Melilla");
 });
 
 test("Marcas ranks brands against their zip code, filters by kind and opens a brand's card", async ({ page }) => {
@@ -239,4 +239,66 @@ test("Marcas says the report is not available yet without an error toast", async
   await expect(page.getByTestId("brands-headline")).toHaveText("Las marcas no están disponibles ahora mismo");
   await expect(page.getByTestId("kpi-brand")).toContainText("Sin datos suficientes");
   await expect(page.locator("#toast")).not.toContainText("marcas");
+});
+
+test("Gasolina o diésel nets the yearly fuel saving against the diesel's list-price premium", async ({ page }) => {
+  const requests: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/v1/reportes/fuel-type/breakeven")) requests.push(r.url());
+  });
+  await page.goto("/insights");
+
+  // Only cars sold new with a sourced list price are offered, Golf first.
+  const pair = page.getByTestId("fuel-choice-pair");
+  await expect(pair.locator("option")).toHaveText(["Volkswagen Golf", "Hyundai Tucson"]);
+  // Golf at the fixture's 1,509 €/l gasoline and 1,449 €/l diesel, 15.000 km a year, 8 years, and its
+  // 1970 € list-price premium (31.393 € diesel, 29.423 € gasoline).
+  const source = page.getByTestId("fuel-choice-premium-source");
+  await expect(source).toContainText("diésel 31.393 €, gasolina 29.423 €");
+  await expect(source.getByRole("link", { name: "Fuente" })).toHaveAttribute("href", "https://example.com/precios");
+  const verdict = page.getByTestId("fuel-choice-verdict");
+  await expect(verdict).toHaveText("Con un diésel ahorras 157,60 € en 8 años");
+  await expect(page.getByTestId("fuel-choice-tag")).toContainText("Compensa el diésel");
+  await expect(page.getByTestId("fuel-choice-yearly")).toHaveText("265,95 €");
+  await expect(page.getByTestId("fuel-choice-breakeven")).toHaveText("15.000 km/año");
+  await expect(page.getByTestId("fuel-choice-detail")).toHaveText(
+    "En 8 años el diésel gasta 2127,60 € menos en combustible, pero cuesta 1970,00 € más al comprarlo. " +
+      "Recuperas el sobrecoste en 7,5 años; compensa a partir de unos 15.000 km al año.",
+  );
+
+  await page.getByTestId("fuel-choice-km").fill("5000");
+  await expect(verdict).toHaveText("La gasolina te sale 1260,80 € más barata en 8 años");
+  await expect(page.getByTestId("fuel-choice-tag")).toContainText("Compensa la gasolina");
+
+  await page.getByTestId("fuel-choice-premium").fill("0");
+  await expect(page.getByTestId("fuel-choice-breakeven")).toHaveText("Siempre");
+
+  // A new model brings its own premium.
+  await pair.selectOption("hyundai-tucson");
+  await expect(page.getByTestId("fuel-choice-consumption")).toHaveText("Consumo homologado: gasolina 6,8 · diésel 5,4 l/100 km");
+  await expect(page.locator('[data-range-value="premium"]')).toHaveText("2500 €");
+  // Inputs and models are priced in the browser: one request for the zone's prices.
+  expect(requests).toHaveLength(1);
+});
+
+test("Gasolina o diésel follows the zone selector", async ({ page }) => {
+  await page.goto("/insights");
+  await expect(page.getByTestId("fuel-choice-verdict")).toHaveText("Con un diésel ahorras 157,60 € en 8 años");
+  const request = page.waitForRequest((r) => r.url().includes("/api/v1/reportes/fuel-type/breakeven") && r.url().includes("region=special"));
+  await page.getByTestId("insights-scope-select").selectOption("special");
+  await request;
+  await expect(page.getByTestId("fuel-choice-scope")).toHaveText("Canarias, Ceuta y Melilla");
+  await expect(page.getByTestId("fuel-choice-verdict")).toHaveText("Con un diésel ahorras 332,80 € en 8 años");
+});
+
+test("Gasolina o diésel loads the car list again after a failed first load", async ({ page }) => {
+  let failures = 1;
+  await page.route("**/api/v1/reportes/fuel-type/vehicles", (route) =>
+    failures-- > 0 ? route.fulfill({ status: 500, contentType: "application/json", body: "{}" }) : route.continue(),
+  );
+  await page.goto("/insights");
+  await expect(page.getByTestId("fuel-choice-verdict")).toHaveText("La calculadora no está disponible ahora mismo");
+
+  await page.getByTestId("insights-scope-select").selectOption("special");
+  await expect(page.getByTestId("fuel-choice-verdict")).toHaveText("Con un diésel ahorras 332,80 € en 8 años");
 });

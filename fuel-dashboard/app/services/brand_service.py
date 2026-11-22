@@ -6,8 +6,7 @@ from api.schemas import BrandScorecardResponse
 from api.schemas import Region
 
 from data.gcs_client import download_aggregate
-from data.geojson_loader import is_mainland_province
-from data.geojson_loader import normalize_data_province_name
+from data.geojson_loader import scope_mask
 
 BRAND_SCORECARD_REPORT = "reports/brand_scorecard.parquet"
 
@@ -61,15 +60,6 @@ def brand_name(brand: str) -> str:
     return BRAND_NAMES.get(brand) or brand.title()
 
 
-def _in_scope(provinces: pd.Series, province: str | None, region: Region) -> pd.Series:
-    if province:
-        return provinces == normalize_data_province_name(province)
-    if region == Region.all:
-        return pd.Series(True, index=provinces.index)
-    mainland = provinces.isin([p for p in provinces.unique() if is_mainland_province(p)])
-    return mainland if region == Region.peninsula else ~mainland
-
-
 def _scores(df: pd.DataFrame, min_stations: int) -> list[BrandScore]:
     totals = df.groupby("brand")[_SUMMED].sum()
     totals = totals[(totals["stations"] >= min_stations) & (totals["zip_days"] >= MIN_ZIP_DAYS)]
@@ -102,7 +92,7 @@ def get_brand_scorecard(
         return None
     # The window is the report's, the same for every row, so it survives a scope with no rows.
     first = df.iloc[0] if not df.empty else None
-    df = df[_in_scope(df["province"], province, region)]
+    df = df[scope_mask(df["province"], province, region)]
     min_stations = MIN_PROVINCE_STATIONS if province else MIN_REGION_STATIONS
     return BrandScorecardResponse(
         window_start=None if first is None else str(first["window_start"]),

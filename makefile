@@ -5,9 +5,10 @@ ENV := $(PWD)/.env
 # Trivy version must match aquasecurity/trivy-action in .github/workflows/deploy.yaml
 TRIVY_VERSION := 0.69.3
 DASHBOARD_CREDENTIALS_PATH ?= $(PWD)/fuel-dashboard/gcs-fuel-dashboard-credentials.json
-# The fuel-type report inside the Reportes tab ships dark (see app/config.py). Preview it with:
-#   make fuel-dashboard.run DASHBOARD_REPORT_FUEL_TYPE_ENABLED=true
-DASHBOARD_REPORT_FUEL_TYPE_ENABLED ?= false
+# The fuel-type report (and the /insights "Gasolina o diésel" calculator) is on, as in production (see
+# app/config.py). Hide it with:
+#   make fuel-dashboard.run DASHBOARD_REPORT_FUEL_TYPE_ENABLED=false
+DASHBOARD_REPORT_FUEL_TYPE_ENABLED ?= true
 
 include $(ENV)
 export
@@ -22,6 +23,10 @@ done: setup test-local scan
 
 
 # DATA
+duck:
+	set -a; source .env; set +a
+	duckdb -ui
+
 data.download-fuel-daily-prices:
 	cd fuel-dashboard && uv run python ../scripts/download_fuel_data.py
 

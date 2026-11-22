@@ -12,6 +12,8 @@ import {
   coverageStart,
   DAY_NAMES,
   DAY_SHORT,
+  fuelChoice,
+  fuelChoiceText,
   priceChange,
   regionGapHeadline,
   tankSavingText,
@@ -26,7 +28,12 @@ const FUELS = [
   { key: "diesel_a_price", label: "Diésel" },
 ];
 // Scope select values that are not provinces. Province values are the raw /provinces keys.
-const REGION_SCOPES = { peninsula: "Península", special: "Islas, Ceuta y Melilla", compare: "Península vs. islas" };
+// Scopes follow the fuel-tax regimes; Baleares pays the same taxes as the peninsula.
+const REGION_SCOPES = {
+  peninsula: "Península y Baleares",
+  special: "Canarias, Ceuta y Melilla",
+  compare: "Península y Baleares vs. Canarias, Ceuta y Melilla",
+};
 
 const filters = document.getElementById("insights-filters");
 const scopeSelect = filters.querySelector('select[name="scope"]');
@@ -36,7 +43,7 @@ const state = {
   period: params.get("period") || filters.dataset.defaultPeriod,
   scope: params.get("scope") || filters.dataset.defaultScope,
   // main: { [fuelKey]: points } for the scope (the peninsula when comparing); special: the same for
-  // islands, Ceuta and Melilla, only loaded when comparing. window: the period's {start, end} days.
+  // Canarias, Ceuta and Melilla, only loaded when comparing. window: the period's {start, end} days.
   trend: { main: {}, special: null, window: null },
   // "Cuándo repostar" for the main scope, per fuel: weekday gaps and the 7-day forecast. While a new
   // scope loads, nothing from the previous one is shown.
@@ -44,10 +51,18 @@ const state = {
   // "Marcas" for the main scope: { [fuelKey]: brands } from /brands/scorecard, the kind filter and
   // the brand whose card is open (null = the cheapest one shown).
   brands: { fuels: {}, kind: "all", selected: null, expanded: false, loading: true, unavailable: false },
+  // "Gasolina o diésel": the catalog's pairs sold new today, today's prices for the main scope and the
+  // calculator's inputs. The premium starts at the pair's list-price gap. Inputs only re-render; a new
+  // scope refetches the prices.
+  fuelChoice: { pairs: [], pair: null, tieMarginPct: 0, prices: null, loading: true, km: 15000, premium: 0, years: 8 },
 };
 let trendRequest = 0;
 let whenRequest = 0;
 let brandsRequest = 0;
+let fuelChoiceRequest = 0;
+let fuelChoicePairsRequest = null;
+// Absent when the fuel-type report is switched off.
+const fuelChoiceSection = document.getElementById("combustible");
 
 const isCompare = () => state.scope === "compare";
 
@@ -96,14 +111,14 @@ function renderKpis() {
   }
 }
 
-// Fuel view: both fuels for one scope. Compare view: the selected fuel, peninsula vs. islands.
+// Fuel view: both fuels for one scope. Compare view: the selected fuel, peninsula and Baleares vs. Canarias, Ceuta and Melilla.
 function trendSeries() {
   const { main, special } = state.trend;
   if (!isCompare()) return FUELS.map((f) => ({ ...f, points: main[f.key] || [] }));
   const color = SERIES_COLORS[state.fuel];
   return [
     { key: "peninsula", label: REGION_SCOPES.peninsula, color, points: main[state.fuel] || [] },
-    { key: "special", label: REGION_SCOPES.special, endLabel: "Islas, Ceuta<br>y Melilla", color, dash: "dash", points: special?.[state.fuel] || [] },
+    { key: "special", label: REGION_SCOPES.special, endLabel: "Canarias, Ceuta<br>y Melilla", color, dash: "dash", points: special?.[state.fuel] || [] },
   ];
 }
 
@@ -151,7 +166,7 @@ function renderTrend() {
     const peninsula = lastPrice(main[state.fuel]), islands = lastPrice(special?.[state.fuel]);
     const gap = peninsula != null && islands != null ? islands - peninsula : null;
     headline.textContent = regionGapHeadline(state.fuel, gap);
-    spreadLabel.textContent = "Diferencia península − islas:";
+    spreadLabel.textContent = "Diferencia con Canarias, Ceuta y Melilla:";
     spread.textContent = gap == null ? "—" : formatSignedPriceDelta(-gap).replace("+", "");
   } else {
     headline.textContent = trendHeadline(state.fuel, state.period, priceChange(main[state.fuel]), { since: since && formatDay(since) });
@@ -313,6 +328,109 @@ function renderBrands() {
   renderBrandCard(selected);
 }
 
+const FUEL_CHOICE_TAG = {
+  diesel: ["check_circle", "Compensa el diésel"],
+  gasoline: ["info", "Compensa la gasolina"],
+  tie: ["balance", "Empate"],
+};
+
+const fuelChoicePair = () => state.fuelChoice.pairs.find((p) => p.pair_id === state.fuelChoice.pair) || null;
+const pairVehicle = (pair, energy) => pair?.vehicles.find((v) => v.energy_type === energy) || null;
+
+function renderFuelChoiceInputs() {
+  const fc = state.fuelChoice;
+  const labels = { km: `${formatNum(fc.km, 0)} km`, premium: `${formatNum(fc.premium, 0)} €`, years: `${fc.years} años` };
+  for (const [name, text] of Object.entries(labels)) {
+    fuelChoiceSection.querySelector(`[data-range-value="${name}"]`).textContent = text;
+    fuelChoiceSection.querySelector(`input[name="${name}"]`).value = String(fc[name]);
+  }
+  const pair = fuelChoicePair();
+  const gasoline = pairVehicle(pair, "gasoline"), diesel = pairVehicle(pair, "diesel");
+  document.getElementById("fuel-choice-consumption").textContent = pair
+    ? `Consumo homologado: gasolina ${formatNum(gasoline.consumption, 1)} · diésel ${formatNum(diesel.consumption, 1)} l/100 km`
+    : "Consumo homologado: —";
+  const premium = pair?.diesel_premium;
+  const source = document.getElementById("fuel-choice-premium-source");
+  source.classList.toggle("hidden", !premium);
+  if (!premium) return;
+  source.querySelector("[data-premium-text]").textContent =
+    `Precio oficial consultado el ${formatDay(premium.checked_on)}: diésel ${formatNum(premium.diesel_list_price, 0)} €, gasolina ${formatNum(premium.gasoline_list_price, 0)} €. Cámbialo si tu oferta es distinta.`;
+  const links = premium.source_urls.filter((url) => url.startsWith("https://"));
+  source.querySelector("[data-premium-links]").replaceChildren(
+    ...links.map((url, i) =>
+      Object.assign(document.createElement("a"), {
+        href: url,
+        target: "_blank",
+        rel: "noopener",
+        className: "ml-1 underline font-semibold",
+        textContent: links.length > 1 ? `Fuente ${i + 1}` : "Fuente",
+      }),
+    ),
+  );
+}
+
+// A value as its slider can show it: inside the slider's range, on one of its steps.
+function onSlider(name, value) {
+  const input = fuelChoiceSection.querySelector(`input[name="${name}"]`);
+  const min = Number(input.min), max = Number(input.max), step = Number(input.step);
+  return Math.min(max, Math.max(min, min + Math.round((value - min) / step) * step));
+}
+
+// A new model brings its own list-price premium.
+function selectFuelChoicePair(pairId) {
+  const pair = state.fuelChoice.pairs.find((p) => p.pair_id === pairId);
+  state.fuelChoice.pair = pair?.pair_id ?? null;
+  state.fuelChoice.premium = onSlider("premium", pair ? pair.diesel_premium.eur : 0);
+}
+
+function renderFuelChoice() {
+  if (!fuelChoiceSection) return;
+  const fc = state.fuelChoice;
+  document.getElementById("fuel-choice-scope").textContent = isCompare() ? REGION_SCOPES.peninsula : scopeLabel();
+  renderFuelChoiceInputs();
+  const tag = document.getElementById("fuel-choice-tag");
+  const verdict = document.getElementById("fuel-choice-verdict");
+  const detail = document.getElementById("fuel-choice-detail");
+  const pair = fuelChoicePair();
+  const gasoline = pairVehicle(pair, "gasoline"), diesel = pairVehicle(pair, "diesel");
+  const ready = !fc.loading && fc.prices && gasoline && diesel;
+  const costs = ready
+    ? { gasoline: gasoline.consumption * fc.prices.gasoline, diesel: diesel.consumption * fc.prices.diesel }
+    : null;
+  const top = costs ? Math.max(costs.gasoline, costs.diesel) : 0;
+  for (const key of ["gasoline", "diesel"]) {
+    fuelChoiceSection.querySelector(`[data-cost-bar="${key}"]`).style.width = costs ? `${(costs[key] / top) * 100}%` : "0";
+    fuelChoiceSection.querySelector(`[data-cost-value="${key}"]`).textContent = costs ? formatEur(costs[key]) : "—";
+  }
+  const prices = document.getElementById("fuel-choice-prices");
+  const yearly = fuelChoiceSection.querySelector('[data-testid="fuel-choice-yearly"]');
+  const yearlyLabel = fuelChoiceSection.querySelector("[data-yearly-label]");
+  const breakeven = fuelChoiceSection.querySelector('[data-testid="fuel-choice-breakeven"]');
+  if (!costs) {
+    tag.className = "fp-verdict-tag self-start";
+    tag.textContent = "—";
+    verdict.textContent = fc.loading ? "—" : "La calculadora no está disponible ahora mismo";
+    detail.textContent = fc.loading ? "Cargando…" : "Vuelve a intentarlo en unos minutos.";
+    prices.textContent = "";
+    yearlyLabel.textContent = "Ahorro en combustible / año";
+    yearly.textContent = "—";
+    breakeven.textContent = "—";
+    return;
+  }
+  const inputs = { km: fc.km, premium: fc.premium, years: fc.years };
+  const choice = fuelChoice({ gasoline100: costs.gasoline, diesel100: costs.diesel, tieMarginPct: fc.tieMarginPct, ...inputs });
+  const text = fuelChoiceText(choice, inputs);
+  const [icon, label] = FUEL_CHOICE_TAG[choice.winner];
+  tag.className = `fp-verdict-tag fp-verdict-tag--${choice.winner} self-start`;
+  tag.innerHTML = `<span class="material-symbols-outlined text-[16px]" aria-hidden="true">${icon}</span>${label}`;
+  verdict.textContent = text.headline;
+  detail.textContent = text.detail;
+  prices.textContent = `Precios del ${formatDay(fc.prices.date)}: gasolina 95 a ${formatNum(fc.prices.gasoline, 3)} €/l y diésel a ${formatNum(fc.prices.diesel, 3)} €/l.`;
+  yearlyLabel.textContent = choice.yearly < 0 ? "Sobrecoste en combustible / año" : "Ahorro en combustible / año";
+  yearly.textContent = formatEur(Math.abs(choice.yearly));
+  breakeven.textContent = choice.breakevenKm == null ? "Nunca" : choice.breakevenKm === 0 ? "Siempre" : `${formatNum(choice.breakevenKm, 0)} km/año`;
+}
+
 function render() {
   renderKpis();
   renderTrend();
@@ -320,6 +438,7 @@ function render() {
   renderWhen();
   renderBrandKpi();
   renderBrands();
+  renderFuelChoice();
 }
 
 const fetchTrend = (fuel, scopeParams) =>
@@ -395,6 +514,57 @@ async function loadBrands() {
   renderBrands();
 }
 
+// The model picker: gasoline/diesel pairs grouped by segment. It does not depend on the scope.
+// Only pairs with a list-price premium: the question is which one to buy, so both must be sold new.
+async function loadFuelChoicePairs() {
+  const { pairs, tie_margin_pct: tieMarginPct } = await api("/reportes/fuel-type/vehicles", { signal: AbortSignal.timeout(15000) });
+  state.fuelChoice.tieMarginPct = tieMarginPct;
+  const comparable = pairs.filter((p) => pairVehicle(p, "gasoline") && pairVehicle(p, "diesel") && p.diesel_premium);
+  const select = document.getElementById("fuel-choice-pair");
+  const segments = new Map();
+  for (const p of comparable) {
+    if (!segments.has(p.segment_label)) segments.set(p.segment_label, select.appendChild(Object.assign(document.createElement("optgroup"), { label: p.segment_label })));
+    segments.get(p.segment_label).append(new Option(p.model, p.pair_id));
+  }
+  const fallback = fuelChoiceSection.dataset.defaultPair;
+  state.fuelChoice.pairs = comparable;
+  selectFuelChoicePair(comparable.some((p) => p.pair_id === fallback) ? fallback : comparable[0]?.pair_id);
+  select.value = state.fuelChoice.pair ?? "";
+}
+
+// Loaded once; a failed load is tried again on the next zone change instead of being kept.
+function fuelChoicePairs() {
+  fuelChoicePairsRequest ??= loadFuelChoicePairs().catch((err) => {
+    fuelChoicePairsRequest = null;
+    throw err;
+  });
+  return fuelChoicePairsRequest;
+}
+
+// Today's gasoline and diesel prices for the main scope, both from the same day. Every model is priced
+// with them, so switching models never refetches.
+async function loadFuelChoice() {
+  if (!fuelChoiceSection) return;
+  const req = ++fuelChoiceRequest;
+  state.fuelChoice = { ...state.fuelChoice, prices: null, loading: true };
+  renderFuelChoice();
+  let prices = null;
+  try {
+    await fuelChoicePairs();
+    if (!state.fuelChoice.pair) throw Object.assign(new Error("sin coches en el catálogo"), { status: 404 });
+    const query = qs({ pair_id: state.fuelChoice.pair, ...mainScopeParams() });
+    const r = await api(`/reportes/fuel-type/breakeven?${query}`, { signal: AbortSignal.timeout(15000) });
+    prices = { gasoline: r.gasoline.price_per_unit, diesel: r.diesel.price_per_unit, date: r.price_date };
+  } catch (err) {
+    if (req !== fuelChoiceRequest) return;
+    // 404: no prices for this scope yet — the card says so, no error toast.
+    if (err.status !== 404) toast(`No se pudo cargar la calculadora: ${err.message}`, "error");
+  }
+  if (req !== fuelChoiceRequest) return; // a newer filter change already superseded this load
+  state.fuelChoice = { ...state.fuelChoice, prices, loading: false };
+  renderFuelChoice();
+}
+
 function onToggle(name, apply) {
   document.querySelector(`[data-toggle-group="${name}"]`)?.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-value]");
@@ -406,6 +576,16 @@ function onToggle(name, apply) {
 }
 
 async function init() {
+  if (fuelChoiceSection) {
+    state.fuelChoice.km = onSlider("km", Number(fuelChoiceSection.dataset.defaultKm) || state.fuelChoice.km);
+    fuelChoiceSection.addEventListener("input", (e) => {
+      const { name, value } = e.target;
+      if (name === "pair") selectFuelChoicePair(value);
+      else if (["km", "premium", "years"].includes(name)) state.fuelChoice[name] = Number(value);
+      else return;
+      renderFuelChoice();
+    });
+  }
   syncToggle("fuel", state.fuel);
   syncToggle("period", state.period);
   onToggle("fuel", (v) => { state.fuel = v; render(); }); // both fuels are already loaded
@@ -427,6 +607,7 @@ async function init() {
     loadTrend();
     loadWhen();
     loadBrands();
+    loadFuelChoice();
   });
   try {
     const group = scopeSelect.querySelector("[data-province-options]");
@@ -436,7 +617,7 @@ async function init() {
   }
   if (![...scopeSelect.options].some((o) => o.value === state.scope)) state.scope = filters.dataset.defaultScope;
   scopeSelect.value = state.scope;
-  await Promise.all([loadTrend(), loadWhen(), loadBrands()]);
+  await Promise.all([loadTrend(), loadWhen(), loadBrands(), loadFuelChoice()]);
 }
 
 init();

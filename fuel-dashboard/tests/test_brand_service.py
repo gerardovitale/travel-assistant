@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 from api.schemas import BrandKind
 from api.schemas import BrandReportFuelType
+from api.schemas import BrandScorecardResponse
 from api.schemas import Region
 from services.brand_service import get_brand_scorecard
 
@@ -27,12 +28,18 @@ def _row(province, brand, stations, station_days, price_gap_sum, zip_days, below
     }
 
 
+def _scorecard(fuels, **scope) -> BrandScorecardResponse:
+    scorecard = get_brand_scorecard(fuels, **scope)
+    assert scorecard is not None
+    return scorecard
+
+
 REPORT = pd.DataFrame(
     [
-        # Ballenoil: 10 + 2 stations on the peninsula, 5 on the islands.
+        # Ballenoil: 10 + 2 stations on the peninsula, 5 in Canarias.
         _row("madrid", "ballenoil", 10, 900, -90.0, 450, 400, 300),
         _row("soria", "ballenoil", 2, 100, -30.0, 50, 50, 50),
-        _row("balears (illes)", "ballenoil", 5, 400, -8.0, 200, 120, 40),
+        _row("palmas (las)", "ballenoil", 5, 400, -8.0, 200, 120, 40),
         _row("madrid", "repsol", 40, 3000, 150.0, 1000, 100, 50),
         # Too few zip-days with competitors to rank.
         _row("madrid", "costco", 12, 20, -4.0, 20, 20, 20),
@@ -48,7 +55,7 @@ def report():
 
 
 def test_a_region_sums_its_provinces_before_dividing(report):
-    scorecard = get_brand_scorecard([GAS], region=Region.peninsula)
+    scorecard = _scorecard([GAS], region=Region.peninsula)
 
     brands = {b.brand: b for b in scorecard.fuels[GAS.value]}
     assert list(brands) == ["ballenoil", "repsol"]  # cheapest first; costco lacks zip-days
@@ -61,13 +68,13 @@ def test_a_region_sums_its_provinces_before_dividing(report):
     assert (scorecard.window_start, scorecard.window_end, scorecard.days_covered) == ("2026-05-18", "2026-08-15", 90)
 
 
-def test_islands_are_their_own_scope_with_the_region_station_minimum(report):
-    # Five island stations are below the 10 a region needs.
-    assert get_brand_scorecard([GAS], region=Region.special).fuels[GAS.value] == []
+def test_canarias_ceuta_and_melilla_are_their_own_scope_with_the_region_station_minimum(report):
+    # Five Canarias stations are below the 10 a region needs.
+    assert _scorecard([GAS], region=Region.special).fuels[GAS.value] == []
 
 
 def test_a_province_matches_its_map_name_and_needs_fewer_stations(report):
-    scorecard = get_brand_scorecard([GAS], province="Illes Balears")
+    scorecard = _scorecard([GAS], province="Las Palmas")
 
     [ballenoil] = scorecard.fuels[GAS.value]
     assert ballenoil.stations == 5
@@ -75,7 +82,7 @@ def test_a_province_matches_its_map_name_and_needs_fewer_stations(report):
 
 
 def test_each_fuel_is_scored_from_its_own_rows(report):
-    scorecard = get_brand_scorecard([GAS, BrandReportFuelType.diesel_a_price], province="madrid")
+    scorecard = _scorecard([GAS, BrandReportFuelType.diesel_a_price], province="madrid")
 
     assert [b.brand for b in scorecard.fuels["diesel_a_price"]] == ["ballenoil"]
     assert scorecard.fuels["diesel_a_price"][0].price_gap == -0.08

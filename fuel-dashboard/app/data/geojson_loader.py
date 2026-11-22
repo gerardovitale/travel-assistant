@@ -2,6 +2,8 @@ import gzip
 import json
 from pathlib import Path
 
+import pandas as pd
+
 _GEOJSON_DIR = Path(__file__).resolve().parent / "geojson"
 _POSTAL_CODES_GEOJSON = "spain-postal-codes.geojson"
 _POSTAL_CODES_GEOJSON_GZ = "spain-postal-codes.geojson.gz"
@@ -44,9 +46,28 @@ _LOWERCASE_GEOJSON_TO_DATA: dict[str, str] = {
 }
 
 
-def non_mainland_data_province_names() -> list[str]:
-    """Lowercased data names of the provinces outside mainland Spain (islands, Ceuta, Melilla)."""
-    return sorted(_NON_MAINLAND_DATA_NAMES)
+# Fuel-tax regimes: Canarias (IGIC and its own fuel tax), Ceuta and Melilla (IPSI) pay much less than
+# the common regime, which Baleares shares with the peninsula. Region "special" is these provinces and
+# "peninsula" is the rest, so a regional price never mixes the two regimes.
+_SPECIAL_TAX_PROVINCES = {"Las Palmas", "Santa Cruz De Tenerife", "Ceuta", "Melilla"}
+_SPECIAL_TAX_DATA_NAMES = {_GEOJSON_TO_DATA.get(p, p).lower() for p in _SPECIAL_TAX_PROVINCES}
+
+
+def special_tax_data_province_names() -> list[str]:
+    """Lowercased data names of the provinces outside the common fuel-tax regime (Canarias, Ceuta, Melilla)."""
+    return sorted(_SPECIAL_TAX_DATA_NAMES)
+
+
+def scope_mask(provinces: pd.Series, province: str | None, region: str) -> pd.Series:
+    """Rows of *provinces* (data names) in one province, else in a region: "all", "peninsula" or "special"."""
+    if province:
+        return provinces == normalize_data_province_name(province)
+    if region == "all":
+        return pd.Series(True, index=provinces.index)
+    special = provinces.isin(
+        [p for p in provinces.dropna().unique() if normalize_data_province_name(p) in _SPECIAL_TAX_DATA_NAMES]
+    )
+    return ~special if region == "peninsula" else special
 
 
 def is_mainland_province(province: str) -> bool:

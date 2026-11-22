@@ -14,7 +14,7 @@ from data.gcs_client import download_aggregate
 from data.gcs_client import download_parquet_as_df
 from data.gcs_client import download_parquets_as_df
 from data.gcs_client import get_latest_parquet_file
-from data.geojson_loader import non_mainland_data_province_names
+from data.geojson_loader import special_tax_data_province_names
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +71,19 @@ ZIP_CODE_TREND_TABLE = "zip_code_daily_stats"
 # one-station rural zip must not weigh as much as a city one). Matches province_daily_stats and the
 # latest_stations average.
 STATION_WEIGHTED_AVG_PRICE = "SUM(avg_price * station_count) / NULLIF(SUM(station_count), 0)"
+
+
+def _window_ending_at_latest(table: str, days_param: str, where: str = "") -> str:
+    """SQL predicate keeping the ``days_param`` days that end on the latest date in ``table``.
+
+    Every period window ends on the last day with data, never on ``CURRENT_DATE``: a late or missed
+    ingestion would otherwise shorten the window (and an outage of N days would empty it). ``where``
+    narrows which rows decide "latest", e.g. one commodity series among several.
+    """
+    scope = f" WHERE {where}" if where else ""
+    return f"date > (SELECT MAX(date) FROM {table}{scope}) - INTERVAL ({days_param}) DAY"
+
+
 ZIP_CODE_TREND_COLUMNS = (
     "date",
     "zip_code",
@@ -444,12 +457,12 @@ def query_zip_code_price_trend(
         conn.execute("CREATE TEMP TABLE _zip_trend_agg AS SELECT * FROM df")
         try:
             result = conn.execute(
-                """
+                f"""
                 SELECT date, avg_price, min_price, max_price
                 FROM _zip_trend_agg
                 WHERE zip_code = $1
                     AND fuel_type = $2
-                    AND date >= CURRENT_DATE - INTERVAL ($3) DAY
+                    AND {_window_ending_at_latest("_zip_trend_agg", "$3")}
                 ORDER BY date ASC
                 """,
                 [zip_code, fuel_type, days_back],
@@ -474,7 +487,7 @@ def query_cached_zip_code_price_trend(zip_code: str, fuel_type: str, days_back: 
             FROM {ZIP_CODE_TREND_TABLE}
             WHERE zip_code = $1
                 AND fuel_type = $2
-                AND date >= CURRENT_DATE - INTERVAL ($3) DAY
+                AND {_window_ending_at_latest(ZIP_CODE_TREND_TABLE, "$3")}
             ORDER BY date ASC
             """,
             [zip_code, fuel_type, days_back],
@@ -499,7 +512,7 @@ def _region_clause(region: str, param_index: int) -> tuple[str, list]:
         raise ValueError(f"Unknown region: {region}")
     operator = "NOT IN" if region == "peninsula" else "IN"
     return f"AND LOWER(province) {operator} (SELECT UNNEST(${param_index}::VARCHAR[]))", [
-        non_mainland_data_province_names()
+        special_tax_data_province_names()
     ]
 
 
@@ -544,7 +557,7 @@ def query_national_price_trend(
                 MAX(max_price) AS max_price
             FROM {ZIP_CODE_TREND_TABLE}
             WHERE fuel_type = $1
-                AND date > (SELECT MAX(date) FROM {ZIP_CODE_TREND_TABLE}) - INTERVAL ($2) DAY
+                AND {_window_ending_at_latest(ZIP_CODE_TREND_TABLE, "$2")}
                 {province_clause}
             GROUP BY date
             ORDER BY date ASC
@@ -581,7 +594,7 @@ def _day_of_week_deviation_cached(fuel_type: str, days_back: int, province: str 
                 SELECT date, {STATION_WEIGHTED_AVG_PRICE} AS price
                 FROM {ZIP_CODE_TREND_TABLE}
                 WHERE fuel_type = $1
-                    AND date > (SELECT MAX(date) FROM {ZIP_CODE_TREND_TABLE}) - INTERVAL ($2) DAY
+                    AND {_window_ending_at_latest(ZIP_CODE_TREND_TABLE, "$2")}
                     {province_clause}
                 GROUP BY date
                 HAVING SUM(station_count) > 0
@@ -622,7 +635,7 @@ def query_national_group_price_trend(
                 MAX(max_price) AS max_price
             FROM {ZIP_CODE_TREND_TABLE}
             WHERE fuel_type = ANY($1)
-                AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                AND {_window_ending_at_latest(ZIP_CODE_TREND_TABLE, "$2")}
                 {province_clause}
             GROUP BY date, fuel_type
             ORDER BY fuel_type, date ASC
@@ -647,7 +660,7 @@ def query_cached_group_price_trend(zip_code: str, fuel_types: list[str], days_ba
             FROM {ZIP_CODE_TREND_TABLE}
             WHERE zip_code = $1
                 AND fuel_type = ANY($2)
-                AND date >= CURRENT_DATE - INTERVAL ($3) DAY
+                AND {_window_ending_at_latest(ZIP_CODE_TREND_TABLE, "$3")}
             ORDER BY fuel_type, date ASC
             """,
             [zip_code, fuel_types, days_back],
@@ -895,11 +908,11 @@ def query_commodity_price_trend(commodity_df: pd.DataFrame | None, series_id: st
         conn.execute("CREATE TEMP TABLE _commodity_trend AS SELECT * FROM df")
         try:
             result = conn.execute(
-                """
+                f"""
                 SELECT date, value
                 FROM _commodity_trend
                 WHERE series_id = $1
-                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                    AND {_window_ending_at_latest("_commodity_trend", "$2", where="series_id = $1")}
                 ORDER BY date ASC
                 """,
                 [series_id, days_back],
@@ -919,7 +932,7 @@ def query_province_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back
         conn.execute("CREATE TEMP TABLE _province_agg AS SELECT * FROM df")
         try:
             result = conn.execute(
-                """
+                f"""
                 SELECT province,
                     AVG(avg_price) AS avg_price,
                     MIN(min_price) AS min_price,
@@ -927,7 +940,7 @@ def query_province_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back
                     CAST(SUM(station_count) AS INTEGER) AS total_observations
                 FROM _province_agg
                 WHERE fuel_type = $1
-                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                    AND {_window_ending_at_latest("_province_agg", "$2")}
                 GROUP BY province
                 ORDER BY avg_price ASC
                 """,
@@ -942,58 +955,34 @@ def query_day_of_week_pattern(
     aggregate_df: pd.DataFrame,
     fuel_type: str,
     province: str | None = None,
-    exclude_provinces: set | None = None,
 ) -> pd.DataFrame:
-    """Query day-of-week price patterns from pre-computed day_of_week_stats aggregate."""
+    """Query day-of-week price patterns from pre-computed day_of_week_stats aggregate.
+
+    One province, or the national row (``__national__``, already station-weighted by the ingestor) when
+    none is given. There is no "all provinces but these" mode: the aggregate keeps no station counts, so
+    averaging province rows would weight a small province as heavily as a large one.
+    """
     fuel_type = _validate_fuel_column(fuel_type)
     df = aggregate_df  # noqa: F841
-
-    # When a specific province is selected, use it directly
-    if province:
-        province_filter = province
-        use_aggregate = True
-    # When excluding provinces (mainland only), aggregate per-province rows
-    elif exclude_provinces:
-        use_aggregate = False
-    else:
-        province_filter = "__national__"
-        use_aggregate = True
 
     with _lock:
         conn = get_connection()
         conn.execute("DROP TABLE IF EXISTS _dow_agg")
         conn.execute("CREATE TEMP TABLE _dow_agg AS SELECT * FROM df")
         try:
-            if use_aggregate:
-                result = conn.execute(
-                    """
-                    SELECT day_of_week,
-                        sum_price / count_days AS avg_price,
-                        count_days,
-                        min_daily_avg,
-                        max_daily_avg
-                    FROM _dow_agg
-                    WHERE fuel_type = $1 AND province = $2
-                    ORDER BY day_of_week ASC
-                    """,
-                    [fuel_type, province_filter],
-                ).fetchdf()
-            else:
-                exclude_list = list(set(exclude_provinces or ()) | {"__national__"})
-                result = conn.execute(
-                    """
-                    SELECT day_of_week,
-                        SUM(sum_price) / SUM(count_days) AS avg_price,
-                        MAX(count_days) AS count_days,
-                        MIN(min_daily_avg) AS min_daily_avg,
-                        MAX(max_daily_avg) AS max_daily_avg
-                    FROM _dow_agg
-                    WHERE fuel_type = $1 AND province NOT IN (SELECT UNNEST($2::VARCHAR[]))
-                    GROUP BY day_of_week
-                    ORDER BY day_of_week ASC
-                    """,
-                    [fuel_type, exclude_list],
-                ).fetchdf()
+            result = conn.execute(
+                """
+                SELECT day_of_week,
+                    sum_price / count_days AS avg_price,
+                    count_days,
+                    min_daily_avg,
+                    max_daily_avg
+                FROM _dow_agg
+                WHERE fuel_type = $1 AND province = $2
+                ORDER BY day_of_week ASC
+                """,
+                [fuel_type, province or "__national__"],
+            ).fetchdf()
         finally:
             conn.execute("DROP TABLE IF EXISTS _dow_agg")
     return result
@@ -1009,7 +998,7 @@ def query_brand_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back: i
         conn.execute("CREATE TEMP TABLE _brand_agg AS SELECT * FROM df")
         try:
             result = conn.execute(
-                """
+                f"""
                 SELECT brand,
                     SUM(avg_price * station_count) / NULLIF(SUM(station_count), 0) AS avg_price,
                     MIN(min_price) AS min_price,
@@ -1017,7 +1006,7 @@ def query_brand_ranking(aggregate_df: pd.DataFrame, fuel_type: str, days_back: i
                     CAST(SUM(station_count) AS INTEGER) AS total_observations
                 FROM _brand_agg
                 WHERE fuel_type = $1
-                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                    AND {_window_ending_at_latest("_brand_agg", "$2")}
                 GROUP BY brand
                 ORDER BY avg_price ASC
                 LIMIT $3
@@ -1041,11 +1030,11 @@ def query_brand_price_trend(aggregate_df: pd.DataFrame, fuel_type: str, days_bac
         conn.execute("CREATE TEMP TABLE _brand_trend_agg AS SELECT * FROM df")
         try:
             result = conn.execute(
-                """
+                f"""
                 SELECT date, brand, avg_price
                 FROM _brand_trend_agg
                 WHERE fuel_type = $1
-                    AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                    AND {_window_ending_at_latest("_brand_trend_agg", "$2")}
                     AND brand IN (SELECT UNNEST($3::VARCHAR[]))
                 ORDER BY date ASC, brand ASC
                 """,
@@ -1102,7 +1091,7 @@ def query_volatility_by_zone(
                 from data.geojson_loader import _NON_MAINLAND_DATA_NAMES
 
                 result = conn.execute(
-                    """
+                    f"""
                     SELECT
                         zip_code,
                         province,
@@ -1117,7 +1106,7 @@ def query_volatility_by_zone(
                         AVG(station_count) AS avg_station_count
                     FROM _zip_volatility_agg
                     WHERE fuel_type = $1
-                        AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                        AND {_window_ending_at_latest("_zip_volatility_agg", "$2")}
                         AND province NOT IN (SELECT UNNEST($3::VARCHAR[]))
                     GROUP BY zip_code, province
                     HAVING COUNT(*) >= $4
@@ -1128,7 +1117,7 @@ def query_volatility_by_zone(
                 ).fetchdf()
             else:
                 result = conn.execute(
-                    """
+                    f"""
                     SELECT
                         zip_code,
                         province,
@@ -1143,7 +1132,7 @@ def query_volatility_by_zone(
                         AVG(station_count) AS avg_station_count
                     FROM _zip_volatility_agg
                     WHERE fuel_type = $1
-                        AND date >= CURRENT_DATE - INTERVAL ($2) DAY
+                        AND {_window_ending_at_latest("_zip_volatility_agg", "$2")}
                     GROUP BY zip_code, province
                     HAVING COUNT(*) >= $3
                         AND AVG(station_count) >= 3

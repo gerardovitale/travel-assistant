@@ -694,16 +694,14 @@ def get_province_ranking(fuel_type: FuelType, days_back: int) -> pd.DataFrame:
     return query_province_ranking(agg_df, fuel_type.value, days_back)
 
 
-def get_day_of_week_pattern(
-    fuel_type: FuelType, province: str | None = None, exclude_provinces: set | None = None
-) -> pd.DataFrame:
+def get_day_of_week_pattern(fuel_type: FuelType, province: str | None = None) -> pd.DataFrame:
     from data.duckdb_engine import query_day_of_week_pattern
     from data.gcs_client import download_aggregate
 
     agg_df = download_aggregate("day_of_week_stats.parquet")
     if agg_df is None:
         return pd.DataFrame()
-    return query_day_of_week_pattern(agg_df, fuel_type.value, normalize_data_province_name(province), exclude_provinces)
+    return query_day_of_week_pattern(agg_df, fuel_type.value, normalize_data_province_name(province))
 
 
 def get_brand_ranking(fuel_type: FuelType, days_back: int, top_n: int = 15) -> pd.DataFrame:
@@ -729,6 +727,12 @@ def get_brand_price_trend(fuel_type: FuelType, days_back: int, brands: list) -> 
 # Max brands a single report view may show — keeps the picker (and charts) bounded.
 REPORT_BRAND_LIMIT = 4
 
+# The brand report aggregates carry the same station-days at three nested geo levels (zip_code,
+# locality, municipality). Summing appearances across levels counts each station-day up to 3x and
+# inflates the confidence band, so a brand-level figure is built from one level only. Zip code is the
+# finest grain and the one the brand picker already ranks by.
+REPORT_GEO_LEVEL = "zip_code"
+
 
 def _resolve_report_brands(brands: list[str] | None) -> list[str]:
     """Brands to display: the caller's selection (lowercased, capped) or the configured defaults.
@@ -748,7 +752,7 @@ def get_brand_win_rate_report(fuel_type: str, direction: str, brands: list[str] 
     fuel_type_key = fuel_type.replace(
         "_price", ""
     )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
-    df = df[(df["fuel_type"] == fuel_type_key) & (df["direction"] == direction)]
+    df = df[(df["fuel_type"] == fuel_type_key) & (df["direction"] == direction) & (df["geo_level"] == REPORT_GEO_LEVEL)]
     selected = _resolve_report_brands(brands)
     if selected:
         df = df[df["brand"].isin(selected)]
@@ -784,7 +788,7 @@ def get_brand_price_comparison_report(fuel_type: str, brands: list[str] | None =
     fuel_type_key = fuel_type.replace(
         "_price", ""
     )  # parquet stores "gasoline_95_e5", API enum uses "gasoline_95_e5_price"
-    df = df[df["fuel_type"] == fuel_type_key]
+    df = df[(df["fuel_type"] == fuel_type_key) & (df["geo_level"] == REPORT_GEO_LEVEL)]
     selected = _resolve_report_brands(brands)
     if selected:
         df = df[df["brand"].isin(selected)]
@@ -841,7 +845,8 @@ def get_brand_coverage_report(fuel_type: str, brands: list[str] | None = None) -
                 "zip_codes": int(g[g["geo_level"] == "zip_code"]["geo_value"].nunique()),
                 "localities": int(g[g["geo_level"] == "locality"]["geo_value"].nunique()),
                 "municipalities": int(g[g["geo_level"] == "municipality"]["geo_value"].nunique()),
-                "total_observations": int(g["appearances"].sum()),
+                # One level only: the three levels cover the same station-days.
+                "total_observations": int(g[g["geo_level"] == REPORT_GEO_LEVEL]["appearances"].sum()),
             }
         )
     return sorted(result, key=lambda x: x["zip_codes"], reverse=True)
@@ -866,7 +871,7 @@ def get_report_available_brands(fuel_type: str) -> list[str] | None:
     if df is None:
         return None
     fuel_type_key = fuel_type.replace("_price", "")
-    df = df[(df["fuel_type"] == fuel_type_key) & (df["geo_level"] == "zip_code")]
+    df = df[(df["fuel_type"] == fuel_type_key) & (df["geo_level"] == REPORT_GEO_LEVEL)]
     if df.empty:
         return []
     coverage = df.groupby("brand")["geo_value"].nunique().sort_values(ascending=False)

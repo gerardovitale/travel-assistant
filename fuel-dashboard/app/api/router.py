@@ -236,7 +236,10 @@ def price_trends(
     province: str | None = Query(None, description="Province name (omit for national average)"),
     region: Region = Query(
         Region.all,
-        description="National scope when no province is given: all, peninsula or special (islands, Ceuta, Melilla)",
+        description=(
+            "National scope when no province is given: all, peninsula (with Baleares) or special "
+            "(Canarias, Ceuta, Melilla)"
+        ),
     ),
 ):
     if settings.ui_test_mode:
@@ -701,15 +704,22 @@ def reportes_coverage(
     return rows
 
 
+def fuel_type_report_enabled() -> bool:
+    """The fuel-type report's flag. It gates these endpoints and the /insights calculator that reads them,
+    so both must ask here: a page showing the calculator while its endpoints 404 would be broken."""
+    if settings.ui_test_mode:
+        _, _, _, fuel_type_report, _ = ui_test.insights_flags()
+        return fuel_type_report
+    return settings.report_fuel_type_enabled
+
+
 def _require_fuel_type_report() -> None:
     """Gate the fuel-type report's endpoints on its feature flag.
 
     Hiding the tab is not enough: without this the API publishes the consumption catalog and the
-    verdicts derived from it while the flag is off. That catalog currently declares itself
-    unverified (see app/data/vehicle_catalog.json), so "off" has to mean off at the API too.
+    verdicts derived from it while the flag is off, so "off" has to mean off at the API too.
     """
-    enabled = ui_test.insights_flags()[3] if settings.ui_test_mode else settings.report_fuel_type_enabled
-    if not enabled:
+    if not fuel_type_report_enabled():
         raise HTTPException(status_code=404, detail="Report not available")
 
 
@@ -746,11 +756,12 @@ def reportes_fuel_type_breakeven(
     request: Request,
     pair_id: str = Query(..., min_length=2, max_length=64),
     province: str | None = Query(default=None, max_length=64),
+    region: Region = Query(Region.all, description="Scope when no province is given: all, peninsula or special"),
 ):
     _require_fuel_type_report()
     if settings.ui_test_mode:
-        return ui_test.fuel_type_breakeven_response(pair_id, province)
-    result = get_pair_breakeven(pair_id, province)
+        return ui_test.fuel_type_breakeven_response(pair_id, province, region)
+    result = get_pair_breakeven(pair_id, province, region)
     if result is None:
         raise HTTPException(status_code=404, detail="Aggregate report not available")
     return result

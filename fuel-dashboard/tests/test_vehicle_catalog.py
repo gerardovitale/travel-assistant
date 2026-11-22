@@ -247,3 +247,52 @@ def test_pair_breakeven_ratio_is_none_without_a_gasoline_diesel_couple(monkeypat
     )
     pair = type("P", (), {"vehicles": catalog.vehicles})()
     assert _pair_breakeven_ratio(pair) is None
+
+
+def test_catalog_rejects_a_pair_with_only_one_list_price():
+    price = {
+        "eur": 25000,
+        "version": "Test 1.0",
+        "source_url": "https://example.com/precios",
+        "checked_on": "2026-10-26",
+    }
+    with pytest.raises(ValidationError, match="list price"):
+        VehicleCatalog(
+            **_catalog(
+                [
+                    _vehicle(list_price=price),
+                    _vehicle(id="test-diesel", energy_type="diesel", consumption=4.5),
+                ]
+            )
+        )
+
+
+def test_catalog_allows_an_unpriced_electric_row_in_a_priced_pair():
+    price = {
+        "eur": 25000,
+        "version": "Test 1.0",
+        "source_url": "https://example.com/precios",
+        "checked_on": "2026-10-26",
+    }
+    VehicleCatalog(
+        **_catalog(
+            [
+                _vehicle(list_price=price),
+                _vehicle(id="test-diesel", energy_type="diesel", consumption=4.5, list_price=price),
+                _vehicle(id="test-ev", energy_type="electric", consumption=15.0, consumption_unit="kWh/100km"),
+            ]
+        )
+    )
+
+
+def test_list_price_needs_a_trim_sold_new_and_an_https_source():
+    price = {
+        "eur": 25000,
+        "version": "Test 1.0",
+        "source_url": "https://example.com/precios",
+        "checked_on": "2026-10-26",
+    }
+    with pytest.raises(ValidationError, match="sold new"):
+        VehicleCatalog(**_catalog([_vehicle(list_price=price, market_status="descontinuado")]))
+    with pytest.raises(ValidationError, match="https"):
+        VehicleCatalog(**_catalog([_vehicle(list_price={**price, "source_url": "javascript:alert(1)"})]))

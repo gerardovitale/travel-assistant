@@ -75,8 +75,8 @@ FUEL_SINGLETONS: list[FuelType] = [
 
 
 class Region(str, Enum):
-    """Geographic scope of a national aggregate. "special" = Canarias, Baleares, Ceuta and Melilla, whose
-    prices follow their own taxes and logistics; "peninsula" is everything else."""
+    """Scope of a national aggregate, by fuel-tax regime. "special" = Canarias, Ceuta and Melilla, whose
+    fuel pays much lower taxes; "peninsula" is everything else, Baleares included (same taxes)."""
 
     all = "all"
     peninsula = "peninsula"
@@ -526,6 +526,14 @@ class VehicleOption(BaseModel):
     price_available: bool  # False when no price source exists for this energy type yet
 
 
+class DieselPremium(BaseModel):
+    eur: float  # diesel list price minus gasoline list price, same trim
+    gasoline_list_price: float
+    diesel_list_price: float
+    source_urls: list[str]  # where each list price was read (one entry when both share a source)
+    checked_on: str  # ISO date the older of the two prices was read
+
+
 class VehiclePairOption(BaseModel):
     pair_id: str
     model: str
@@ -534,6 +542,8 @@ class VehiclePairOption(BaseModel):
     model_year: int
     # consumption_gasoline / consumption_diesel; None when the pair has no gasoline/diesel couple
     breakeven_ratio: float | None
+    # None when the pair has no sourced list prices (e.g. a trim no longer sold new)
+    diesel_premium: DieselPremium | None = None
     vehicles: list[VehicleOption]
 
 
@@ -545,6 +555,7 @@ class VehicleCatalogResponse(BaseModel):
     segments: list[SegmentOption]
     pairs: list[VehiclePairOption]
     unpriceable_energy_types: list[str]
+    tie_margin_pct: float  # a cost gap below this share is a tie
 
 
 class VehicleCostRow(BaseModel):

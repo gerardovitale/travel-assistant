@@ -922,9 +922,9 @@ def test_insights_renders_story_page_with_server_side_price():
     ) as national_avg:
         resp = _get_client().get("/insights")
     assert resp.status_code == 200
-    # The default scope is the peninsula: islands, Ceuta and Melilla are never mixed in.
+    # The default scope is the peninsula with Baleares: Canarias, Ceuta and Melilla are never mixed in.
     assert {call.args[1] for call in national_avg.call_args_list} == {Region.peninsula}
-    assert "Islas, Ceuta y Melilla" in resp.text
+    assert "Canarias, Ceuta y Melilla" in resp.text
     assert 'data-testid="insights-v2-page"' in resp.text
     # Today's price is in the HTML before any JS runs, Spanish format.
     assert "1,529" in resp.text
@@ -938,6 +938,17 @@ def test_insights_says_it_is_under_construction_and_links_the_previous_page():
     assert 'data-testid="insights-construction-note"' in resp.text
     assert "Sección en construcción." in resp.text
     assert 'href="/insights/trends"' in resp.text
+
+
+def test_insights_hides_the_fuel_choice_calculator_with_the_fuel_type_report():
+    # The calculator reads the fuel-type report's endpoints, which 404 while that flag is off.
+    with patch("main.is_data_ready", return_value=True), patch("main.get_national_avg_stats", return_value=(1.5, 1)):
+        with patch.object(settings, "report_fuel_type_enabled", True):
+            on = _get_client().get("/insights").text
+        with patch.object(settings, "report_fuel_type_enabled", False):
+            off = _get_client().get("/insights").text
+    assert 'id="combustible"' in on and 'href="#combustible"' in on
+    assert 'id="combustible"' not in off and 'href="#combustible"' not in off
 
 
 def test_insights_without_a_price_shows_a_dash():

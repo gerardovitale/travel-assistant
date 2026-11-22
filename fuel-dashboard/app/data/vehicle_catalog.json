@@ -17,7 +17,13 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": {
+                "eur": 29423,
+                "version": "VOLKSWAGEN GOLF (O)1.5 TSI 85KW (116CV) GOLF",
+                "source_url": "https://www.quecochemecompro.com/precios/volkswagen-golf/",
+                "checked_on": "2026-10-26"
+            }
         },
         {
             "id": "vw-golf-diesel",
@@ -32,7 +38,13 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": {
+                "eur": 31393,
+                "version": "VOLKSWAGEN GOLF (O)2.0 TDI 85KW (116CV) GOLF",
+                "source_url": "https://www.quecochemecompro.com/precios/volkswagen-golf/",
+                "checked_on": "2026-10-26"
+            }
         },
         {
             "id": "ford-focus-gasoline",
@@ -47,7 +59,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "descontinuado"
+            "market_status": "descontinuado",
+            "list_price": null
         },
         {
             "id": "ford-focus-diesel",
@@ -62,7 +75,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "descontinuado"
+            "market_status": "descontinuado",
+            "list_price": null
         },
         {
             "id": "peugeot-308-gasoline",
@@ -77,7 +91,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": null
         },
         {
             "id": "peugeot-308-diesel",
@@ -92,7 +107,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": null
         },
         {
             "id": "renault-megane-gasoline",
@@ -107,7 +123,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "descontinuado"
+            "market_status": "descontinuado",
+            "list_price": null
         },
         {
             "id": "renault-megane-diesel",
@@ -122,7 +139,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "descontinuado"
+            "market_status": "descontinuado",
+            "list_price": null
         },
         {
             "id": "nissan-qashqai-gasoline",
@@ -137,7 +155,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "descontinuado"
+            "market_status": "descontinuado",
+            "list_price": null
         },
         {
             "id": "nissan-qashqai-diesel",
@@ -152,7 +171,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "descontinuado"
+            "market_status": "descontinuado",
+            "list_price": null
         },
         {
             "id": "hyundai-tucson-gasoline",
@@ -167,7 +187,13 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": {
+                "eur": 33891,
+                "version": "HYUNDAI TUCSON 1.6T 118KW (160CV) KLASS",
+                "source_url": "https://www.quecochemecompro.com/precios/hyundai-tucson/",
+                "checked_on": "2026-10-26"
+            }
         },
         {
             "id": "hyundai-tucson-diesel",
@@ -182,7 +208,13 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": {
+                "eur": 36391,
+                "version": "HYUNDAI TUCSON 1.6D 85KW KLASS",
+                "source_url": "https://www.quecochemecompro.com/precios/hyundai-tucson/",
+                "checked_on": "2026-10-26"
+            }
         },
         {
             "id": "kia-sportage-gasoline",
@@ -197,7 +229,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": null
         },
         {
             "id": "kia-sportage-diesel",
@@ -212,7 +245,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": null
         },
         {
             "id": "dacia-duster-gasoline",
@@ -227,7 +261,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": null
         },
         {
             "id": "dacia-duster-diesel",
@@ -242,7 +277,8 @@
             "source_url": "https://coches.idae.es/storage/csv/idae-historico-202606.csv",
             "cycle": "WLTP",
             "reviewed_on": "2026-08-21",
-            "market_status": "vigente"
+            "market_status": "vigente",
+            "list_price": null
         }
     ]
 }

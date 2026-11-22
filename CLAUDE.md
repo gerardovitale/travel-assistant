@@ -68,6 +68,7 @@ cd <service> && uv add <pkg>    # add dependency
   `brand_comparison.py`, `brand_scorecard.py` — last 90 days by province, feeds /insights Marcas)
 - Aggregation triggered via `run-aggregation.yaml` GitHub Actions workflow
 - Backfill: `app/aggregator/backfill.py`
+- Report inventory (queries, grain, questions, endpoints): `docs/REPORTS.md`
 
 ## Adding Features
 

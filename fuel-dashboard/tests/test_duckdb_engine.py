@@ -664,7 +664,7 @@ def test_query_day_of_week_deviation_compares_each_day_with_its_own_week(mock_co
     assert result.loc[2, "deviation"] == pytest.approx(0.0)
 
 
-# --- region (peninsula / islands, Ceuta and Melilla) filter tests ---
+# --- region (fuel-tax regimes: peninsula with Baleares / Canarias, Ceuta and Melilla) filter tests ---
 
 
 def _make_region_trend_df():
@@ -687,8 +687,9 @@ def _make_region_trend_df():
     # Station-weighted: station_count is 5, 4, 3, 2.
     [
         ("all", (1.50 * 5 + 1.30 * 4 + 1.56 * 3 + 1.20 * 2) / 14),
-        ("peninsula", 1.50),
-        ("special", (1.30 * 4 + 1.56 * 3 + 1.20 * 2) / 9),
+        # Baleares pays the peninsula's fuel taxes, so it goes with the peninsula.
+        ("peninsula", (1.50 * 5 + 1.56 * 3) / 8),
+        ("special", (1.30 * 4 + 1.20 * 2) / 6),
     ],
 )
 @patch("data.duckdb_engine.get_connection")
@@ -970,3 +971,118 @@ def test_query_stations_along_corridor_keeps_stations_north_of_average_latitude(
 
     assert result["label"].tolist() == ["east_of_bcn"]
     assert result["closest_waypoint_idx"].tolist() == [2]
+
+
+# ---- period windows end on the latest data day, not on today -----------------
+#
+# Every fixture below ends STALE_DAYS_AGO days before today, as after an ingestion outage. A window
+# anchored on CURRENT_DATE returns nothing for it; one anchored on the latest data day still returns
+# exactly the requested number of days.
+
+STALE_DAYS_AGO = 60
+WINDOW_DAYS = 30
+
+
+def _stale_dates(count: int = 40) -> list[date]:
+    """`count` consecutive dates ending STALE_DAYS_AGO days ago, oldest first."""
+    last = date.today() - timedelta(days=STALE_DAYS_AGO)
+    return [last - timedelta(days=count - 1 - offset) for offset in range(count)]
+
+
+def _stale_rows(**extra) -> pd.DataFrame:
+    dates = _stale_dates()
+    frame = {
+        "date": dates,
+        "avg_price": [1.5] * len(dates),
+        "min_price": [1.4] * len(dates),
+        "max_price": [1.6] * len(dates),
+        "station_count": [4] * len(dates),
+    }
+    return pd.DataFrame({**frame, **{key: [value] * len(dates) for key, value in extra.items()}})
+
+
+def _in_memory_trend_cache(mock_conn, df: pd.DataFrame) -> None:
+    conn = duckdb.connect(":memory:")
+    mock_conn.return_value = conn
+    conn.execute("CREATE TABLE zip_code_daily_stats AS SELECT * FROM df")
+    duckdb_engine_module._zip_code_trend_ready.set()
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_cached_zip_code_trend_window_ends_on_latest_data_day(mock_conn):
+    _in_memory_trend_cache(mock_conn, _stale_rows(zip_code="28001", province="madrid", fuel_type="diesel_a_price"))
+
+    result = query_cached_zip_code_price_trend("28001", "diesel_a_price", WINDOW_DAYS)
+
+    assert len(result) == WINDOW_DAYS
+    assert result["date"].iloc[-1].date() == _stale_dates()[-1]
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_cached_group_trend_window_ends_on_latest_data_day(mock_conn):
+    from data.duckdb_engine import query_cached_group_price_trend
+
+    _in_memory_trend_cache(mock_conn, _stale_rows(zip_code="28001", province="madrid", fuel_type="diesel_a_price"))
+
+    result = query_cached_group_price_trend("28001", ["diesel_a_price"], WINDOW_DAYS)
+
+    assert len(result) == WINDOW_DAYS
+    assert result["date"].iloc[-1].date() == _stale_dates()[-1]
+
+
+@patch("data.duckdb_engine.get_connection")
+def test_national_group_trend_window_ends_on_latest_data_day(mock_conn):
+    from data.duckdb_engine import query_national_group_price_trend
+
+    _in_memory_trend_cache(mock_conn, _stale_rows(zip_code="28001", province="madrid", fuel_type="diesel_a_price"))
+
+    result = query_national_group_price_trend(["diesel_a_price"], WINDOW_DAYS)
+
+    assert len(result) == WINDOW_DAYS
+    assert result["date"].iloc[-1].date() == _stale_dates()[-1]
+
+
+def test_province_ranking_window_ends_on_latest_data_day():
+    from data.duckdb_engine import query_province_ranking
+
+    df = _stale_rows(province="madrid", fuel_type="diesel_a_price")
+
+    result = query_province_ranking(df, "diesel_a_price", WINDOW_DAYS)
+
+    assert result["total_observations"].tolist() == [WINDOW_DAYS * 4]
+
+
+def test_brand_ranking_and_trend_windows_end_on_latest_data_day():
+    from data.duckdb_engine import query_brand_price_trend
+    from data.duckdb_engine import query_brand_ranking
+
+    df = _stale_rows(brand="repsol", fuel_type="diesel_a_price")
+
+    ranking = query_brand_ranking(df, "diesel_a_price", WINDOW_DAYS)
+    trend = query_brand_price_trend(df, "diesel_a_price", WINDOW_DAYS, ["repsol"])
+
+    assert ranking["total_observations"].tolist() == [WINDOW_DAYS * 4]
+    assert len(trend) == WINDOW_DAYS
+
+
+@pytest.mark.parametrize("mainland_only", [True, False])
+def test_volatility_window_ends_on_latest_data_day(mainland_only):
+    from data.duckdb_engine import query_volatility_by_zone
+
+    df = _stale_rows(zip_code="28001", province="madrid", fuel_type="diesel_a_price")
+
+    result = query_volatility_by_zone(df, "diesel_a_price", WINDOW_DAYS, mainland_only=mainland_only)
+
+    assert result["observation_days"].tolist() == [WINDOW_DAYS]
+
+
+def test_commodity_window_ends_on_the_latest_day_of_its_own_series():
+    """Another series with fresher data must not push the Brent window forward and empty it."""
+    from data.duckdb_engine import query_commodity_price_trend
+
+    brent = _stale_rows(series_id="DCOILBRENTEU", value=80.0)[["date", "series_id", "value"]]
+    other = pd.DataFrame({"date": [date.today()], "series_id": ["OTHER"], "value": [1.0]})
+
+    result = query_commodity_price_trend(pd.concat([brent, other], ignore_index=True), "DCOILBRENTEU", WINDOW_DAYS)
+
+    assert len(result) == WINDOW_DAYS

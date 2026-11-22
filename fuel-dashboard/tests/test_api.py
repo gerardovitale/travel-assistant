@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 from api.schemas import HistoricalForecastResponse
+from api.schemas import Region
 from api.schemas import StationResult
 from api.schemas import TrendPeriod
 from config import settings
@@ -665,6 +666,13 @@ def test_fuel_type_report_breakeven_returns_404_for_unknown_pair(mock_service, f
     mock_service.return_value = None
     response = _get_client().get("/api/v1/reportes/fuel-type/breakeven?pair_id=does-not-exist")
     assert response.status_code == 404
+
+
+@patch("api.router.get_pair_breakeven")
+def test_fuel_type_report_breakeven_passes_region(mock_service, fuel_type_on):
+    mock_service.return_value = None
+    _get_client().get("/api/v1/reportes/fuel-type/breakeven?pair_id=vw-golf&region=special")
+    assert mock_service.call_args.args == ("vw-golf", None, Region.special)
 
 
 def test_fuel_type_report_breakeven_rejects_overlong_pair_id(fuel_type_on):

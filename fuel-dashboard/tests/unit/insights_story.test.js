@@ -6,6 +6,8 @@ import {
     cheapestBrand,
     changeOverDays,
     coverageStart,
+    fuelChoice,
+    fuelChoiceText,
     priceChange,
     regionGapHeadline,
     tankSavingText,
@@ -64,14 +66,14 @@ describe("regionGapHeadline", () => {
     it("says how much cheaper the islands are", () =>
         assert.equal(
             regionGapHeadline("gasoline_95_e5_price", -0.175),
-            "En las islas, Ceuta y Melilla la gasolina 95 cuesta 0,175 €/l menos que en la península",
+            "En Canarias, Ceuta y Melilla la gasolina 95 cuesta 0,175 €/l menos que en la península y Baleares",
         ));
     it("says when they are dearer", () =>
-        assert.equal(regionGapHeadline("diesel_a_price", 0.02), "En las islas, Ceuta y Melilla el diésel cuesta 0,020 €/l más que en la península"));
+        assert.equal(regionGapHeadline("diesel_a_price", 0.02), "En Canarias, Ceuta y Melilla el diésel cuesta 0,020 €/l más que en la península y Baleares"));
     it("reads a rounded-away gap as equal", () =>
-        assert.equal(regionGapHeadline("diesel_a_price", 0.0002), "En las islas, Ceuta y Melilla el diésel cuesta lo mismo que en la península"));
+        assert.equal(regionGapHeadline("diesel_a_price", 0.0002), "En Canarias, Ceuta y Melilla el diésel cuesta lo mismo que en la península y Baleares"));
     it("handles missing data", () =>
-        assert.equal(regionGapHeadline("diesel_a_price", null), "Península vs. islas, Ceuta y Melilla: sin datos suficientes para el diésel"));
+        assert.equal(regionGapHeadline("diesel_a_price", null), "Península y Baleares vs. Canarias, Ceuta y Melilla: sin datos suficientes para el diésel"));
 });
 
 describe("formatSignedPriceDelta", () => {
@@ -152,4 +154,58 @@ describe("brandsHeadline", () => {
         assert.equal(brandsHeadline([brand("Avia", "traditional", 98, -0.0004)]), "Ninguna marca es más barata que la competencia de su código postal");
     });
     it("says when there is no data", () => assert.equal(brandsHeadline([]), "Marcas: sin datos suficientes en esta zona"));
+});
+
+describe("fuelChoice", () => {
+    // Golf at 1,509 €/l gasoline and 1,449 €/l diesel: 8,1486 vs 6,3756 € per 100 km; the server's 1 % tie band.
+    const golf = { gasoline100: 8.1486, diesel100: 6.3756, km: 15000, premium: 1500, years: 8, tieMarginPct: 1 };
+    it("nets the yearly saving over the years against the premium", () => {
+        const c = fuelChoice(golf);
+        assert.ok(Math.abs(c.yearly - 265.95) < 1e-6);
+        assert.ok(Math.abs(c.total - 627.6) < 1e-6);
+        assert.equal(c.winner, "diesel");
+        assert.ok(Math.abs(c.paybackYears - 1500 / 265.95) < 1e-9);
+    });
+    it("lets gasoline win at low mileage", () => {
+        const c = fuelChoice({ ...golf, km: 5000 });
+        assert.equal(c.winner, "gasoline");
+        assert.equal(fuelChoiceText(c, golf).headline, "La gasolina te sale 790,80\u00a0€ más barata en 8 años");
+    });
+    it("gives a breakeven mileage that agrees with the verdict at every slider step", () => {
+        for (const premium of [20, 1500, 1870, 2500]) {
+            const { breakevenKm } = fuelChoice({ ...golf, premium });
+            for (let km = 3000; km <= 40000; km += 1000) {
+                assert.equal(fuelChoice({ ...golf, premium, km }).winner === "diesel", km >= breakevenKm, `${premium} € at ${km} km`);
+            }
+        }
+    });
+    it("calls a gap inside the server's 1 % band a tie, as the server does with no premium", () => {
+        // Diesel 0,5 % cheaper per 100 km: the server's verdict is "tie".
+        const c = fuelChoice({ gasoline100: 10, diesel100: 9.95, km: 40000, premium: 0, years: 15, tieMarginPct: 1 });
+        assert.equal(c.winner, "tie");
+        assert.equal(c.breakevenKm, null);
+        assert.match(fuelChoiceText(c, { premium: 0, years: 15 }).detail, /casi lo mismo/);
+    });
+    it("never pays off when diesel costs more per km", () => {
+        const c = fuelChoice({ ...golf, diesel100: 8.5 });
+        assert.equal(c.breakevenKm, null);
+        assert.equal(c.paybackYears, null);
+        assert.match(fuelChoiceText(c, golf).detail, /no gasta menos/);
+    });
+});
+
+describe("fuelChoiceText", () => {
+    const golf = { gasoline100: 8.1486, diesel100: 6.3756, km: 15000, premium: 1500, years: 8, tieMarginPct: 1 };
+    it("says the saving, the payback and the breakeven mileage", () =>
+        assert.deepEqual(fuelChoiceText(fuelChoice(golf), golf), {
+            headline: "Con un diésel ahorras 627,60\u00a0€ en 8 años",
+            detail:
+                "En 8 años el diésel gasta 2127,60\u00a0€ menos en combustible, pero cuesta 1500,00\u00a0€ más al comprarlo. " +
+                "Recuperas el sobrecoste en 5,7 años; compensa a partir de unos 11.500 km al año.",
+        }));
+    it("never rounds a payback past the years kept down to them", () => {
+        // 1500 € at 186,57 € a year: 8,04 years.
+        const slow = { ...golf, gasoline100: 8, diesel100: 6.7562 };
+        assert.match(fuelChoiceText(fuelChoice(slow), slow).detail, /en 8,1 años, más de los 8 que tendrás el coche/);
+    });
 });
