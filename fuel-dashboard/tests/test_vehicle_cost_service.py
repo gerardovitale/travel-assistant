@@ -42,8 +42,15 @@ def _patch_prices(df: pd.DataFrame | None):
 
 @pytest.fixture(autouse=True)
 def _fresh_price_cache():
-    # Each test patches its own prices; the service's short-lived cache must not carry them over.
+    # Each test patches its own prices, so by default no local aggregate is "fresh" and nothing is cached:
+    # every read goes to download_aggregate. The cache tests below patch a version in.
     vehicle_cost_service._prices_cache = None
+    with patch("services.vehicle_cost_service.fresh_aggregate_version", return_value=None):
+        yield
+
+
+def _aggregate_version(*versions):
+    return patch("services.vehicle_cost_service.fresh_aggregate_version", side_effect=list(versions))
 
 
 # --- get_vehicle_costs -----------------------------------------------------------------
@@ -609,8 +616,64 @@ def test_vehicle_options_diesel_premium_is_the_list_price_gap():
     assert pairs["unpriced"]["diesel_premium"] is None
 
 
-def test_prices_are_read_once_while_fresh():
-    with _patch_prices(_flat_prices(gasoline=1.50, diesel=1.45)) as download:
+def test_prices_are_read_once_while_the_aggregate_file_is_unchanged():
+    # Miss: no cache, read, key on version 1. Hit: still version 1.
+    with _patch_prices(_flat_prices(gasoline=1.50, diesel=1.45)) as download, _aggregate_version(1.0, 1.0, 1.0):
         get_pair_breakeven(PAIR_ID, region=Region.peninsula)
         get_pair_breakeven(PAIR_ID, region=Region.special)
     assert download.call_count == 1
+
+
+def test_prices_are_read_again_once_the_aggregate_is_redownloaded():
+    first, second = _flat_prices(gasoline=1.50, diesel=1.45), _flat_prices(gasoline=1.60, diesel=1.40)
+    with patch(
+        "services.vehicle_cost_service.download_aggregate", side_effect=[first, second]
+    ) as download, _aggregate_version(1.0, 1.0, 2.0, 2.0):
+        before = get_pair_breakeven(PAIR_ID)
+        after = get_pair_breakeven(PAIR_ID)
+    assert download.call_count == 2
+    assert (before["gasoline"]["price_per_unit"], after["gasoline"]["price_per_unit"]) == (1.50, 1.60)
+
+
+def test_prices_are_not_cached_without_a_fresh_local_aggregate():
+    # e.g. GCS unreachable and only a stale local copy served: try again on the next request.
+    with _patch_prices(_flat_prices(gasoline=1.50, diesel=1.45)) as download, _aggregate_version(
+        None, None, None, None
+    ):
+        get_pair_breakeven(PAIR_ID)
+        get_pair_breakeven(PAIR_ID)
+    assert download.call_count == 2
+
+
+def test_a_missing_aggregate_is_not_cached():
+    with _patch_prices(None) as download, _aggregate_version(1.0, 1.0, 1.0, 1.0):
+        assert get_pair_breakeven(PAIR_ID) is None
+        assert get_pair_breakeven(PAIR_ID) is None
+    assert download.call_count == 2
+
+
+def _two_regime_prices() -> pd.DataFrame:
+    return pd.concat(
+        [
+            _flat_prices(1.50, 1.45, province="madrid"),
+            _flat_prices(1.30, 1.20, province="santa cruz de tenerife"),
+        ],
+        ignore_index=True,
+    )
+
+
+def test_vehicle_costs_scope_to_a_fuel_tax_regime():
+    with _patch_prices(_two_regime_prices()):
+        peninsula = get_vehicle_costs([GASOLINE_ID, DIESEL_ID], region=Region.peninsula)
+        special = get_vehicle_costs([GASOLINE_ID, DIESEL_ID], region=Region.special)
+
+    assert {r["vehicle_id"]: r["price_per_unit"] for r in peninsula} == {GASOLINE_ID: 1.50, DIESEL_ID: 1.45}
+    assert {r["vehicle_id"]: r["price_per_unit"] for r in special} == {GASOLINE_ID: 1.30, DIESEL_ID: 1.20}
+
+
+def test_breakeven_history_scopes_to_a_fuel_tax_regime():
+    with _patch_prices(_two_regime_prices()):
+        special = get_breakeven_history(PAIR_ID, region=Region.special)
+
+    [point] = special["series"]
+    assert point["price_ratio"] == pytest.approx(1.20 / 1.30, abs=1e-4)

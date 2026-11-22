@@ -628,7 +628,8 @@ def historical_volatility(
     request: Request,
     fuel_type: FuelType = Query(...),
     period: HistoricalPeriod = Query(HistoricalPeriod.quarter),
-    mainland_only: bool = Query(True),
+    # Geographic: drops Baleares too, unlike the fuel-tax regions used by /reportes/fuel-type/provinces.
+    mainland_only: bool = Query(True, description="Exclude Canarias, Baleares, Ceuta and Melilla"),
 ):
     if settings.ui_test_mode:
         return ui_test.historical_volatility_response()
@@ -740,11 +741,12 @@ def reportes_fuel_type_cost(
     request: Request,
     vehicle_ids: list[str] = Query(..., max_length=6),
     province: str | None = Query(default=None, max_length=64),
+    region: Region = Query(Region.all, description="Scope when no province is given: all, peninsula or special"),
 ):
     _require_fuel_type_report()
     if settings.ui_test_mode:
-        return ui_test.fuel_type_cost_response(vehicle_ids, province)
-    rows = get_vehicle_costs(vehicle_ids, province)
+        return ui_test.fuel_type_cost_response(vehicle_ids, province, region)
+    rows = get_vehicle_costs(vehicle_ids, province, region)
     if rows is None:
         raise HTTPException(status_code=404, detail="Aggregate report not available")
     return rows
@@ -772,7 +774,8 @@ def reportes_fuel_type_breakeven(
 def reportes_fuel_type_provinces(
     request: Request,
     pair_id: str = Query(..., min_length=2, max_length=64),
-    mainland_only: bool = Query(default=True),
+    # Fuel-tax split: keeps Baleares (same taxes as the peninsula), unlike /historical/volatility.
+    mainland_only: bool = Query(default=True, description="Exclude Canarias, Ceuta and Melilla (lower fuel taxes)"),
 ):
     _require_fuel_type_report()
     if settings.ui_test_mode:
@@ -790,11 +793,12 @@ def reportes_fuel_type_history(
     pair_id: str = Query(..., min_length=2, max_length=64),
     province: str | None = Query(default=None, max_length=64),
     period: HistoricalPeriod = Query(default=HistoricalPeriod.year),
+    region: Region = Query(Region.all, description="Scope when no province is given: all, peninsula or special"),
 ):
     _require_fuel_type_report()
     if settings.ui_test_mode:
-        return ui_test.fuel_type_history_response(pair_id, province)
-    result = get_breakeven_history(pair_id, province, _period_days(period))
+        return ui_test.fuel_type_history_response(pair_id, province, region)
+    result = get_breakeven_history(pair_id, province, _period_days(period), region)
     if result is None:
         raise HTTPException(status_code=404, detail="Aggregate report not available")
     return result

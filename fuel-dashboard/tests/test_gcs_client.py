@@ -79,3 +79,23 @@ def test_list_parquet_files_with_metadata_returns_name_date_size(mock_utcnow, mo
         "date": "2025-01-09",
         "size_bytes": 600_000,
     }
+
+
+def test_fresh_aggregate_version_is_the_local_copy_mtime_while_fresh(tmp_path):
+    import os
+    import time
+
+    from config import settings
+    from data import gcs_client
+
+    path = tmp_path / "aggregates_prices.parquet"
+    with patch.object(gcs_client, "_aggregate_cached_path", return_value=path):
+        assert gcs_client.fresh_aggregate_version("prices.parquet") is None  # no local copy
+
+        path.write_bytes(b"x")
+        assert gcs_client.fresh_aggregate_version("prices.parquet") == path.stat().st_mtime
+
+        stale = time.time() - settings.parquet_cache_max_age_hours * 3600 - 60
+        os.utime(path, (stale, stale))
+        # download_aggregate would go to GCS for it, so it is no version to cache against.
+        assert gcs_client.fresh_aggregate_version("prices.parquet") is None

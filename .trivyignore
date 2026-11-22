@@ -104,3 +104,42 @@ CVE-2026-78410
 # Accept-Encoding, so curl never negotiates or decodes br. App code does not use Brotli.
 # Reviewed: 2026-10-23. Re-review by: 2027-01-23.
 CVE-2026-111497
+
+# ---------------------------------------------------------------------------
+# Debian 13.8 base-image CVEs with no upstream fix (Status: affected, Fixed
+# Version: none), seen on a --pull build of python:3.13-slim.
+# Reviewed: 2026-11-22. Re-review by: 2027-02-22.
+
+# krb5 (libgssapi-krb5-2, libk5crypto3, libkrb5-3, libkrb5support0) — every one
+# is in the KDC or the kadmind admin server: ASN.1/PKINIT/keytab DoS in the KDC,
+# RPCSEC_GSS / AUTH_GSSAPI / XDR DoS and request alteration in kadmind, CAMMAC
+# authdata alteration. The image ships only the client libraries (pulled in by
+# libcurl4t64); no KDC or kadmind is installed or run, and the one curl call
+# (spain_fuel_api.fetch) never passes --negotiate, so GSSAPI is never used.
+CVE-2026-107364
+CVE-2026-112315
+CVE-2026-112316
+CVE-2026-112317
+CVE-2026-112318
+CVE-2026-112319
+CVE-2026-112320
+CVE-2026-112321
+CVE-2026-112322
+CVE-2026-112323
+CVE-2026-118380
+CVE-2026-119079
+CVE-2026-71199
+CVE-2026-71200
+
+# libsqlite3-0 — FTS5 heap overflow / code execution via a corrupted FTS5 index,
+# and code execution via crafted session changesets. All need an attacker-supplied
+# SQLite database or changeset; the app queries DuckDB in memory and never opens
+# a SQLite file, let alone an untrusted one.
+CVE-2026-119373
+CVE-2026-119374
+CVE-2026-119379
+
+# openssl / libssl3t64 — memory-leak DoS in QUIC stream handling. Python's ssl
+# module and curl here speak TLS over TCP only; no QUIC/HTTP3 endpoint or client
+# exists in the container.
+CVE-2026-124709

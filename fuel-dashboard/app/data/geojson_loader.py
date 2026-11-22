@@ -28,6 +28,8 @@ _DATA_TO_GEOJSON_OVERRIDES: dict[str, str] = {
     "alicante": "Alacant/Alicante",
 }
 
+# Geographic split (maps, volatility ranking): Baleares is off the mainland. Prices by region use the
+# fuel-tax split below (_SPECIAL_TAX_PROVINCES) instead, where Baleares goes with the peninsula.
 _NON_MAINLAND_PROVINCES = {
     "Las Palmas",
     "Santa Cruz De Tenerife",
@@ -67,7 +69,8 @@ def scope_mask(provinces: pd.Series, province: str | None, region: str) -> pd.Se
     special = provinces.isin(
         [p for p in provinces.dropna().unique() if normalize_data_province_name(p) in _SPECIAL_TAX_DATA_NAMES]
     )
-    return ~special if region == "peninsula" else special
+    # A row with no province belongs to neither regime.
+    return (provinces.notna() & ~special) if region == "peninsula" else special
 
 
 def is_mainland_province(province: str) -> bool:

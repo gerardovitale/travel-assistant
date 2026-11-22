@@ -63,6 +63,11 @@ let fuelChoiceRequest = 0;
 let fuelChoicePairsRequest = null;
 // Absent when the fuel-type report is switched off.
 const fuelChoiceSection = document.getElementById("combustible");
+// The premium slider's upper bound in the template; a pair whose list-price gap is larger widens it.
+const PREMIUM_SLIDER_MAX = Number(fuelChoiceSection?.querySelector('input[name="premium"]').max);
+// The calculator's last announced outcome (a winner, or "unavailable"), so screen readers hear a change
+// of verdict once rather than every slider step.
+let fuelChoiceAnnounced = null;
 
 const isCompare = () => state.scope === "compare";
 
@@ -376,11 +381,22 @@ function onSlider(name, value) {
   return Math.min(max, Math.max(min, min + Math.round((value - min) / step) * step));
 }
 
-// A new model brings its own list-price premium.
+// A new model brings its own list-price premium. The slider widens to fit it (in whole thousands), so
+// the sourced premium is never clamped while the text below it quotes the real list prices.
 function selectFuelChoicePair(pairId) {
   const pair = state.fuelChoice.pairs.find((p) => p.pair_id === pairId);
+  const premium = pair ? pair.diesel_premium.eur : 0;
+  fuelChoiceSection.querySelector('input[name="premium"]').max = String(
+    Math.max(PREMIUM_SLIDER_MAX, Math.ceil(premium / 1000) * 1000),
+  );
   state.fuelChoice.pair = pair?.pair_id ?? null;
-  state.fuelChoice.premium = onSlider("premium", pair ? pair.diesel_premium.eur : 0);
+  state.fuelChoice.premium = onSlider("premium", premium);
+}
+
+function announceFuelChoice(outcome, text) {
+  if (outcome === fuelChoiceAnnounced) return;
+  fuelChoiceAnnounced = outcome;
+  document.getElementById("fuel-choice-announce").textContent = text;
 }
 
 function renderFuelChoice() {
@@ -410,6 +426,7 @@ function renderFuelChoice() {
     tag.className = "fp-verdict-tag self-start";
     tag.textContent = "—";
     verdict.textContent = fc.loading ? "—" : "La calculadora no está disponible ahora mismo";
+    if (!fc.loading) announceFuelChoice("unavailable", verdict.textContent);
     detail.textContent = fc.loading ? "Cargando…" : "Vuelve a intentarlo en unos minutos.";
     prices.textContent = "";
     yearlyLabel.textContent = "Ahorro en combustible / año";
@@ -424,6 +441,7 @@ function renderFuelChoice() {
   tag.className = `fp-verdict-tag fp-verdict-tag--${choice.winner} self-start`;
   tag.innerHTML = `<span class="material-symbols-outlined text-[16px]" aria-hidden="true">${icon}</span>${label}`;
   verdict.textContent = text.headline;
+  announceFuelChoice(choice.winner, `${label}. ${text.headline}`);
   detail.textContent = text.detail;
   prices.textContent = `Precios del ${formatDay(fc.prices.date)}: gasolina 95 a ${formatNum(fc.prices.gasoline, 3)} €/l y diésel a ${formatNum(fc.prices.diesel, 3)} €/l.`;
   yearlyLabel.textContent = choice.yearly < 0 ? "Sobrecoste en combustible / año" : "Ahorro en combustible / año";

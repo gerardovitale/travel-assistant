@@ -302,3 +302,38 @@ test("Gasolina o diésel loads the car list again after a failed first load", as
   await page.getByTestId("insights-scope-select").selectOption("special");
   await expect(page.getByTestId("fuel-choice-verdict")).toHaveText("Con un diésel ahorras 332,80 € en 8 años");
 });
+
+test("Gasolina o diésel tells screen readers about a new winner, not every slider step", async ({ page }) => {
+  await page.goto("/insights");
+  const announce = page.getByTestId("fuel-choice-announce");
+  await expect(announce).toHaveText("Compensa el diésel. Con un diésel ahorras 157,60 € en 8 años");
+
+  // Same winner, new amount: the visible verdict moves, the announcement does not.
+  await page.getByTestId("fuel-choice-km").fill("20000");
+  await expect(page.getByTestId("fuel-choice-verdict")).not.toHaveText("Con un diésel ahorras 157,60 € en 8 años");
+  await expect(announce).toHaveText("Compensa el diésel. Con un diésel ahorras 157,60 € en 8 años");
+
+  await page.getByTestId("fuel-choice-km").fill("5000");
+  await expect(announce).toHaveText("Compensa la gasolina. La gasolina te sale 1260,80 € más barata en 8 años");
+});
+
+test("Gasolina o diésel widens the premium slider to fit a pair's list-price gap", async ({ page }) => {
+  await page.route("**/api/v1/reportes/fuel-type/vehicles", async (route) => {
+    const body = await (await route.fetch()).json();
+    for (const pair of body.pairs) {
+      if (pair.pair_id === "hyundai-tucson") pair.diesel_premium = { ...pair.diesel_premium, eur: 6230 };
+    }
+    await route.fulfill({ json: body });
+  });
+  await page.goto("/insights");
+  const premium = page.getByTestId("fuel-choice-premium");
+  await expect(premium).toHaveAttribute("max", "5000");
+
+  await page.getByTestId("fuel-choice-pair").selectOption("hyundai-tucson");
+  await expect(premium).toHaveAttribute("max", "7000");
+  await expect(page.locator('[data-range-value="premium"]')).toHaveText("6230 €");
+
+  // Back to a pair that fits the default range.
+  await page.getByTestId("fuel-choice-pair").selectOption("vw-golf");
+  await expect(premium).toHaveAttribute("max", "5000");
+});

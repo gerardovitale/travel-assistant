@@ -208,6 +208,23 @@ def download_aggregate(name: str) -> pd.DataFrame | None:
     return df
 
 
+def fresh_aggregate_version(name: str) -> float | None:
+    """mtime of the local copy ``download_aggregate`` would serve as fresh, else ``None``.
+
+    A changed value means the aggregate was re-downloaded; ``None`` means the next ``download_aggregate``
+    call goes to GCS (no local copy, or one older than ``parquet_cache_max_age_hours``). Callers that keep
+    a derived copy in memory can key it on this, so it never outlives the file it came from.
+    """
+    cached_path = _aggregate_cached_path(name)
+    try:
+        mtime = cached_path.stat().st_mtime
+    except FileNotFoundError:
+        return None
+    if (time.time() - mtime) / 3600 >= settings.parquet_cache_max_age_hours:
+        return None
+    return mtime
+
+
 def get_aggregate_cache_age_seconds(name: str) -> float | None:
     cached_path = _aggregate_cached_path(name)
     if not cached_path.exists():

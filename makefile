@@ -23,8 +23,8 @@ done: setup test-local scan
 
 
 # DATA
+# .env is already exported to every recipe by the `include $(ENV)` + `export` above.
 duck:
-	set -a; source .env; set +a
 	duckdb -ui
 
 data.download-fuel-daily-prices:

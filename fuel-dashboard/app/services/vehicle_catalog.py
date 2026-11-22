@@ -151,13 +151,19 @@ class VehicleCatalog(BaseModel):
                 raise ValueError(f"pair {pair_id!r} has more than one vehicle per energy type")
             # The diesel premium is the gap between the gasoline and diesel list prices: one alone means
             # nothing. Other energy types (an electric row) may come without one.
-            priced = {
+            missing = {
                 m.list_price is None for m in members if m.energy_type in (EnergyType.gasoline, EnergyType.diesel)
             }
-            if len(priced) > 1:
+            if len(missing) > 1:
                 raise ValueError(
                     f"pair {pair_id!r} needs a list price on both its gasoline and diesel trims or on neither"
                 )
+            # The /insights calculator models a diesel that costs more to buy and pays it back in fuel; a
+            # cheaper diesel trim has no breakeven to find and would need a different verdict.
+            prices = {m.energy_type: m.list_price for m in members if m.list_price is not None}
+            gasoline, diesel = prices.get(EnergyType.gasoline), prices.get(EnergyType.diesel)
+            if gasoline is not None and diesel is not None and diesel.eur < gasoline.eur:
+                raise ValueError(f"pair {pair_id!r}: the diesel trim's list price is below the gasoline one")
         return self
 
 

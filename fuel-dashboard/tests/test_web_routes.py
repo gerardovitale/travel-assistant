@@ -908,11 +908,12 @@ def test_sitemap_has_no_comparador_entry():
 
 
 def test_fuel_type_report_names_every_excluded_province():
-    # is_mainland_province also drops Illes Balears; the copy must not claim otherwise.
+    # The by-province ranking drops the low-tax regime (Canarias, Ceuta, Melilla) but keeps Baleares,
+    # which pays the peninsula's fuel taxes; the copy must say exactly that.
     with patch.object(settings, "report_fuel_type_enabled", True), patch("main.is_data_ready", return_value=True):
         resp = _get_client().get("/insights/reportes")
-    for excluded in ("Canarias", "Baleares", "Ceuta", "Melilla"):
-        assert excluded in resp.text
+    assert "Canarias, Ceuta y Melilla quedan fuera" in resp.text
+    assert "Baleares, Ceuta y Melilla quedan fuera" not in resp.text
 
 
 def test_insights_renders_story_page_with_server_side_price():

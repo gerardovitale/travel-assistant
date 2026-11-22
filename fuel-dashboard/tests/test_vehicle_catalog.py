@@ -296,3 +296,18 @@ def test_list_price_needs_a_trim_sold_new_and_an_https_source():
         VehicleCatalog(**_catalog([_vehicle(list_price=price, market_status="descontinuado")]))
     with pytest.raises(ValidationError, match="https"):
         VehicleCatalog(**_catalog([_vehicle(list_price={**price, "source_url": "javascript:alert(1)"})]))
+
+
+def test_catalog_rejects_a_diesel_cheaper_to_buy_than_its_gasoline_twin():
+    price = {"version": "Test 1.0", "source_url": "https://example.com/precios", "checked_on": "2026-10-26"}
+    with pytest.raises(ValidationError, match="below the gasoline"):
+        VehicleCatalog(
+            **_catalog(
+                [
+                    _vehicle(list_price={**price, "eur": 25000}),
+                    _vehicle(
+                        id="test-diesel", energy_type="diesel", consumption=4.5, list_price={**price, "eur": 24000}
+                    ),
+                ]
+            )
+        )

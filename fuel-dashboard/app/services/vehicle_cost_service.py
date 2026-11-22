@@ -22,7 +22,7 @@
 # the diesel premium of sourced list prices (``diesel_premium`` below), never an invented one. What
 # *does* flip the fuel-only answer is the consumption ratio (the car), the price ratio (the province),
 # and time.
-import time
+import threading
 
 import pandas as pd
 from api.schemas import EnergyType
@@ -35,6 +35,7 @@ from services.vehicle_catalog import SEGMENT_LABELS
 from services.vehicle_catalog import Vehicle
 
 from data.gcs_client import download_aggregate
+from data.gcs_client import fresh_aggregate_version
 from data.geojson_loader import scope_mask
 
 PROVINCE_AGGREGATE = "province_daily_stats.parquet"
@@ -56,21 +57,26 @@ TIE_MARGIN_PCT = 1.0
 
 
 # The /insights calculator reads prices on every page view, and each read re-loads and re-cleans the
-# whole parquet. The aggregate changes once a day, so reusing a clean copy for a few minutes is safe.
-_PRICES_TTL_SECONDS = 300
-_prices_cache: tuple[float, pd.DataFrame] | None = None
+# whole parquet. The clean copy is kept for exactly as long as the local parquet it came from: keyed on
+# that file's version, it is dropped the moment the aggregate is re-downloaded, never served stale.
+_prices_lock = threading.Lock()
+_prices_cache: tuple[float, pd.DataFrame] | None = None  # (aggregate version, cleaned prices)
 
 
 def _load_prices() -> pd.DataFrame | None:
     """Province daily prices, cleaned. ``None`` when the aggregate is unavailable. Callers must not mutate it."""
     global _prices_cache
-    now = time.monotonic()
-    if _prices_cache is not None and now - _prices_cache[0] < _PRICES_TTL_SECONDS:
-        return _prices_cache[1]
-    prices = _read_prices()
-    # A missing aggregate is not cached: the next request tries again.
-    _prices_cache = (now, prices) if prices is not None else None
-    return prices
+    # One loader at a time: concurrent misses wait for the first read instead of each re-reading the parquet.
+    with _prices_lock:
+        version = fresh_aggregate_version(PROVINCE_AGGREGATE)
+        if version is not None and _prices_cache is not None and _prices_cache[0] == version:
+            return _prices_cache[1]
+        prices = _read_prices()
+        # Key on the file this read used or wrote. Nothing is cached when there is no fresh local copy
+        # (GCS unreachable, cache write failed) or no aggregate: the next request tries again.
+        version = fresh_aggregate_version(PROVINCE_AGGREGATE)
+        _prices_cache = (version, prices) if prices is not None and version is not None else None
+        return prices
 
 
 def _read_prices() -> pd.DataFrame | None:
@@ -240,7 +246,9 @@ def get_vehicle_options() -> dict:
     }
 
 
-def get_vehicle_costs(vehicle_ids: list[str], province: str | None = None) -> list[dict] | None:
+def get_vehicle_costs(
+    vehicle_ids: list[str], province: str | None = None, region: Region = Region.all
+) -> list[dict] | None:
     """EUR/100 km per vehicle, all priced on one shared day. ``None`` when prices are unavailable.
 
     These rows sit next to the verdict card in the UI, so they must be dated the same way it is:
@@ -253,7 +261,7 @@ def get_vehicle_costs(vehicle_ids: list[str], province: str | None = None) -> li
         return None
 
     vehicles = [v for v in (get_vehicle(vehicle_id) for vehicle_id in vehicle_ids) if v is not None]
-    series_by_energy = {v.energy_type: _daily_series(prices, v.energy_type, province) for v in vehicles}
+    series_by_energy = {v.energy_type: _daily_series(prices, v.energy_type, province, region) for v in vehicles}
     priceable = {energy: series for energy, series in series_by_energy.items() if not series.empty}
 
     common_dates: set | None = None
@@ -419,7 +427,9 @@ def get_breakeven_by_province(pair_id: str, mainland_only: bool = True) -> dict 
     }
 
 
-def get_breakeven_history(pair_id: str, province: str | None = None, days: int = 365) -> dict | None:
+def get_breakeven_history(
+    pair_id: str, province: str | None = None, days: int = 365, region: Region = Region.all
+) -> dict | None:
     """Daily price ratio against the pair's fixed breakeven ratio, plus where it crossed."""
     pair = get_pair(pair_id)
     gasoline, diesel = pair.get(EnergyType.gasoline), pair.get(EnergyType.diesel)
@@ -430,8 +440,8 @@ def get_breakeven_history(pair_id: str, province: str | None = None, days: int =
     if prices is None:
         return None
 
-    gasoline_series = _daily_series(prices, EnergyType.gasoline, province)
-    diesel_series = _daily_series(prices, EnergyType.diesel, province)
+    gasoline_series = _daily_series(prices, EnergyType.gasoline, province, region)
+    diesel_series = _daily_series(prices, EnergyType.diesel, province, region)
     if gasoline_series.empty or diesel_series.empty:
         return None
 

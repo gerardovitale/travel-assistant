@@ -193,3 +193,19 @@ def test_load_postal_codes_for_zip_list_empty_input(tmp_path):
 
     assert result["features"] == []
     _reset_cache()
+
+
+def test_scope_mask_splits_provinces_by_fuel_tax_regime():
+    import pandas as pd
+
+    provinces = pd.Series(["madrid", "balears (illes)", "palmas (las)", "ceuta", None])
+
+    peninsula = loader_module.scope_mask(provinces, None, "peninsula").tolist()
+    special = loader_module.scope_mask(provinces, None, "special").tolist()
+
+    # Baleares pays the peninsula's taxes; a row with no province is in neither regime.
+    assert peninsula == [True, True, False, False, False]
+    assert special == [False, False, True, True, False]
+    assert loader_module.scope_mask(provinces, None, "all").all()
+    # A province wins over the region and accepts its map (GeoJSON) name.
+    assert loader_module.scope_mask(provinces, "Las Palmas", "peninsula").tolist() == [False, False, True, False, False]

@@ -7,11 +7,12 @@ exclude = ["ingest-fuel-prices"]
 # latest. cryptography 48.x crashes ("Illegal instruction") on arm64 Docker; pin
 # back to the version both services shipped on main (known-good in CI + on the
 # Raspberry Pi). This keeps the refactor dependency-neutral.
-# pyasn1 >=0.6.4 clears CVE-2026-59884/59885/59886 (DoS via crafted BER / OBJECT
-# IDENTIFIER / REAL). Transitive via google-auth -> pyasn1-modules.
+# pyasn1 >=0.6.5 clears CVE-2026-59884/59885/59886 (DoS via crafted BER / OBJECT
+# IDENTIFIER / REAL) and CVE-2026-119194..119197 (DoS in schemaless, fragmented,
+# bit-string and REAL decoding). Transitive via google-auth -> pyasn1-modules.
 # certifi >=2026.10.19 clears GHSA-6q48-6c7w-9gw2 (bundled emSign roots with
 # compromised intermediate CA keys). Transitive via requests/httpx.
-constraint-dependencies = ["cryptography==46.0.5", "pyasn1>=0.6.4", "certifi>=2026.10.19"]
+constraint-dependencies = ["cryptography==46.0.5", "pyasn1>=0.6.5", "certifi>=2026.10.19"]
 
 # Workspace-wide dev tooling. Lives on the virtual root so `uv sync --all-packages --dev`
 # installs it once rather than duplicating it in each member.

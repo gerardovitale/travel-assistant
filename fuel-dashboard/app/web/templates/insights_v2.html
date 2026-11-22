@@ -211,8 +211,10 @@
       </div>
       <div class="fp-card md:p-6 flex flex-col gap-4" data-testid="fuel-choice-result">
         <span id="fuel-choice-tag" data-testid="fuel-choice-tag" class="fp-verdict-tag self-start">—</span>
-        {#- Only the verdict is announced: the rest of the card changes on every slider step. #}
-        <p id="fuel-choice-verdict" data-testid="fuel-choice-verdict" aria-live="polite" class="font-headline text-2xl font-extrabold text-primary leading-tight">—</p>
+        {#- Announced only when the winner changes: the verdict's euro figure moves on every slider step, and a
+            live region on it would queue one announcement per step while a slider is dragged. #}
+        <p id="fuel-choice-announce" data-testid="fuel-choice-announce" class="sr-only" aria-live="polite"></p>
+        <p id="fuel-choice-verdict" data-testid="fuel-choice-verdict" class="font-headline text-2xl font-extrabold text-primary leading-tight">—</p>
         <p id="fuel-choice-detail" data-testid="fuel-choice-detail" class="text-sm text-on-surface-variant"></p>
         <div class="pt-3 border-t border-surface-container">
           <p class="fp-eyebrow text-on-surface-variant">Combustible por cada 100 km</p>

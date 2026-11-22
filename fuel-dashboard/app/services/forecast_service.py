@@ -336,7 +336,8 @@ def _build_response(
 def _in_region(region: Region) -> Callable[[str], bool]:
     special = set(special_tax_data_province_names())
     if region == Region.peninsula:
-        return lambda province: province not in special
+        # A row with no province is in neither regime, as in scope_mask and the SQL region clause.
+        return lambda province: isinstance(province, str) and province not in special
     if region == Region.special:
         return lambda province: province in special
     return lambda province: True

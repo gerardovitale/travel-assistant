@@ -731,10 +731,6 @@ _FUEL_TYPE_PROVINCES = [
 ]
 
 
-def _fuel_type_price(energy_type: str) -> float:
-    return _FUEL_TYPE_GASOLINE_PRICE if energy_type == "gasoline" else _FUEL_TYPE_DIESEL_PRICE
-
-
 def _fuel_type_cost_row(vehicle, price: float) -> VehicleCostRow:
     return VehicleCostRow(
         vehicle_id=vehicle.id,
@@ -778,35 +774,40 @@ def fuel_type_vehicles_response() -> VehicleCatalogResponse:
     return VehicleCatalogResponse(**options)
 
 
+# Canarias-like prices, lower taxes and a wider diesel discount, so a scope switch changes the verdict figures.
+_FUEL_TYPE_SPECIAL_PRICES = (1.259, 1.109)
+
+
+def _fuel_type_scope_prices(province: str | None, region: Region) -> tuple[float, float]:
+    """(gasoline, diesel) €/l for a scope: Canarias-like for the special region, the default otherwise."""
+    if province is None and region == Region.special:
+        return _FUEL_TYPE_SPECIAL_PRICES
+    return _FUEL_TYPE_GASOLINE_PRICE, _FUEL_TYPE_DIESEL_PRICE
+
+
 def fuel_type_cost_response(
-    vehicle_ids: Optional[Iterable[str]] = None, province: Optional[str] = None
+    vehicle_ids: Optional[Iterable[str]] = None, province: Optional[str] = None, region: Region = Region.all
 ) -> list[VehicleCostRow]:
     ids = list(vehicle_ids or [])
     if not ids:
         gasoline, diesel = _fuel_type_pair("")
         ids = [gasoline.id, diesel.id]
+    gasoline_price, diesel_price = _fuel_type_scope_prices(province, region)
     rows = []
     for vehicle_id in ids:
         vehicle = get_vehicle(vehicle_id)
         if vehicle is None:
             continue
-        rows.append(_fuel_type_cost_row(vehicle, _fuel_type_price(vehicle.energy_type.value)))
+        price = gasoline_price if vehicle.energy_type.value == "gasoline" else diesel_price
+        rows.append(_fuel_type_cost_row(vehicle, price))
     return rows
-
-
-# Canarias-like prices, lower taxes and a wider diesel discount, so a scope switch changes the verdict figures.
-_FUEL_TYPE_SPECIAL_PRICES = (1.259, 1.109)
 
 
 def fuel_type_breakeven_response(
     pair_id: str = "", province: str | None = None, region: Region = Region.all
 ) -> BreakevenResponse:
     gasoline, diesel = _fuel_type_pair(pair_id)
-    gasoline_price, diesel_price = (
-        _FUEL_TYPE_SPECIAL_PRICES
-        if province is None and region == Region.special
-        else (_FUEL_TYPE_GASOLINE_PRICE, _FUEL_TYPE_DIESEL_PRICE)
-    )
+    gasoline_price, diesel_price = _fuel_type_scope_prices(province, region)
     metrics = _breakeven_metrics(gasoline, diesel, gasoline_price, diesel_price)
     return BreakevenResponse(
         pair_id=gasoline.pair_id,
@@ -846,7 +847,10 @@ def fuel_type_provinces_response(pair_id: str = "") -> ProvinceBreakevenResponse
     )
 
 
-def fuel_type_history_response(pair_id: str = "", province: Optional[str] = None) -> BreakevenHistoryResponse:
+def fuel_type_history_response(
+    pair_id: str = "", province: Optional[str] = None, region: Region = Region.all
+) -> BreakevenHistoryResponse:
+    # One fixed series for every scope: *region* is accepted so the route's call matches production.
     gasoline, diesel = _fuel_type_pair(pair_id)
     breakeven_ratio = round(gasoline.consumption / diesel.consumption, 4)
     series = []

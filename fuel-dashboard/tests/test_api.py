@@ -625,6 +625,20 @@ def test_fuel_type_report_cost_passes_vehicle_ids_and_province(mock_service, fue
     assert mock_service.call_args.args[1] == "madrid"
 
 
+@patch("api.router.get_vehicle_costs")
+def test_fuel_type_report_cost_passes_region(mock_service, fuel_type_on):
+    mock_service.return_value = []
+    _get_client().get("/api/v1/reportes/fuel-type/cost?vehicle_ids=a&region=special")
+    assert mock_service.call_args.args == (["a"], None, Region.special)
+
+
+@patch("api.router.get_breakeven_history")
+def test_fuel_type_report_history_passes_region(mock_service, fuel_type_on):
+    mock_service.return_value = None
+    _get_client().get("/api/v1/reportes/fuel-type/history?pair_id=vw-golf&region=peninsula")
+    assert mock_service.call_args.args[3] == Region.peninsula
+
+
 def test_fuel_type_report_cost_rejects_more_than_six_vehicles(fuel_type_on):
     query = "&".join(f"vehicle_ids={i}" for i in range(7))
     response = _get_client().get(f"/api/v1/reportes/fuel-type/cost?{query}")

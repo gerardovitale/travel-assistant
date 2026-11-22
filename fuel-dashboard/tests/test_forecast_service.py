@@ -391,3 +391,14 @@ def test_province_forecast_uses_the_aggregate_when_the_trend_cache_holds_too_lit
 
     assert result.insufficient_data is False
     assert result.coverage_days == 120
+
+
+def test_a_row_without_a_province_is_in_neither_region():
+    from services.forecast_service import _in_region
+
+    for region in (Region.peninsula, Region.special):
+        in_region = _in_region(region)
+        assert not in_region(None)
+        assert not in_region(float("nan"))
+    assert _in_region(Region.peninsula)("balears (illes)")
+    assert _in_region(Region.special)("ceuta")
